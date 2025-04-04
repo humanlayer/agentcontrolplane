@@ -14,9 +14,13 @@ type TaskRunSpec struct {
 	// +optional
 	TaskRunToolCallRef *LocalObjectReference `json:"taskRunToolCallRef,omitempty"`
 
-	// AgentRef is used when the TaskRun is created for a tool call delegation.
+	// AgentRef overrides the task's agent for this TaskRun.
 	// +optional
 	AgentRef *LocalObjectReference `json:"agentRef,omitempty"`
+
+	// UserMessage overrides the task's message for this TaskRun.
+	// +optional
+	UserMessage string `json:"userMessage,omitempty"`
 }
 
 // Message represents a single message in the conversation

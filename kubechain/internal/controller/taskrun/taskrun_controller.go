@@ -124,9 +124,14 @@ func (r *TaskRunReconciler) validateTaskAndAgent(ctx context.Context, taskRun *k
 		return nil, nil, ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
-	// Get the Agent referenced by the Task
+	// Get the Agent - use TaskRun's AgentRef if provided, otherwise use Task's AgentRef
+	agentRef := task.Spec.AgentRef
+	if taskRun.Spec.AgentRef != nil {
+		agentRef = *taskRun.Spec.AgentRef
+	}
+
 	var agent kubechainv1alpha1.Agent
-	if err := r.Get(ctx, client.ObjectKey{Namespace: task.Namespace, Name: task.Spec.AgentRef.Name}, &agent); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: task.Namespace, Name: agentRef.Name}, &agent); err != nil {
 		logger.Error(err, "Failed to get Agent")
 		statusUpdate.Status.Ready = false
 		statusUpdate.Status.Status = StatusPending
@@ -167,6 +172,13 @@ func (r *TaskRunReconciler) prepareForLLM(ctx context.Context, taskRun *kubechai
 	if statusUpdate.Status.Phase == kubechainv1alpha1.TaskRunPhaseInitializing || statusUpdate.Status.Phase == kubechainv1alpha1.TaskRunPhasePending {
 		statusUpdate.Status.Phase = kubechainv1alpha1.TaskRunPhaseReadyForLLM
 		statusUpdate.Status.Ready = true
+
+		// Use userMessage from TaskRun if provided, otherwise use task's message
+		userMessage := task.Spec.Message
+		if taskRun.Spec.UserMessage != "" {
+			userMessage = taskRun.Spec.UserMessage
+		}
+
 		statusUpdate.Status.ContextWindow = []kubechainv1alpha1.Message{
 			{
 				Role:    "system",
@@ -174,7 +186,7 @@ func (r *TaskRunReconciler) prepareForLLM(ctx context.Context, taskRun *kubechai
 			},
 			{
 				Role:    "user",
-				Content: task.Spec.Message,
+				Content: userMessage,
 			},
 		}
 		statusUpdate.Status.Status = StatusReady
