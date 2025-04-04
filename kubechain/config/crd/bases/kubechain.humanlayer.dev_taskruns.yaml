@@ -75,8 +75,7 @@ spec:
             description: TaskRunSpec defines the desired state of TaskRun
             properties:
               agentRef:
-                description: AgentRef is used when the TaskRun is created for a tool
-                  call delegation.
+                description: AgentRef overrides the task's agent for this TaskRun.
                 properties:
                   name:
                     description: Name of the referent
@@ -106,8 +105,9 @@ spec:
                 required:
                 - name
                 type: object
-            required:
-            - taskRef
+              userMessage:
+                description: UserMessage overrides the task's message for this TaskRun.
+                type: string
             type: object
           status:
             description: TaskRunStatus defines the observed state of TaskRun

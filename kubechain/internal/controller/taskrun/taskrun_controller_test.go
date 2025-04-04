@@ -7,11 +7,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/humanlayer/smallchain/kubechain/api/v1alpha1"
 	kubechain "github.com/humanlayer/smallchain/kubechain/api/v1alpha1"
 	"github.com/humanlayer/smallchain/kubechain/internal/llmclient"
 	. "github.com/humanlayer/smallchain/kubechain/test/utils"
@@ -128,7 +128,75 @@ var _ = Describe("TaskRun Controller", func() {
 			ExpectRecorder(recorder).ToEmitEventContaining("ValidationSucceeded")
 		})
 
-		XIt("moves to ReadyForLLM if the taskRun is missing a taskRef but has an agentRef and userMessage ", func() {})
+		It("moves to ReadyForLLM if the taskRun is missing a taskRef but has an agentRef and userMessage", func() {
+			// Setup agent
+			testAgent := &kubechain.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "direct-agent",
+					Namespace: "default",
+				},
+				Spec: kubechain.AgentSpec{
+					LLMRef: kubechain.LocalObjectReference{
+						Name: "test-llm",
+					},
+					System: "test system message",
+				},
+				Status: kubechain.AgentStatus{
+					Ready:  true,
+					Status: "Ready",
+				},
+			}
+			Expect(k8sClient.Create(ctx, testAgent)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, testAgent)).To(Succeed())
+			}()
+
+			// Setup LLM
+			testLLM.Setup(ctx)
+			defer testLLM.Teardown(ctx)
+
+			// Setup TaskRun with agentRef and userMessage but no taskRef
+			taskRun := &kubechain.TaskRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "direct-taskrun",
+					Namespace: "default",
+				},
+				Spec: kubechain.TaskRunSpec{
+					AgentRef: &kubechain.LocalObjectReference{
+						Name: "direct-agent",
+					},
+					UserMessage: "test user message",
+				},
+				Status: kubechain.TaskRunStatus{
+					Phase: kubechain.TaskRunPhaseInitializing,
+				},
+			}
+			Expect(k8sClient.Create(ctx, taskRun)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, taskRun)).To(Succeed())
+			}()
+
+			By("reconciling the taskrun")
+			reconciler, recorder := reconciler()
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: taskRun.Name, Namespace: "default"},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue())
+
+			By("ensuring the context window is set correctly")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: taskRun.Name, Namespace: "default"}, taskRun)).To(Succeed())
+			Expect(taskRun.Status.Phase).To(Equal(kubechain.TaskRunPhaseReadyForLLM))
+			Expect(taskRun.Status.StatusDetail).To(ContainSubstring("Ready to send to LLM"))
+			Expect(taskRun.Status.ContextWindow).To(HaveLen(2))
+			Expect(taskRun.Status.ContextWindow[0].Role).To(Equal("system"))
+			Expect(taskRun.Status.ContextWindow[0].Content).To(Equal("test system message"))
+			Expect(taskRun.Status.ContextWindow[1].Role).To(Equal("user"))
+			Expect(taskRun.Status.ContextWindow[1].Content).To(Equal("test user message"))
+			ExpectRecorder(recorder).ToEmitEventContaining("ValidationSucceeded")
+		})
 	})
 	Context("Pending -> ReadyForLLM", func() {
 		It("moves to ReadyForLLM if upstream dependencies are ready", func() {
@@ -184,7 +252,7 @@ var _ = Describe("TaskRun Controller", func() {
 			By("reconciling the taskrun")
 			reconciler, recorder := reconciler()
 			mockLLMClient := &llmclient.MockRawOpenAIClient{
-				Response: &v1alpha1.Message{
+				Response: &kubechain.Message{
 					Role:    "assistant",
 					Content: "The moon is a natural satellite of the Earth and lacks any formal government or capital.",
 				},
@@ -329,12 +397,12 @@ var _ = Describe("TaskRun Controller", func() {
 			By("reconciling the taskrun")
 			reconciler, recorder := reconciler()
 			mockLLMClient := &llmclient.MockRawOpenAIClient{
-				Response: &v1alpha1.Message{
+				Response: &kubechain.Message{
 					Role: "assistant",
-					ToolCalls: []v1alpha1.ToolCall{
+					ToolCalls: []kubechain.ToolCall{
 						{
 							ID:       "1",
-							Function: v1alpha1.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url": "https://api.example.com/data"}`},
+							Function: kubechain.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url": "https://api.example.com/data"}`},
 						},
 					},
 				},

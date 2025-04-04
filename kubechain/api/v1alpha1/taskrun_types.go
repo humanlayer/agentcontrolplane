@@ -7,8 +7,8 @@ import (
 // TaskRunSpec defines the desired state of TaskRun
 type TaskRunSpec struct {
 	// TaskRef references the task to run
-	// +kubebuilder:validation:Required
-	TaskRef LocalObjectReference `json:"taskRef"`
+	// +optional
+	TaskRef *LocalObjectReference `json:"taskRef,omitempty"`
 
 	// TaskRunToolCallRef is used when the TaskRun is created for a tool call delegation.
 	// +optional
