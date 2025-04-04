@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -58,6 +59,11 @@ func (r *TaskRunReconciler) getTask(ctx context.Context, taskRun *kubechainv1alp
 		return nil, nil
 	}
 
+	// If TaskRef is nil, we can't fetch the task
+	if taskRun.Spec.TaskRef == nil {
+		return nil, fmt.Errorf("taskRef is required when agentRef and userMessage are not provided")
+	}
+
 	task := &kubechainv1alpha1.Task{}
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: taskRun.Namespace,
@@ -75,31 +81,110 @@ func (r *TaskRunReconciler) getTask(ctx context.Context, taskRun *kubechainv1alp
 }
 
 // validateTaskAndAgent checks if the task and agent exist and are ready
-func (r *TaskRunReconciler) validateTaskAndAgent(
-	ctx context.Context,
-	taskRun *kubechainv1alpha1.TaskRun,
-	statusUpdate *kubechainv1alpha1.TaskRun,
-) (userMessage string, agent *kubechainv1alpha1.Agent, result ctrl.Result, err error) {
+func (r *TaskRunReconciler) validateTaskAndAgent(ctx context.Context, taskRun *kubechainv1alpha1.TaskRun, statusUpdate *kubechainv1alpha1.TaskRun) (*kubechainv1alpha1.Task, *kubechainv1alpha1.Agent, ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	userMessage = taskRun.Spec.UserMessage
+	// Validate that we have either taskRef or agentRef+userMessage
+	if taskRun.Spec.TaskRef == nil && (taskRun.Spec.AgentRef == nil || taskRun.Spec.UserMessage == "") {
+		err := fmt.Errorf("must specify either taskRef or both agentRef and userMessage")
+		logger.Error(err, "Validation failed")
+		statusUpdate.Status.Ready = false
+		statusUpdate.Status.Status = StatusError
+		statusUpdate.Status.Phase = kubechainv1alpha1.TaskRunPhaseFailed
+		statusUpdate.Status.StatusDetail = err.Error()
+		statusUpdate.Status.Error = err.Error()
+		r.recorder.Event(taskRun, corev1.EventTypeWarning, "ValidationFailed", err.Error())
 
-	if userMessage != "" && taskRun.Spec.AgentRef != nil && taskRun.Spec.AgentRef.Name != "" {
-		var agent kubechainv1alpha1.Agent
-		if err := r.Get(ctx, client.ObjectKey{Namespace: taskRun.Namespace, Name: taskRun.Spec.AgentRef.Name}, &agent); err != nil {
-			logger.Error(err, "Failed to get Agent")
+		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
+			logger.Error(updateErr, "Failed to update TaskRun status")
+			return nil, nil, ctrl.Result{}, fmt.Errorf("failed to update taskrun status: %v", err)
+		}
+		return nil, nil, ctrl.Result{}, err
+	}
+
+	// Get parent Task if needed
+	task, err := r.getTask(ctx, taskRun)
+	if err != nil {
+		r.recorder.Event(taskRun, corev1.EventTypeWarning, "TaskValidationFailed", err.Error())
+		if apierrors.IsNotFound(err) {
+			logger.Info("Task not found", "task", taskRun.Spec.TaskRef.Name)
+			statusUpdate.Status.Phase = kubechainv1alpha1.TaskRunPhaseFailed
+			statusUpdate.Status.Error = fmt.Sprintf("Task %q not found", taskRun.Spec.TaskRef.Name)
+			statusUpdate.Status.StatusDetail = fmt.Sprintf("Task %q not found", taskRun.Spec.TaskRef.Name)
+			statusUpdate.Status.Status = StatusError
+
+			// End span since we've failed with a terminal error
+			r.endTaskRunSpan(ctx, taskRun, codes.Error, fmt.Sprintf("Task %q not found", taskRun.Spec.TaskRef.Name))
+		} else {
+			logger.Error(err, "Task validation failed")
 			statusUpdate.Status.Ready = false
 			statusUpdate.Status.Status = StatusError
-			statusUpdate.Status.StatusDetail = "Failed to get Agent: " + err.Error()
+			statusUpdate.Status.StatusDetail = fmt.Sprintf("Task validation failed: %v", err)
 			statusUpdate.Status.Error = err.Error()
-			r.recorder.Event(taskRun, corev1.EventTypeWarning, "AgentFetchFailed", err.Error())
-			if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
-				logger.Error(updateErr, "Failed to update TaskRun status")
-				return "", nil, ctrl.Result{}, fmt.Errorf("failed to update taskrun status: %v", err)
-			}
-			return "", nil, ctrl.Result{}, err
+
+			// End span since we've failed with a terminal error
+			r.endTaskRunSpan(ctx, taskRun, codes.Error, fmt.Sprintf("Task validation failed: %v", err))
 		}
-		return userMessage, &agent, ctrl.Result{}, nil
+
+		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
+			logger.Error(updateErr, "Failed to update TaskRun status")
+			return nil, nil, ctrl.Result{}, fmt.Errorf("failed to update taskrun status: %v", err)
+		}
+		return nil, nil, ctrl.Result{}, err
+	}
+
+	// Check if task exists but is not ready
+	if task != nil && !task.Status.Ready {
+		logger.Info("Task exists but is not ready", "task", task.Name)
+		statusUpdate.Status.Ready = false
+		statusUpdate.Status.Status = StatusPending
+		statusUpdate.Status.Phase = kubechainv1alpha1.TaskRunPhasePending
+		statusUpdate.Status.StatusDetail = fmt.Sprintf("Waiting for task %q to become ready", task.Name)
+		statusUpdate.Status.Error = "" // Clear previous error
+		r.recorder.Event(taskRun, corev1.EventTypeNormal, "TaskNotReady", fmt.Sprintf("Waiting for task %q to become ready", task.Name))
+		if err := r.Status().Update(ctx, statusUpdate); err != nil {
+			logger.Error(err, "Failed to update TaskRun status")
+			return nil, nil, ctrl.Result{}, err
+		}
+		return nil, nil, ctrl.Result{RequeueAfter: time.Second * 5}, nil
+	}
+
+	// Get the Agent - use TaskRun's AgentRef if provided, otherwise use Task's AgentRef
+	var agentRef kubechainv1alpha1.LocalObjectReference
+	if taskRun.Spec.AgentRef != nil {
+		agentRef = *taskRun.Spec.AgentRef
+	} else if task != nil {
+		agentRef = task.Spec.AgentRef
+	} else {
+		err := fmt.Errorf("no agent reference found")
+		logger.Error(err, "Missing agent reference")
+		statusUpdate.Status.Ready = false
+		statusUpdate.Status.Status = StatusError
+		statusUpdate.Status.Phase = kubechainv1alpha1.TaskRunPhaseFailed
+		statusUpdate.Status.StatusDetail = err.Error()
+		statusUpdate.Status.Error = err.Error()
+		r.recorder.Event(taskRun, corev1.EventTypeWarning, "ValidationFailed", err.Error())
+		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
+			logger.Error(updateErr, "Failed to update TaskRun status")
+			return nil, nil, ctrl.Result{}, updateErr
+		}
+		return nil, nil, ctrl.Result{}, err
+	}
+
+	var agent kubechainv1alpha1.Agent
+	if err := r.Get(ctx, client.ObjectKey{Namespace: taskRun.Namespace, Name: agentRef.Name}, &agent); err != nil {
+		logger.Error(err, "Failed to get Agent")
+		statusUpdate.Status.Ready = false
+		statusUpdate.Status.Status = StatusPending
+		statusUpdate.Status.Phase = kubechainv1alpha1.TaskRunPhasePending
+		statusUpdate.Status.StatusDetail = "Waiting for Agent to exist"
+		statusUpdate.Status.Error = "" // Clear previous error
+		r.recorder.Event(taskRun, corev1.EventTypeNormal, "Waiting", "Waiting for Agent to exist")
+		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
+			logger.Error(updateErr, "Failed to update TaskRun status")
+			return nil, nil, ctrl.Result{}, updateErr
+		}
+		return nil, nil, ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
 	// Check if agent is ready
@@ -118,17 +203,11 @@ func (r *TaskRunReconciler) validateTaskAndAgent(
 		return nil, nil, ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
-	return userMessage, &agent, ctrl.Result{}, nil
+	return task, &agent, ctrl.Result{}, nil
 }
 
 // prepareForLLM sets up the initial state of a TaskRun with the correct context and phase
-func (r *TaskRunReconciler) prepareForLLM(
-	ctx context.Context,
-	taskRun *kubechainv1alpha1.TaskRun,
-	statusUpdate *kubechainv1alpha1.TaskRun,
-	userMessage string,
-	agent *kubechainv1alpha1.Agent,
-) (ctrl.Result, error) {
+func (r *TaskRunReconciler) prepareForLLM(ctx context.Context, taskRun *kubechainv1alpha1.TaskRun, statusUpdate *kubechainv1alpha1.TaskRun, task *kubechainv1alpha1.Task, agent *kubechainv1alpha1.Agent) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if statusUpdate.Status.Phase == kubechainv1alpha1.TaskRunPhaseInitializing || statusUpdate.Status.Phase == kubechainv1alpha1.TaskRunPhasePending {
@@ -136,9 +215,9 @@ func (r *TaskRunReconciler) prepareForLLM(
 		statusUpdate.Status.Ready = true
 
 		// Use userMessage from TaskRun if provided, otherwise use task's message
-		var userMessage string
-		if taskRun.Spec.UserMessage != "" {
-			userMessage = taskRun.Spec.UserMessage
+		message := taskRun.Spec.UserMessage
+		if message == "" && task != nil {
+			message = task.Spec.Message
 		}
 
 		statusUpdate.Status.ContextWindow = []kubechainv1alpha1.Message{
@@ -148,7 +227,7 @@ func (r *TaskRunReconciler) prepareForLLM(
 			},
 			{
 				Role:    "user",
-				Content: userMessage,
+				Content: message,
 			},
 		}
 		statusUpdate.Status.Status = StatusReady
@@ -619,13 +698,13 @@ func (r *TaskRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Step 1: Validate Task and Agent
-	userMessage, agent, result, err := r.validateTaskAndAgent(ctx, &taskRun, statusUpdate)
+	task, agent, result, err := r.validateTaskAndAgent(ctx, &taskRun, statusUpdate)
 	if err != nil || !result.IsZero() {
 		return result, err
 	}
 
 	// Step 2: Initialize Phase if necessary
-	if result, err := r.prepareForLLM(ctx, &taskRun, statusUpdate, userMessage, agent); err != nil || !result.IsZero() {
+	if result, err := r.prepareForLLM(ctx, &taskRun, statusUpdate, task, agent); err != nil || !result.IsZero() {
 		return result, err
 	}
 

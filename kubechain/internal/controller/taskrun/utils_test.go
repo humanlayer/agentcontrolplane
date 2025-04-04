@@ -103,8 +103,7 @@ func (t *TestAgent) Setup(ctx context.Context) *kubechain.Agent {
 	By("creating the agent")
 	agent := &kubechain.Agent{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: t.name,
-
+			Name:      t.name,
 			Namespace: "default",
 		},
 		Spec: kubechain.AgentSpec{
@@ -197,7 +196,7 @@ func (t *TestTaskRun) Setup(ctx context.Context) *kubechain.TaskRun {
 			Namespace: "default",
 		},
 		Spec: kubechain.TaskRunSpec{
-			TaskRef: kubechain.LocalObjectReference{
+			TaskRef: &kubechain.LocalObjectReference{
 				Name: t.taskName,
 			},
 		},
@@ -252,10 +251,10 @@ func (t *TestTaskRunToolCall) Setup(ctx context.Context) *kubechain.TaskRunToolC
 			},
 		},
 		Spec: kubechain.TaskRunToolCallSpec{
-			TaskRunRef: kubechain.LocalObjectReference{
+			TaskRunRef: &kubechain.LocalObjectReference{
 				Name: testTaskRun.name,
 			},
-			ToolRef: kubechain.LocalObjectReference{
+			ToolRef: &kubechain.LocalObjectReference{
 				Name: "test-tool",
 			},
 			Arguments: `{"url": "https://api.example.com/data"}`,

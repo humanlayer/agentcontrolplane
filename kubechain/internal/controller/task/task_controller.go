@@ -110,7 +110,7 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				},
 			},
 			Spec: kubechainv1alpha1.TaskRunSpec{
-				TaskRef: kubechainv1alpha1.LocalObjectReference{
+				TaskRef: &kubechainv1alpha1.LocalObjectReference{
 					Name: task.Name,
 				},
 			},
