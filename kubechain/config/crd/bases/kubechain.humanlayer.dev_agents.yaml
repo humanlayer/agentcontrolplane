@@ -50,6 +50,21 @@ spec:
           spec:
             description: AgentSpec defines the desired state of Agent
             properties:
+              humanContactChannels:
+                description: HumanContactChannels is a list of ContactChannel resources
+                  that can be used for human interactions
+                items:
+                  description: LocalObjectReference contains enough information to
+                    locate the referenced resource in the same namespace
+                  properties:
+                    name:
+                      description: Name of the referent
+                      minLength: 1
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
               llmRef:
                 description: LLMRef references the LLM to use for this agent
                 properties:
@@ -114,6 +129,22 @@ spec:
                 description: StatusDetail provides additional details about the current
                   status
                 type: string
+              validHumanContactChannels:
+                description: ValidHumanContactChannels is the list of human contact
+                  channels that were successfully validated
+                items:
+                  properties:
+                    name:
+                      description: Name of the contact channel
+                      type: string
+                    type:
+                      description: Type of the contact channel (e.g., "slack", "email")
+                      type: string
+                  required:
+                  - name
+                  - type
+                  type: object
+                type: array
               validMCPServers:
                 description: ValidMCPServers is the list of MCP servers that were
                   successfully validated

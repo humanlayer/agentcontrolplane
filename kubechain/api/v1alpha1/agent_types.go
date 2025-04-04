@@ -18,6 +18,10 @@ type AgentSpec struct {
 	// +optional
 	MCPServers []LocalObjectReference `json:"mcpServers,omitempty"`
 
+	// HumanContactChannels is a list of ContactChannel resources that can be used for human interactions
+	// +optional
+	HumanContactChannels []LocalObjectReference `json:"humanContactChannels,omitempty"`
+
 	// System is the system prompt for the agent
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -51,6 +55,10 @@ type AgentStatus struct {
 	// ValidMCPServers is the list of MCP servers that were successfully validated
 	// +optional
 	ValidMCPServers []ResolvedMCPServer `json:"validMCPServers,omitempty"`
+
+	// ValidHumanContactChannels is the list of human contact channels that were successfully validated
+	// +optional
+	ValidHumanContactChannels []ResolvedContactChannel `json:"validHumanContactChannels,omitempty"`
 }
 
 type ResolvedTool struct {
@@ -71,6 +79,16 @@ type ResolvedMCPServer struct {
 	// Tools available from this MCP server
 	// +optional
 	Tools []string `json:"tools,omitempty"`
+}
+
+type ResolvedContactChannel struct {
+	// Name of the contact channel
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Type of the contact channel (e.g., "slack", "email")
+	// +kubebuilder:validation:Required
+	Type string `json:"type"`
 }
 
 // +kubebuilder:object:root=true

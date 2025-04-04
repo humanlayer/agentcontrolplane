@@ -22,3 +22,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+# macOS system files
+.DS_Store
+**/.DS_Store
