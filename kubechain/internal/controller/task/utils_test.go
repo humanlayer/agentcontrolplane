@@ -60,7 +60,7 @@ func (t *TestLLM) Setup(ctx context.Context) *kubechain.LLM {
 		},
 		Spec: kubechain.LLMSpec{
 			Provider: "openai",
-			APIKeyFrom: kubechain.APIKeySource{
+			APIKeyFrom: &kubechain.APIKeySource{
 				SecretKeyRef: kubechain.SecretKeyRef{
 					Name: testSecret.name,
 					Key:  "api-key",
@@ -265,6 +265,8 @@ func setupSuiteObjects(ctx context.Context) (secret *corev1.Secret, llm *kubecha
 	return secret, llm, agent, teardown
 }
 
+// reconciler is a utility function to create a new TaskReconciler
+// nolint:unused
 func reconciler() (*TaskReconciler, *record.FakeRecorder) {
 	By("creating the reconciler")
 	recorder := record.NewFakeRecorder(10)

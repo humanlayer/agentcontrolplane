@@ -74,9 +74,10 @@ The LLM CRD represents a Large Language Model configuration.
 
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
-| `provider` | string | LLM provider (e.g., "openai") | Yes |
+| `provider` | string | LLM provider (one of: "openai", "anthropic", "mistral", "google", "vertex") | Yes |
 | `apiKeyFrom` | SecretKeySelector | Secret containing the API key | Yes |
-| `config` | object | Provider-specific configuration | No |
+| `baseConfig` | object | Common configuration options across providers (model, temperature, etc.) | No |
+| `providerConfig` | object | Provider-specific configuration (openaiConfig, anthropicConfig, vertexConfig, etc.) | No |
 
 ### Status Fields
 

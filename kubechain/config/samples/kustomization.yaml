@@ -7,4 +7,6 @@ resources:
 - kubechain_v1alpha1_task.yaml
 - kubechain_v1alpha1_mcpserver.yaml
 - kubechain_v1alpha1_contactchannel.yaml
+- kubechain_v1alpha1_claude_agent.yaml
+- kubechain_v1alpha1_claude_task.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

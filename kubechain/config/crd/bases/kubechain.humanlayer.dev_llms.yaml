@@ -53,8 +53,18 @@ spec:
           spec:
             description: LLMSpec defines the desired state of LLM
             properties:
+              anthropic:
+                description: Anthropic provider-specific configuration
+                properties:
+                  anthropicBetaHeader:
+                    description: |-
+                      AnthropicBetaHeader adds the Anthropic Beta header to support extended options
+                      Common values include "max-tokens-3-5-sonnet-2024-07-15" for extended token limits
+                    type: string
+                type: object
               apiKeyFrom:
                 description: APIKeyFrom references the secret containing the API key
+                  or credentials
                 properties:
                   secretKeyRef:
                     description: SecretKeyRef references a key in a secret
@@ -72,24 +82,117 @@ spec:
                 required:
                 - secretKeyRef
                 type: object
-              maxTokens:
-                description: MaxTokens defines the maximum number of tokens for the
-                  LLM.
-                minimum: 1
-                type: integer
+              google:
+                description: Google provider-specific configuration
+                properties:
+                  cloudLocation:
+                    description: CloudLocation is the Google Cloud region
+                    type: string
+                  cloudProject:
+                    description: CloudProject is the Google Cloud project ID
+                    type: string
+                type: object
+              mistral:
+                description: Mistral provider-specific configuration
+                properties:
+                  maxRetries:
+                    description: MaxRetries sets the maximum number of retries for
+                      API calls
+                    minimum: 0
+                    type: integer
+                  randomSeed:
+                    description: RandomSeed provides a seed for deterministic sampling
+                    type: integer
+                  timeout:
+                    description: Timeout specifies the timeout duration for API calls
+                      (in seconds)
+                    minimum: 1
+                    type: integer
+                type: object
+              openai:
+                description: OpenAI provider-specific configuration
+                properties:
+                  apiType:
+                    default: OPEN_AI
+                    description: APIType specifies which OpenAI API type to use
+                    enum:
+                    - OPEN_AI
+                    - AZURE
+                    - AZURE_AD
+                    type: string
+                  apiVersion:
+                    description: |-
+                      APIVersion is required when using Azure API types
+                      Example: "2023-05-15"
+                    type: string
+                  organization:
+                    description: Organization is the OpenAI organization ID
+                    type: string
+                type: object
+              parameters:
+                description: Parameters holds common configuration options across
+                  providers
+                properties:
+                  baseUrl:
+                    description: BaseURL for API endpoints (used by many providers)
+                    type: string
+                  frequencyPenalty:
+                    description: FrequencyPenalty reduces repetition by penalizing
+                      frequent tokens
+                    pattern: ^-?[0-2](\.[0-9]+)?$
+                    type: string
+                  maxTokens:
+                    description: MaxTokens defines the maximum number of tokens for
+                      the LLM
+                    minimum: 1
+                    type: integer
+                  model:
+                    description: Model name to use
+                    type: string
+                  presencePenalty:
+                    description: PresencePenalty reduces repetition by penalizing
+                      tokens that appear at all
+                    pattern: ^-?[0-2](\.[0-9]+)?$
+                    type: string
+                  temperature:
+                    description: Temperature adjusts the LLM response randomness (0.0
+                      to 1.0)
+                    pattern: ^0(\.[0-9]+)?|1(\.0+)?$
+                    type: string
+                  topK:
+                    description: TopK controls diversity by limiting the top K tokens
+                      to sample from
+                    minimum: 1
+                    type: integer
+                  topP:
+                    description: TopP controls diversity via nucleus sampling (0.0
+                      to 1.0)
+                    pattern: ^(0(\.[0-9]+)?|1(\.0+)?)$
+                    type: string
+                type: object
               provider:
-                description: 'Provider is the LLM provider name (ex: "openai", "anthropic")'
+                description: Provider is the LLM provider name
                 enum:
                 - openai
                 - anthropic
+                - mistral
+                - google
+                - vertex
                 type: string
-              temperature:
-                description: Temperature adjusts the LLM response randomness (0.0
-                  to 1.0)
-                pattern: ^0(\.[0-9]+)?|1(\.0+)?$
-                type: string
+              vertex:
+                description: Vertex provider-specific configuration
+                properties:
+                  cloudLocation:
+                    description: CloudLocation is the Google Cloud region
+                    type: string
+                  cloudProject:
+                    description: CloudProject is the Google Cloud project ID
+                    type: string
+                required:
+                - cloudLocation
+                - cloudProject
+                type: object
             required:
-            - apiKeyFrom
             - provider
             type: object
           status:

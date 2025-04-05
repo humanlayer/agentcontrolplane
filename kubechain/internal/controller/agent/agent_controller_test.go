@@ -36,7 +36,7 @@ var _ = Describe("Agent Controller", func() {
 				},
 				Spec: kubechainv1alpha1.LLMSpec{
 					Provider: "openai",
-					APIKeyFrom: kubechainv1alpha1.APIKeySource{
+					APIKeyFrom: &kubechainv1alpha1.APIKeySource{
 						SecretKeyRef: kubechainv1alpha1.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "api-key",

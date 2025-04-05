@@ -1,0 +1,8 @@
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: Task
+metadata:
+  name: claude-fetch-example
+spec:
+  agentRef:
+    name: claude-fetch-agent
+  message: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"

@@ -19,8 +19,14 @@ package llm
 import (
 	"context"
 	"fmt"
-	"net/http"
+	"time"
 
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/anthropic"
+	"github.com/tmc/langchaingo/llms/googleai"
+	"github.com/tmc/langchaingo/llms/googleai/vertex"
+	"github.com/tmc/langchaingo/llms/mistral"
+	"github.com/tmc/langchaingo/llms/openai"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -43,55 +49,276 @@ type LLMReconciler struct {
 	recorder record.EventRecorder
 }
 
-func (r *LLMReconciler) validateOpenAIKey(apiKey string) error {
-	req, err := http.NewRequest("GET", "https://api.openai.com/v1/models", nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
+//
+// llms.withTools can be used for passing in tools
+// This is in options.go in langchaingo/llms/
+// WithTools will add an option to set the tools to use.
+// func WithTools(tools []Tool) CallOption {
+// 	return func(o *CallOptions) {
+// 		o.Tools = tools
+// 	}
+// }
 
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+// Some providers can have a base url. Here is an example of a base url	for OpenAI.
+// This is in openaillm_option.go in langchaingo/llms/openai/
+// WithBaseURL passes the OpenAI base url to the client. If not set, the base url
+// is read from the OPENAI_BASE_URL environment variable. If still not set in ENV
+// VAR OPENAI_BASE_URL, then the default value is https://api.openai.com/v1 is used.
+//
+//	func WithBaseURL(baseURL string) Option {
+//		return func(opts *options) {
+//			opts.baseURL = baseURL
+//		}
+//	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
+// validateProviderConfig validates the LLM provider configuration against the actual API
+// TODO: Refactor this function to reduce cyclomatic complexity (currently at 59)
+func (r *LLMReconciler) validateProviderConfig(ctx context.Context, llm *kubechainv1alpha1.LLM, apiKey string) error { //nolint:gocyclo
+	var err error
+	var model llms.Model
+
+	// Common options from Parameters
+	commonOpts := []llms.CallOption{}
+
+	// Get parameter configuration
+	params := llm.Spec.Parameters
+
+	if params.Model != "" {
+		commonOpts = append(commonOpts, llms.WithModel(params.Model))
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
+	if params.MaxTokens != nil {
+		commonOpts = append(commonOpts, llms.WithMaxTokens(*params.MaxTokens))
+	}
+	if params.Temperature != "" {
+		// Parse temperature string to float64
+		var temp float64
+		_, err := fmt.Sscanf(params.Temperature, "%f", &temp)
+		if err == nil && temp >= 0 && temp <= 1 {
+			commonOpts = append(commonOpts, llms.WithTemperature(temp))
 		}
-	}()
+	}
+	// Add TopP if configured
+	if params.TopP != "" {
+		// Parse TopP string to float64
+		var topP float64
+		_, err := fmt.Sscanf(params.TopP, "%f", &topP)
+		if err == nil && topP >= 0 && topP <= 1 {
+			commonOpts = append(commonOpts, llms.WithTopP(topP))
+		}
+	}
+	// Add TopK if configured
+	if params.TopK != nil {
+		commonOpts = append(commonOpts, llms.WithTopK(*params.TopK))
+	}
+	// Add FrequencyPenalty if configured
+	if params.FrequencyPenalty != "" {
+		// Parse FrequencyPenalty string to float64
+		var freqPenalty float64
+		_, err := fmt.Sscanf(params.FrequencyPenalty, "%f", &freqPenalty)
+		if err == nil && freqPenalty >= -2 && freqPenalty <= 2 {
+			commonOpts = append(commonOpts, llms.WithFrequencyPenalty(freqPenalty))
+		}
+	}
+	// Add PresencePenalty if configured
+	if params.PresencePenalty != "" {
+		// Parse PresencePenalty string to float64
+		var presPenalty float64
+		_, err := fmt.Sscanf(params.PresencePenalty, "%f", &presPenalty)
+		if err == nil && presPenalty >= -2 && presPenalty <= 2 {
+			commonOpts = append(commonOpts, llms.WithPresencePenalty(presPenalty))
+		}
+	}
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("invalid API key (status code: %d)", resp.StatusCode)
+	switch llm.Spec.Provider {
+	case "openai":
+		if llm.Spec.APIKeyFrom == nil {
+			return fmt.Errorf("apiKeyFrom is required for openai")
+		}
+		providerOpts := []openai.Option{openai.WithToken(apiKey)}
+
+		// Configure BaseURL if provided
+		if llm.Spec.Parameters.BaseURL != "" {
+			providerOpts = append(providerOpts, openai.WithBaseURL(llm.Spec.Parameters.BaseURL))
+		}
+
+		// Configure OpenAI specific options if provided
+		if llm.Spec.OpenAI != nil {
+			config := llm.Spec.OpenAI
+
+			// Set organization if provided
+			if config.Organization != "" {
+				providerOpts = append(providerOpts, openai.WithOrganization(config.Organization))
+			}
+
+			// Configure API type if provided
+			if config.APIType != "" {
+				var apiType openai.APIType
+				switch config.APIType {
+				case "AZURE":
+					apiType = openai.APITypeAzure
+				case "AZURE_AD":
+					apiType = openai.APITypeAzureAD
+				default:
+					apiType = openai.APITypeOpenAI
+				}
+				providerOpts = append(providerOpts, openai.WithAPIType(apiType))
+
+				// When using Azure APIs, configure API Version
+				if (config.APIType == "AZURE" || config.APIType == "AZURE_AD") && config.APIVersion != "" {
+					providerOpts = append(providerOpts, openai.WithAPIVersion(config.APIVersion))
+				}
+			}
+		}
+
+		model, err = openai.New(providerOpts...)
+
+	case "anthropic":
+		if llm.Spec.APIKeyFrom == nil {
+			return fmt.Errorf("apiKeyFrom is required for anthropic")
+		}
+		providerOpts := []anthropic.Option{anthropic.WithToken(apiKey)}
+		if llm.Spec.Parameters.BaseURL != "" {
+			providerOpts = append(providerOpts, anthropic.WithBaseURL(llm.Spec.Parameters.BaseURL))
+		}
+		if llm.Spec.Anthropic != nil && llm.Spec.Anthropic.AnthropicBetaHeader != "" {
+			providerOpts = append(providerOpts, anthropic.WithAnthropicBetaHeader(llm.Spec.Anthropic.AnthropicBetaHeader))
+		}
+		model, err = anthropic.New(providerOpts...)
+
+	case "mistral":
+		if llm.Spec.APIKeyFrom == nil {
+			return fmt.Errorf("apiKeyFrom is required for mistral")
+		}
+		providerOpts := []mistral.Option{mistral.WithAPIKey(apiKey)}
+
+		// Configure BaseURL as endpoint
+		if llm.Spec.Parameters.BaseURL != "" {
+			providerOpts = append(providerOpts, mistral.WithEndpoint(llm.Spec.Parameters.BaseURL))
+		}
+
+		// Configure model
+		if llm.Spec.Parameters.Model != "" {
+			providerOpts = append(providerOpts, mistral.WithModel(llm.Spec.Parameters.Model))
+		}
+
+		// Configure Mistral-specific options if provided
+		if llm.Spec.Mistral != nil {
+			config := llm.Spec.Mistral
+
+			// Set MaxRetries if provided
+			if config.MaxRetries != nil {
+				providerOpts = append(providerOpts, mistral.WithMaxRetries(*config.MaxRetries))
+			}
+
+			// Set Timeout if provided (converting seconds to time.Duration)
+			if config.Timeout != nil {
+				timeoutDuration := time.Duration(*config.Timeout) * time.Second
+				providerOpts = append(providerOpts, mistral.WithTimeout(timeoutDuration))
+			}
+
+			// Set RandomSeed if provided
+			if config.RandomSeed != nil {
+				commonOpts = append(commonOpts, llms.WithSeed(*config.RandomSeed))
+			}
+		}
+
+		// Create the Mistral model with the provider options
+		model, err = mistral.New(providerOpts...)
+
+		// TODO: Elipsis had feedback that should be looked at later maybe:
+		// In the Mistral case, the branch calls GenerateFromSinglePrompt inside the switch then returns nil early. This deviates from the pattern of test-validation call that happens afterwards. Ensure the intended logic is maintained.
+		// https://github.com/humanlayer/kubechain/pull/35#discussion_r2013064446
+		// Pass any common options to the model during generation test
+		if len(commonOpts) > 0 {
+			commonOpts = append(commonOpts, llms.WithMaxTokens(1), llms.WithTemperature(0))
+			_, err = llms.GenerateFromSinglePrompt(ctx, model, "test", commonOpts...)
+			if err != nil {
+				return fmt.Errorf("mistral validation failed with options: %w", err)
+			}
+			return nil
+		}
+
+	case "google":
+		if llm.Spec.APIKeyFrom == nil {
+			return fmt.Errorf("apiKeyFrom is required for google")
+		}
+		providerOpts := []googleai.Option{googleai.WithAPIKey(apiKey)}
+		if llm.Spec.Google != nil {
+			if llm.Spec.Google.CloudProject != "" {
+				providerOpts = append(providerOpts, googleai.WithCloudProject(llm.Spec.Google.CloudProject))
+			}
+			if llm.Spec.Google.CloudLocation != "" {
+				providerOpts = append(providerOpts, googleai.WithCloudLocation(llm.Spec.Google.CloudLocation))
+			}
+		}
+		if llm.Spec.Parameters.Model != "" {
+			providerOpts = append(providerOpts, googleai.WithDefaultModel(llm.Spec.Parameters.Model))
+		}
+		model, err = googleai.New(ctx, providerOpts...)
+
+	case "vertex":
+		if llm.Spec.Vertex == nil {
+			return fmt.Errorf("vertex configuration is required for vertex provider")
+		}
+		config := llm.Spec.Vertex
+		providerOpts := []googleai.Option{
+			googleai.WithCloudProject(config.CloudProject),
+			googleai.WithCloudLocation(config.CloudLocation),
+		}
+		if llm.Spec.APIKeyFrom != nil && apiKey != "" {
+			providerOpts = append(providerOpts, googleai.WithCredentialsJSON([]byte(apiKey)))
+		}
+		if llm.Spec.Parameters.Model != "" {
+			providerOpts = append(providerOpts, googleai.WithDefaultModel(llm.Spec.Parameters.Model))
+		}
+		model, err = vertex.New(ctx, providerOpts...)
+
+	default:
+		return fmt.Errorf("unsupported provider: %s. Supported providers are: openai, anthropic, mistral, google, vertex", llm.Spec.Provider)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to initialize %s client: %w", llm.Spec.Provider, err)
+	}
+
+	// Validate with a test call
+	validateOptions := []llms.CallOption{llms.WithTemperature(0), llms.WithMaxTokens(1)}
+
+	// Add model option to ensure we validate with the correct model
+	if llm.Spec.Parameters.Model != "" {
+		validateOptions = append(validateOptions, llms.WithModel(llm.Spec.Parameters.Model))
+	}
+
+	_, err = llms.GenerateFromSinglePrompt(ctx, model, "test", validateOptions...)
+	if err != nil {
+		return fmt.Errorf("%s API validation failed: %w", llm.Spec.Provider, err)
 	}
 
 	return nil
 }
 
-func (r *LLMReconciler) validateSecret(ctx context.Context, llm *kubechainv1alpha1.LLM) error {
+func (r *LLMReconciler) validateSecret(ctx context.Context, llm *kubechainv1alpha1.LLM) (string, error) {
+	// All providers require API keys
+	if llm.Spec.APIKeyFrom == nil {
+		return "", fmt.Errorf("apiKeyFrom is required for provider %s", llm.Spec.Provider)
+	}
+
 	secret := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      llm.Spec.APIKeyFrom.SecretKeyRef.Name,
 		Namespace: llm.Namespace,
 	}, secret)
 	if err != nil {
-		return fmt.Errorf("failed to get secret: %w", err)
+		return "", fmt.Errorf("failed to get secret: %w", err)
 	}
 
 	key := llm.Spec.APIKeyFrom.SecretKeyRef.Key
 	apiKey, exists := secret.Data[key]
 	if !exists {
-		return fmt.Errorf("key %q not found in secret", key)
+		return "", fmt.Errorf("key %q not found in secret", key)
 	}
 
-	if llm.Spec.Provider == "openai" {
-		if err := r.validateOpenAIKey(string(apiKey)); err != nil {
-			return fmt.Errorf("OpenAI API key validation failed: %w", err)
-		}
-	}
-
-	return nil
+	return string(apiKey), nil
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -117,22 +344,30 @@ func (r *LLMReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		r.recorder.Event(&llm, corev1.EventTypeNormal, "Initializing", "Starting validation")
 	}
 
-	// Validate secret
-	if err := r.validateSecret(ctx, &llm); err != nil {
+	// Validate secret and get API key (if applicable)
+	// TODO: Will this work with amazon bedrock? Probably not?? If so we should look at adding tests for this specifically.
+	apiKey, err := r.validateSecret(ctx, &llm)
+	if err != nil {
 		log.Error(err, "Secret validation failed")
 		statusUpdate.Status.Ready = false
 		statusUpdate.Status.Status = "Error"
 		statusUpdate.Status.StatusDetail = err.Error()
-		r.recorder.Event(&llm, corev1.EventTypeWarning, "ValidationFailed", err.Error())
+		r.recorder.Event(&llm, corev1.EventTypeWarning, "SecretValidationFailed", err.Error())
 	} else {
-		statusUpdate.Status.Ready = true
-		statusUpdate.Status.Status = "Ready"
-		if llm.Spec.Provider == "openai" {
-			statusUpdate.Status.StatusDetail = "OpenAI API key validated successfully"
+		// Validate provider with API key
+		err := r.validateProviderConfig(ctx, &llm, apiKey)
+		if err != nil {
+			log.Error(err, "Provider validation failed")
+			statusUpdate.Status.Ready = false
+			statusUpdate.Status.Status = "Error"
+			statusUpdate.Status.StatusDetail = err.Error()
+			r.recorder.Event(&llm, corev1.EventTypeWarning, "ValidationFailed", err.Error())
 		} else {
-			statusUpdate.Status.StatusDetail = "Secret validated successfully"
+			statusUpdate.Status.Ready = true
+			statusUpdate.Status.Status = "Ready"
+			statusUpdate.Status.StatusDetail = fmt.Sprintf("%s provider validated successfully", llm.Spec.Provider)
+			r.recorder.Event(&llm, corev1.EventTypeNormal, "ValidationSucceeded", statusUpdate.Status.StatusDetail)
 		}
-		r.recorder.Event(&llm, corev1.EventTypeNormal, "ValidationSucceeded", statusUpdate.Status.StatusDetail)
 	}
 
 	// Update status using SubResource client

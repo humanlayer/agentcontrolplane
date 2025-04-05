@@ -39,7 +39,7 @@ type TaskReconciler struct {
 	client.Client
 	Scheme       *runtime.Scheme
 	recorder     record.EventRecorder
-	newLLMClient func(apiKey string) (llmclient.OpenAIClient, error)
+	newLLMClient func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error)
 	MCPManager   *mcpmanager.MCPServerManager
 	Tracer       trace.Tracer
 }
@@ -222,7 +222,7 @@ func (r *TaskReconciler) processToolCalls(ctx context.Context, task *kubechain.T
 }
 
 // getLLMAndCredentials gets the LLM and API key for the agent
-func (r *TaskReconciler) getLLMAndCredentials(ctx context.Context, agent *kubechain.Agent, task *kubechain.Task, statusUpdate *kubechain.Task) (*kubechain.LLM, string, error) {
+func (r *TaskReconciler) getLLMAndCredentials(ctx context.Context, agent *kubechain.Agent, task *kubechain.Task, statusUpdate *kubechain.Task) (kubechain.LLM, string, error) {
 	logger := log.FromContext(ctx)
 
 	// Get the LLM
@@ -257,9 +257,9 @@ func (r *TaskReconciler) getLLMAndCredentials(ctx context.Context, agent *kubech
 		r.recorder.Event(task, corev1.EventTypeWarning, "APIKeySecretFetchFailed", err.Error())
 		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
 			logger.Error(updateErr, "Failed to update Task status")
-			return nil, "", updateErr
+			return llm, "", updateErr
 		}
-		return nil, "", err
+		return llm, "", err
 	}
 
 	apiKey := string(secret.Data[llm.Spec.APIKeyFrom.SecretKeyRef.Key])
@@ -274,12 +274,12 @@ func (r *TaskReconciler) getLLMAndCredentials(ctx context.Context, agent *kubech
 		r.recorder.Event(task, corev1.EventTypeWarning, "EmptyAPIKey", "API key is empty")
 		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
 			logger.Error(updateErr, "Failed to update Task status")
-			return nil, "", updateErr
+			return llm, "", updateErr
 		}
-		return nil, "", err
+		return llm, "", err
 	}
 
-	return &llm, apiKey, nil
+	return llm, apiKey, nil
 }
 
 // endTaskSpan ends the Task span with the given status
@@ -510,25 +510,25 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	// Step 5: Get API credentials (LLM is returned but not used)
 	logger.V(3).Info("Getting API credentials")
-	_, apiKey, err := r.getLLMAndCredentials(ctx, agent, &task, statusUpdate)
+	llm, apiKey, err := r.getLLMAndCredentials(ctx, agent, &task, statusUpdate)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// Step 6: Create LLM client
 	logger.V(3).Info("Creating LLM client")
-	llmClient, err := r.newLLMClient(apiKey)
+	llmClient, err := r.newLLMClient(ctx, llm, apiKey)
 	if err != nil {
-		logger.Error(err, "Failed to create OpenAI client")
+		logger.Error(err, "Failed to create LLM client")
 		statusUpdate.Status.Ready = false
 		statusUpdate.Status.Status = kubechain.TaskStatusTypeError
 		statusUpdate.Status.Phase = kubechain.TaskPhaseFailed
-		statusUpdate.Status.StatusDetail = "Failed to create OpenAI client: " + err.Error()
+		statusUpdate.Status.StatusDetail = "Failed to create LLM client: " + err.Error()
 		statusUpdate.Status.Error = err.Error()
-		r.recorder.Event(&task, corev1.EventTypeWarning, "OpenAIClientCreationFailed", err.Error())
+		r.recorder.Event(&task, corev1.EventTypeWarning, "LLMClientCreationFailed", err.Error())
 
 		// End span since we've failed with a terminal error
-		r.endTaskSpan(ctx, &task, codes.Error, "Failed to create OpenAI client: "+err.Error())
+		r.endTaskSpan(ctx, &task, codes.Error, "Failed to create LLM client: "+err.Error())
 
 		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
 			logger.Error(updateErr, "Failed to update Task status")
@@ -629,7 +629,7 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("task-controller")
 	if r.newLLMClient == nil {
-		r.newLLMClient = llmclient.NewRawOpenAIClient
+		r.newLLMClient = llmclient.NewLLMClient
 	}
 
 	// Initialize MCPManager if not already set

@@ -37,24 +37,139 @@ type APIKeySource struct {
 	SecretKeyRef SecretKeyRef `json:"secretKeyRef"`
 }
 
-// LLMSpec defines the desired state of LLM
-type LLMSpec struct {
-	// Provider is the LLM provider name (ex: "openai", "anthropic")
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=openai;anthropic
-	Provider string `json:"provider"`
+// BaseConfig holds common configuration options across providers
+type BaseConfig struct {
+	// Model name to use
+	Model string `json:"model,omitempty"`
 
-	// APIKeyFrom references the secret containing the API key
-	// +kubebuilder:validation:Required
-	APIKeyFrom APIKeySource `json:"apiKeyFrom"`
+	// BaseURL for API endpoints (used by many providers)
+	BaseURL string `json:"baseUrl,omitempty"`
 
 	// Temperature adjusts the LLM response randomness (0.0 to 1.0)
 	// +kubebuilder:validation:Pattern=^0(\.[0-9]+)?|1(\.0+)?$
 	Temperature string `json:"temperature,omitempty"`
 
-	// MaxTokens defines the maximum number of tokens for the LLM.
+	// MaxTokens defines the maximum number of tokens for the LLM
 	// +kubebuilder:validation:Minimum=1
 	MaxTokens *int `json:"maxTokens,omitempty"`
+
+	// TopP controls diversity via nucleus sampling (0.0 to 1.0)
+	// +kubebuilder:validation:Pattern=^(0(\.[0-9]+)?|1(\.0+)?)$
+	TopP string `json:"topP,omitempty"`
+
+	// TopK controls diversity by limiting the top K tokens to sample from
+	// +kubebuilder:validation:Minimum=1
+	TopK *int `json:"topK,omitempty"`
+
+	// FrequencyPenalty reduces repetition by penalizing frequent tokens
+	// +kubebuilder:validation:Pattern=^-?[0-2](\.[0-9]+)?$
+	FrequencyPenalty string `json:"frequencyPenalty,omitempty"`
+
+	// PresencePenalty reduces repetition by penalizing tokens that appear at all
+	// +kubebuilder:validation:Pattern=^-?[0-2](\.[0-9]+)?$
+	PresencePenalty string `json:"presencePenalty,omitempty"`
+}
+
+// OpenAIConfig for OpenAI-specific options
+type OpenAIConfig struct {
+	// Organization is the OpenAI organization ID
+	Organization string `json:"organization,omitempty"`
+
+	// APIType specifies which OpenAI API type to use
+	// +kubebuilder:validation:Enum=OPEN_AI;AZURE;AZURE_AD
+	// +kubebuilder:default=OPEN_AI
+	APIType string `json:"apiType,omitempty"`
+
+	// APIVersion is required when using Azure API types
+	// Example: "2023-05-15"
+	APIVersion string `json:"apiVersion,omitempty"`
+}
+
+// AnthropicConfig for Anthropic-specific options
+type AnthropicConfig struct {
+	// AnthropicBetaHeader adds the Anthropic Beta header to support extended options
+	// Common values include "max-tokens-3-5-sonnet-2024-07-15" for extended token limits
+	// +kubebuilder:validation:Optional
+	AnthropicBetaHeader string `json:"anthropicBetaHeader,omitempty"`
+}
+
+// VertexConfig for Vertex-specific options
+type VertexConfig struct {
+	// CloudProject is the Google Cloud project ID
+	// +kubebuilder:validation:Required
+	CloudProject string `json:"cloudProject"`
+
+	// CloudLocation is the Google Cloud region
+	// +kubebuilder:validation:Required
+	CloudLocation string `json:"cloudLocation"`
+}
+
+// MistralConfig for Mistral-specific options
+type MistralConfig struct {
+	// MaxRetries sets the maximum number of retries for API calls
+	// +kubebuilder:validation:Minimum=0
+	MaxRetries *int `json:"maxRetries,omitempty"`
+
+	// Timeout specifies the timeout duration for API calls (in seconds)
+	// +kubebuilder:validation:Minimum=1
+	Timeout *int `json:"timeout,omitempty"`
+
+	// RandomSeed provides a seed for deterministic sampling
+	// +kubebuilder:validation:Optional
+	RandomSeed *int `json:"randomSeed,omitempty"`
+}
+
+// GoogleConfig for Google AI-specific options
+type GoogleConfig struct {
+	// CloudProject is the Google Cloud project ID
+	CloudProject string `json:"cloudProject,omitempty"`
+
+	// CloudLocation is the Google Cloud region
+	CloudLocation string `json:"cloudLocation,omitempty"`
+}
+
+// ProviderConfig holds provider-specific configurations
+type ProviderConfig struct {
+	OpenAIConfig    *OpenAIConfig    `json:"openaiConfig,omitempty"`
+	AnthropicConfig *AnthropicConfig `json:"anthropicConfig,omitempty"`
+	VertexConfig    *VertexConfig    `json:"vertexConfig,omitempty"`
+	MistralConfig   *MistralConfig   `json:"mistralConfig,omitempty"`
+	GoogleConfig    *GoogleConfig    `json:"googleConfig,omitempty"`
+}
+
+// LLMSpec defines the desired state of LLM
+type LLMSpec struct {
+	// Provider is the LLM provider name
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=openai;anthropic;mistral;google;vertex;
+	Provider string `json:"provider"`
+
+	// APIKeyFrom references the secret containing the API key or credentials
+	APIKeyFrom *APIKeySource `json:"apiKeyFrom,omitempty"`
+
+	// Parameters holds common configuration options across providers
+	// +optional
+	Parameters BaseConfig `json:"parameters,omitempty"`
+
+	// OpenAI provider-specific configuration
+	// +optional
+	OpenAI *OpenAIConfig `json:"openai,omitempty"`
+
+	// Anthropic provider-specific configuration
+	// +optional
+	Anthropic *AnthropicConfig `json:"anthropic,omitempty"`
+
+	// Vertex provider-specific configuration
+	// +optional
+	Vertex *VertexConfig `json:"vertex,omitempty"`
+
+	// Mistral provider-specific configuration
+	// +optional
+	Mistral *MistralConfig `json:"mistral,omitempty"`
+
+	// Google provider-specific configuration
+	// +optional
+	Google *GoogleConfig `json:"google,omitempty"`
 }
 
 // LLMStatus defines the observed state of LLM

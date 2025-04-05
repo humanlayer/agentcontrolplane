@@ -1,3 +1,5 @@
+---
+# OpenAI Example
 apiVersion: kubechain.humanlayer.dev/v1alpha1
 kind: LLM
 metadata:
@@ -8,4 +10,77 @@ spec:
     secretKeyRef:
       name: openai
       key: OPENAI_API_KEY
-  maxTokens: 1000
+  parameters:
+    model: "gpt-4o"
+    temperature: "0.7"
+---
+# Anthropic Example
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: LLM
+metadata:
+  name: claude-3-5-sonnet
+spec:
+  provider: anthropic
+  apiKeyFrom:
+    secretKeyRef:
+      name: anthropic
+      key: ANTHROPIC_API_KEY
+  parameters:
+    model: "claude-3-5-sonnet-20240620"
+    temperature: "0.5"
+  anthropic:
+    anthropicBetaHeader: "max-tokens-3-5-sonnet-2024-07-15"
+---
+# Mistral Example
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: LLM
+metadata:
+  name: mistral-large
+spec:
+  provider: mistral
+  apiKeyFrom:
+    secretKeyRef:
+      name: mistral
+      key: MISTRAL_API_KEY
+  parameters:
+    model: "mistral-large-latest"
+    temperature: "0.7"
+  mistral:
+    maxRetries: 3
+---
+# Google AI Example
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: LLM
+metadata:
+  name: gemini-pro
+spec:
+  provider: google
+  apiKeyFrom:
+    secretKeyRef:
+      name: google
+      key: GOOGLE_API_KEY
+  parameters:
+    model: "gemini-pro"
+    temperature: "0.7"
+    maxTokens: 2048
+  google:
+    cloudProject: "my-project-id"
+---
+# Vertex AI Example
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: LLM
+metadata:
+  name: vertex-gemini
+spec:
+  provider: vertex
+  apiKeyFrom:
+    secretKeyRef:
+      name: vertex
+      key: service-account-json
+  parameters:
+    model: "gemini-pro"
+    temperature: "0.7"
+  vertex:
+    cloudProject: "my-project-id"
+    cloudLocation: "us-central1"
+

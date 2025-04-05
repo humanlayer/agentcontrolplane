@@ -742,7 +742,7 @@ func (r *TaskRunToolCallReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	// Initialize MCPManager if it hasn't been initialized yet
 	if r.MCPManager == nil {
-		r.MCPManager = mcpmanager.NewMCPServerManager()
+		r.MCPManager = mcpmanager.NewMCPServerManagerWithClient(r.Client)
 	}
 
 	if r.HLClientFactory == nil {

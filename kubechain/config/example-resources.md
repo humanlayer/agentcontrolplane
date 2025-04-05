@@ -82,13 +82,20 @@ data:
 
 **Key Fields:**
 
-- **provider:** e.g. `"openai"`
+- **provider:** One of: `"openai"`, `"anthropic"`, `"mistral"`, `"google"`, or `"vertex"`
 - **apiKeyFrom:**
   - References a secret (e.g. secret name: `openai`)
   - Key: e.g. `OPENAI_API_KEY`
 - **maxTokens:** e.g. `1000`
 
-_Note:_ Ensure that the referenced secret exists (for example, create a secret named `openai` with the appropriate API key).
+_Note:_ Ensure that the referenced secret exists for your chosen provider:
+- OpenAI: Create a secret named `openai` with the key `OPENAI_API_KEY`
+- Anthropic: Create a secret named `anthropic` with the key `ANTHROPIC_API_KEY`
+- Mistral: Create a secret named `mistral` with the key `MISTRAL_API_KEY` 
+- Google: Create a secret named `google` with the key `GOOGLE_API_KEY`
+- Vertex: Create a secret named `vertex` with the key `service-account-json` containing the service account credentials
+
+See the samples file for examples of all supported providers.
 
 ---
 
