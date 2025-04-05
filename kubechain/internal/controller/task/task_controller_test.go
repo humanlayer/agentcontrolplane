@@ -213,13 +213,13 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
-			mockLLMClient := &llmclient.MockRawOpenAIClient{
+			mockLLMClient := &llmclient.MockLLMClient{
 				Response: &kubechain.Message{
 					Role:    "assistant",
 					Content: "The moon is a natural satellite of the Earth and lacks any formal government or capital.",
 				},
 			}
-			reconciler.newLLMClient = func(apiKey string) (llmclient.OpenAIClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
 
@@ -270,10 +270,10 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task with a mock LLM client that returns an error")
 			reconciler, recorder := reconciler()
-			mockLLMClient := &llmclient.MockRawOpenAIClient{
+			mockLLMClient := &llmclient.MockLLMClient{
 				Error: fmt.Errorf("connection timeout"),
 			}
-			reconciler.newLLMClient = func(apiKey string) (llmclient.OpenAIClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
 
@@ -312,14 +312,14 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task with a mock LLM client that returns a 400 error")
 			reconciler, recorder := reconciler()
-			mockLLMClient := &llmclient.MockRawOpenAIClient{
+			mockLLMClient := &llmclient.MockLLMClient{
 				Error: &llmclient.LLMRequestError{
 					StatusCode: 400,
 					Message:    "invalid request: model not found",
-					Err:        fmt.Errorf("OpenAI API request failed"),
+					Err:        fmt.Errorf("LLM API request failed"),
 				},
 			}
-			reconciler.newLLMClient = func(apiKey string) (llmclient.OpenAIClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
 
@@ -358,7 +358,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
-			mockLLMClient := &llmclient.MockRawOpenAIClient{
+			mockLLMClient := &llmclient.MockLLMClient{
 				Response: &kubechain.Message{
 					Role: "assistant",
 					ToolCalls: []kubechain.ToolCall{
@@ -369,7 +369,7 @@ var _ = Describe("Task Controller", func() {
 					},
 				},
 			}
-			reconciler.newLLMClient = func(apiKey string) (llmclient.OpenAIClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
 
@@ -505,7 +505,7 @@ var _ = Describe("Task Controller", func() {
 		XIt("should clear error field when entering ready state", func() {})
 
 		// todo(dex) i think this is not needed anymore - check version history to restore it
-		XIt("should pass tools correctly to OpenAI and handle tool calls", func() {})
+		XIt("should pass tools correctly to LLM and handle tool calls", func() {})
 
 		// todo(dex) i think this is not needed anymore - check version history to restore it
 		XIt("should keep the task run in the ToolCallsPending state when tool call is pending", func() {})
@@ -539,8 +539,8 @@ var _ = Describe("Task Controller", func() {
 			})
 			defer testTask.Teardown(ctx)
 
-			By("creating a mock OpenAI client that validates context window messages are passed correctly")
-			mockClient := &llmclient.MockRawOpenAIClient{
+			By("creating a mock LLM client that validates context window messages are passed correctly")
+			mockClient := &llmclient.MockLLMClient{
 				Response: &kubechain.Message{
 					Role:    "assistant",
 					Content: "4 + 4 = 8",
@@ -567,7 +567,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task")
 			reconciler, _ := reconciler()
-			reconciler.newLLMClient = func(apiKey string) (llmclient.OpenAIClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockClient, nil
 			}
 

@@ -237,9 +237,9 @@ func (r *TaskReconciler) getLLMAndCredentials(ctx context.Context, agent *kubech
 		r.recorder.Event(task, corev1.EventTypeWarning, "LLMFetchFailed", err.Error())
 		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
 			logger.Error(updateErr, "Failed to update Task status")
-			return nil, "", updateErr
+			return llm, "", updateErr
 		}
-		return nil, "", err
+		return llm, "", err
 	}
 
 	// Get the API key from the secret
