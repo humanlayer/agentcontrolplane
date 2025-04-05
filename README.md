@@ -1029,7 +1029,7 @@ Let's create a new LLM and Agent that uses the `claude-3-5-sonnet` model from An
 #### Create a secret
 
 ```
-cat <<EOF | kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 ```
 
 #### Create an LLM
@@ -1042,7 +1042,12 @@ metadata:
   name: claude-3-5-sonnet
 spec:
   provider: anthropic
-  model: claude-3-5-sonnet
+  parameters:
+    model: claude-3-5-sonnet-latest
+  apiKeyFrom:
+    secretKeyRef:
+      name: anthropic
+      key: ANTHROPIC_API_KEY
 EOF
 ```
 
@@ -1053,11 +1058,45 @@ kubectl get llm claude-3-5-sonnet
 ```
 
 ```
-#TODO paste output
+NAME                PROVIDER    READY   STATUS
+claude-3-5-sonnet   anthropic   true    Ready
 ```
 
+#### Create an Agent and assign a task
 
-**Exercise for the reader**: create a new Agent that uses the `claude-3-5-sonnet` model and our MCP server, and assign it a task!
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: Agent
+metadata:
+  name: claude
+spec:
+  llmRef:
+    name: claude-3-5-sonnet
+  system: |
+    You are a helpful assistant. Your job is to help the user with their tasks.
+EOF
+```
+
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: Task
+metadata:
+  name: claude-task
+spec:
+  agentRef:
+    name: claude
+  userMessage: "What is your name and primary directive?"
+EOF
+```
+
+After a few seconds, running `kubectl get task claude-task` should show our task has completed.
+
+```
+NAME          READY   STATUS   PHASE         PREVIEW   OUTPUT
+claude-task   true    Ready    FinalAnswer             I am Claude, an AI assistant created by Anthropic. My primary directive is to be helpful while being direct and honest in my interactions. I aim to help users with their tasks while adhering to ethical principles.
+```
 
 
 
