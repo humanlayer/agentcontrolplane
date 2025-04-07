@@ -144,6 +144,13 @@ func (r *TaskReconciler) prepareForLLM(ctx context.Context, task *kubechain.Task
 			return ctrl.Result{}, err
 		}
 
+		// Set the UserMsgPreview - truncate to 50 chars if needed
+		preview := task.Spec.UserMessage
+		if len(preview) > 50 {
+			preview = preview[:47] + "..."
+		}
+		statusUpdate.Status.UserMsgPreview = preview
+
 		// Set up the context window
 		statusUpdate.Status.ContextWindow = []kubechain.Message{
 			{
@@ -356,7 +363,6 @@ func (r *TaskReconciler) createLLMRequestSpan(ctx context.Context, task *kubecha
 }
 
 // processLLMResponse processes the LLM response and updates the Task status
-// processLLMResponse handles the LLM's output and updates status accordingly
 func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *kubechain.Message, task *kubechain.Task, statusUpdate *kubechain.Task) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
