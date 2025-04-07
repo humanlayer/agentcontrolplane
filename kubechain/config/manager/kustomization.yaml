@@ -4,5 +4,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: controller
-  newTag: "202504041801"
+  newName: ghcr.io/humanlayer/smallchain
+  newTag: v0.2.0
