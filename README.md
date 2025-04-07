@@ -30,10 +30,9 @@ KubeChain is a cloud-native orchestrator for AI Agents built on Kubernetes. It s
   - [Prerequisites](#prerequisites)
   - [Setting Up a Local Cluster](#setting-up-a-local-cluster)
   - [Deploying KubeChain](#deploying-kubechain)
-  - [Creating Your First Agent](#creating-your-first-agent)
-  - [Running Your First Task](#running-your-first-task)
-  - [Inspecting the Task more closely](#inspecting-the-task-more-closely)
+  - [Creating an Agent and Running your first task](#creating-an-agent-and-running-your-first-task)
   - [Adding Tools with MCP](#adding-tools-with-mcp)
+  - [Using other language models](#using-other-language-models)
   - [Cleaning Up](#cleaning-up)
 - [Design Principles](#design-principles)
 - [Contributing](#contributing)
@@ -72,6 +71,8 @@ kind create cluster
 ```
 
 ### Add your OpenAI API key as a Kubernetes secret
+
+For Anthropic and other providers, see [Using other language models](#using-other-language-models)
 
 ```bash
 kubectl create secret generic openai \
@@ -117,7 +118,7 @@ kubectl apply -f https://raw.githubusercontent.com/humanlayer/smallchain/refs/he
 
 This command will build the operator, create necessary CRDs, and deploy the KubeChain components to your cluster.
 
-### Creating Your First Agent
+### Creating Your First Agent and Running your first task
 
 1. **Define an LLM resource**
 
@@ -129,6 +130,8 @@ metadata:
   name: gpt-4o
 spec:
   provider: openai
+  parameters:
+    model: gpt-4o
   apiKeyFrom:
     secretKeyRef:
       name: openai
@@ -311,7 +314,7 @@ Events:
 
 </details>
 
-### Running Your First Task
+#### Running Your First Task
 Create a Task to interact with your agent:
 
 
