@@ -367,8 +367,8 @@ kubectl get task
    Output:
 
 ```
-NAME            READY   STATUS   PHASE         PREVIEW   OUTPUT
-hello-world-1   true    Ready    FinalAnswer             The Moon does not have a capital, as it is not a governed entity like a country. It is a natural satellite of Earth. However, if you are referring to human activity on the Moon, there is no permanent settlement or colony established there as of now. Most activities on the Moon have been in the form of missions or landings conducted by various space agencies.
+NAME            READY   STATUS   PHASE         PREVIEW                            OUTPUT
+hello-world-1   true    Ready    FinalAnswer   What is the capital of the moon?   The Moon does not have a capital. It is a natural satellite of Earth and does not have any political or administrative divisions like a country does. There are no permanent human settlements on the Moon, so it does not have a capital city.
 ```
 
 You can describe the task to see the full context window
@@ -981,7 +981,7 @@ metadata:
 spec:
   agentRef:
     name: agent-with-fetch 
-  message: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
+  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
 EOF
 ```
 
