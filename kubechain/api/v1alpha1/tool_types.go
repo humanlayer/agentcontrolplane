@@ -36,9 +36,6 @@ type ToolSpec struct {
 type ToolExecute struct {
 	// Builtin represents an inline (builtin) tool.
 	Builtin *BuiltinToolSpec `json:"builtin,omitempty"`
-
-	// ExternalAPI represents an external API call
-	ExternalAPI *ExternalAPISpec `json:"externalAPI,omitempty"`
 }
 
 // NameReference contains a name reference to another resource

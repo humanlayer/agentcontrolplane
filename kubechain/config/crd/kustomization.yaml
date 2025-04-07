@@ -6,7 +6,6 @@ resources:
 - bases/kubechain.humanlayer.dev_tools.yaml
 - bases/kubechain.humanlayer.dev_agents.yaml
 - bases/kubechain.humanlayer.dev_tasks.yaml
-- bases/kubechain.humanlayer.dev_taskruns.yaml
 - bases/kubechain.humanlayer.dev_taskruntoolcalls.yaml
 - bases/kubechain.humanlayer.dev_mcpservers.yaml
 - bases/kubechain.humanlayer.dev_contactchannels.yaml

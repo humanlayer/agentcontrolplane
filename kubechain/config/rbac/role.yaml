@@ -19,7 +19,6 @@ rules:
   - contactchannels
   - llms
   - mcpservers
-  - taskruns
   - taskruntoolcalls
   - tasks
   - tools
@@ -38,7 +37,6 @@ rules:
   - contactchannels/status
   - llms/status
   - mcpservers/status
-  - taskruns/status
   - taskruntoolcalls/status
   - tasks/status
   - tools/status

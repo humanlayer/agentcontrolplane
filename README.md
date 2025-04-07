@@ -31,8 +31,8 @@ KubeChain is a cloud-native orchestrator for AI Agents built on Kubernetes. It s
   - [Setting Up a Local Cluster](#setting-up-a-local-cluster)
   - [Deploying KubeChain](#deploying-kubechain)
   - [Creating Your First Agent](#creating-your-first-agent)
-  - [Running Your First TaskRun](#running-your-first-taskrun)
-  - [Inspecting the TaskRun more closely](#inspecting-the-taskrun-more-closely)
+  - [Running Your First Task](#running-your-first-task)
+  - [Inspecting the Task more closely](#inspecting-the-task-more-closely)
   - [Adding Tools with MCP](#adding-tools-with-mcp)
   - [Cleaning Up](#cleaning-up)
 - [Design Principles](#design-principles)
@@ -46,8 +46,10 @@ KubeChain is a cloud-native orchestrator for AI Agents built on Kubernetes. It s
 
 - **LLM**: Provider + API Keys + Parameters
 - **Agent**: LLM + System Prompt + Tools
-- **Tool**: MCP server or another Agent
-- **TaskRun**: Agent + User Message + Current context window
+- **Tools**: MCP Servers, Humans, Other Agents
+- **Task**: Agent + User Message + Current context window
+<!-- todo rename to ToolCall -->
+- **TaskRunToolCall**: A single tool call that occurred during a Task
 
 ## Getting Started
 
@@ -307,14 +309,16 @@ Events:
   Normal  ValidationSucceeded  64m (x2 over 64m)  agent-controller  All dependencies validated successfully
 ```
 
-</details>### Running Your First TaskRun
-Create a TaskRun to interact with your agent:
+</details>
+
+### Running Your First Task
+Create a Task to interact with your agent:
 
 
 ```bash
 cat <<EOF | kubectl apply -f -
 apiVersion: kubechain.humanlayer.dev/v1alpha1
-kind: TaskRun
+kind: Task
 metadata:
   name: hello-world-1
 spec:
@@ -346,74 +350,59 @@ graph RL
       SystemPrompt
     end
 
-    subgraph TaskRun
+    subgraph Task
       AgentRef
       UserMessage
     end
 ```
-Check the created TaskRun:
+Check the created Task:
 
 ```bash
-kubectl get taskrun
+kubectl get task
 ```
 
    Output:
 
 ```
-NAME               READY   STATUS   AGENT          MESSAGE
-hello-world-task   true    Ready    my-assistant   What is the capital of the moon?
+NAME            READY   STATUS   PHASE         PREVIEW   OUTPUT
+hello-world-1   true    Ready    FinalAnswer             The Moon does not have a capital, as it is not a governed entity like a country. It is a natural satellite of Earth. However, if you are referring to human activity on the Moon, there is no permanent settlement or colony established there as of now. Most activities on the Moon have been in the form of missions or landings conducted by various space agencies.
 ```
 
-<details>
-<summary>Using `-o wide` and `describe`</summary>
+You can describe the task to see the full context window
 
 ```bash
-kubectl get taskrun -o wide
+kubectl describe task
 ```
 
 Output:
 
 ```
-NAME             READY   STATUS   DETAIL             AGENT          PREVIEW                            OUTPUT
-hello-world-1    true    Ready    Task Run Created   my-assistant   What is the capital of the moon?
-```
-
-```bash
-kubectl describe taskrun
-```
-
-Output:
-
-```
-ame:         hello-world-task
-Namespace:    default
-Labels:       <none>
-Annotations:  <none>
-API Version:  kubechain.humanlayer.dev/v1alpha1
-Kind:         Task
-Metadata:
-  Creation Timestamp:  2025-03-21T22:14:09Z
-  Generation:          1
-  Resource Version:    1683590
-  UID:                 8d0c7d4a-88db-4005-b212-a2c3a6956af3
-Spec:
-  Agent Ref:
-    Name:   my-assistant
-  Message:  What is the capital of the moon?
+# ...snip...
 Status:
-  Ready:          true
-  Status:         Ready
-  Status Detail:  Task Run Created
+  Context Window:
+    Content:  You are a helpful assistant. Your job is to help the user with their tasks.
+
+    Role:     system
+    Content:  What is the capital of the moon?
+    Role:     user
+    Content:  The Moon does not have a capital, as it is not a governed entity like a country. It is a natural satellite of Earth. However, if you are referring to human activity on the Moon, there is no permanent settlement or colony established there as of now. Most activities on the Moon have been in the form of missions or landings conducted by various space agencies.
+    Role:     assistant
+
+# ...snip...
+
+  Status Detail:  LLM final response received
 Events:
-  Type    Reason               Age                From             Message
-  ----    ------               ----               ----             -------
-  Normal  Initializing         56m                task-controller  Starting validation
-  Normal  TaskRunCreated       56m                task-controller  Created TaskRun hello-world-task-1
+  Type    Reason                     Age   From             Message
+  ----    ------                     ----  ----             -------
+  Normal  ValidationSucceeded        65s   task-controller  Task validation succeeded
+  Normal  SendingContextWindowToLLM  65s   task-controller  Sending context window to LLM
+  Normal  LLMFinalAnswer             64s   task-controller  LLM response received successfully
+
 ```
 
 </details>
 
-By default, creating a task will create an initial TaskRun to execute the task. A TaskRun is a single execution of a task by an agent, tracking the context window and final output.
+The Task object stores and manages the context window of a agent conversation loop.
 
 ```mermaid
 graph RL
@@ -424,7 +413,6 @@ graph RL
     LLMRef --> LLM
     Credentials --> Secret
     AgentRef --> Agent
-    TaskRef --> Task
 
 
     subgraph LLM
@@ -441,10 +429,6 @@ graph RL
     subgraph Task
       AgentRef
       Message
-    end
-
-    subgraph TaskRun
-      TaskRef
       subgraph ContextWindow
         direction LR
         SystemMessage
@@ -454,23 +438,10 @@ graph RL
 
 ```
 
-For now, our task run should complete quickly and return a FinalAnswer.
-
-```bash
-kubectl get taskrun
-```
-
-Output:
-
-```
-NAME                 READY   STATUS   PHASE         TASK               PREVIEW   OUTPUT
-hello-world-task-1   true    Ready    FinalAnswer   hello-world-task             The Moon does not have a capital. It is a natural satellite of Earth and lacks any governmental structure or human habitation that would necessitate a capital city.
-```
-
 To get just the output, run
 
 ```
-kubectl get taskrun -o jsonpath='{.items[*].status.output}'
+kubectl get task -o jsonpath='{.items[*].status.output}'
 ```
 
 and you'll see
@@ -478,129 +449,34 @@ and you'll see
 
 > The Moon does not have a capital. It is a natural satellite of Earth and lacks any governmental structure or human habitation that would necessitate a capital city.
 
-More broadly, the taskrun is a component of the LLM / Agent / Task relationship.
-
-```mermaid
-flowchart RL
-    Agent
-    LLM
-    Secret
-
-    LLMRef --> LLM
-    Credentials --> Secret
-    AgentRef --> Agent
-    TaskRef --> Task
-
-
-    subgraph LLM
-      Provider
-      Credentials
-      ModelParameters
-    end
-
-    subgraph Agent
-      LLMRef
-      SystemPrompt
-    end
-
-    subgraph Task
-      AgentRef
-      Message
-    end
-
-    subgraph TaskRun
-      TaskRef
-      subgraph ContextWindow
-        direction LR
-        SystemMessage
-        UserMessage
-        AssistantMessage
-      end
-    end
-
-    ContextWindow <--> Provider <--> OpenAI
-
-```
-
-### Inspecting the TaskRun more closely
-
-We saw above how you can get the status of a taskrun with `kubectl get taskrun`.
-
-For more detailed information, like to see the full context window, you can use:
+you can also describe the task to see the full context window in a slightly more readable format (but without the events)
 
 ```bash
-kubectl describe taskrun
-```
-
-```
-Name:         hello-world-task-1
-Namespace:    default
-Labels:       kubechain.humanlayer.dev/task=hello-world-task
-Annotations:  <none>
-API Version:  kubechain.humanlayer.dev/v1alpha1
-Kind:         TaskRun
-Metadata:
-  Creation Timestamp:  2025-03-21T22:14:09Z
-  Generation:          1
-  Owner References:
-    API Version:     kubechain.humanlayer.dev/v1alpha1
-    Controller:      true
-    Kind:            Task
-    Name:            hello-world-task
-    UID:             8d0c7d4a-88db-4005-b212-a2c3a6956af3
-  Resource Version:  1683602
-  UID:               53b1b69a-fb49-431b-857a-1cafe017a544
-Spec:
-  Task Ref:
-    Name:  hello-world-task
-Status:
-  Context Window:
-    Content:  You are a helpful assistant. Your job is to help the user with their tasks.
-
-    Role:         system
-    Content:      What is the capital of the moon?
-    Role:         user
-    Content:      The Moon does not have a capital. It is a natural satellite of Earth
-        and lacks any governmental structure or human habitation that would necessitate
-        a capital city.
-    Role:         assistant
-  Output:         The Moon does not have a capital. It is a natural satellite of Earth and
-      lacks any governmental structure or human habitation that would necessitate
-      a capital city.
-  Phase:          FinalAnswer
-  Ready:          true
-  Status:         Ready
-  Status Detail:  LLM final response received
-Events:
-  Type    Reason               Age   From                Message
-  ----    ------               ----  ----                -------
-  Normal  Waiting              17m   taskrun-controller  Waiting for task "hello-world-task" to become ready
-  Normal  ValidationSucceeded  17m   taskrun-controller  Task validated successfully
-  Normal  LLMFinalAnswer       17m   taskrun-controller  LLM response received successfully
-```
-
-or
-
-```bash
-kubectl get taskrun -o yaml
+kubectl get task -o yaml
 ```
 
 <details>
 <summary>Output (truncated for brevity)</summary>
+
 ```
 apiVersion: v1
 items:
 - apiVersion: kubechain.humanlayer.dev/v1alpha1
-  kind: TaskRun
+  kind: Task
   metadata:
-    labels:
-      kubechain.humanlayer.dev/task: hello-world-task
-    name: hello-world-task-1
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"kubechain.humanlayer.dev/v1alpha1","kind":"Task","metadata":{"annotations":{},"name":"hello-world-1","namespace":"default"},"spec":{"agentRef":{"name":"my-assistant"},"userMessage":"What is the capital of the moon?"}}
+    creationTimestamp: "2025-04-05T01:04:15Z"
+    generation: 1
+    name: hello-world-1
     namespace: default
-    # ...snip...
+    resourceVersion: "3190"
+    uid: 673a780e-1234-4a7d-9ace-68f49d7f2061
   spec:
-    taskRef:
-      name: hello-world-task
+    agentRef:
+      name: my-assistant
+    userMessage: What is the capital of the moon?
   status:
     contextWindow:
     - content: |
@@ -608,18 +484,28 @@ items:
       role: system
     - content: What is the capital of the moon?
       role: user
-    - content: The Moon does not have a capital. It is a natural satellite of Earth
-        and lacks any governmental structure or human habitation that would necessitate
-        a capital city.
+    - content: The Moon does not have a capital, as it is not a governed entity like
+        a country. It is a natural satellite of Earth. However, if you are referring
+        to human activity on the Moon, there is no permanent settlement or colony
+        established there as of now. Most activities on the Moon have been in the
+        form of missions or landings conducted by various space agencies.
       role: assistant
-    output: The Moon does not have a capital. It is a natural satellite of Earth and
-      lacks any governmental structure or human habitation that would necessitate
-      a capital city.
+    output: The Moon does not have a capital, as it is not a governed entity like
+      a country. It is a natural satellite of Earth. However, if you are referring
+      to human activity on the Moon, there is no permanent settlement or colony established
+      there as of now. Most activities on the Moon have been in the form of missions
+      or landings conducted by various space agencies.
     phase: FinalAnswer
     ready: true
+    spanContext:
+      spanID: 648ca5bf05d0ec05
+      traceID: d3fb4171016bcab77d63b02e52e006cd
     status: Ready
     statusDetail: LLM final response received
-# ...snip...
+kind: List
+metadata:
+  resourceVersion: ""
+
 ```
 </details>
 
@@ -654,23 +540,10 @@ kubectl describe mcpserver
 ```
 Output:
 
+
 ```
-Name:         fetch
-Namespace:    default
-Labels:       <none>
-Annotations:  <none>
-API Version:  kubechain.humanlayer.dev/v1alpha1
-Kind:         MCPServer
-Metadata:
-  Creation Timestamp:  2025-03-24T14:37:02Z
-  Generation:          1
-  Resource Version:    855
-  UID:                 ccca723e-70cf-4f76-a21b-9fdc823a0034
-Spec:
-  Args:
-    mcp-server-fetch
-  Command:    uvx
-  Transport:  stdio
+# ...snip...
+
 Status:
   Connected:      true
   Status:         Ready
@@ -773,30 +646,30 @@ metadata:
 spec:
   agentRef:
     name: my-assistant
-  message: "what is the data at https://swapi.dev/api/people/1? "
+  userMessage: "what is the data at https://swapi.dev/api/people/1? "
 EOF
 ```
 
 You should see some events in the output of
 
 ```
-kubectl get events --watch
+kubectl get events --field-selector "involvedObject.kind=Task" --sort-by='.lastTimestamp'
 ```
 
 ```
-0s          Normal   ValidationSucceeded         taskrun/fetch-task-1                                 Task validated successfully
-0s          Normal   SendingContextWindowToLLM   taskrun/fetch-task-1                                 Sending context window to LLM
-0s          Normal   ToolCallsPending            taskrun/fetch-task-1                                 LLM response received, tool calls pending
-0s          Normal   ToolCallCreated             taskrun/fetch-task-1                                 Created TaskRunToolCall fetch-task-1-toolcall-01
-0s          Normal   ExecutionSucceeded          taskruntoolcall/fetch-task-1-toolcall-01             MCP tool "fetch__fetch" executed successfully
-0s          Normal   AllToolCallsCompleted       taskrun/fetch-task-1                                 All tool calls completed, ready to send tool results to LLM
-0s          Normal   SendingContextWindowToLLM   taskrun/fetch-task-1                                 Sending context window to LLM
-0s          Normal   LLMFinalAnswer              taskrun/fetch-task-1                                 LLM response received successfully
+91s         Normal    ValidationSucceeded         task/fetch-task   Task validation succeeded
+82s         Normal    ToolCallsPending            task/fetch-task   LLM response received, tool calls pending
+82s         Normal    ToolCallCreated             task/fetch-task   Created TaskRunToolCall fetch-task-2fe18aa-tc-01
+77s         Normal    AllToolCallsCompleted       task/fetch-task   All tool calls completed
+62s         Normal    SendingContextWindowToLLM   task/fetch-task   Sending context window to LLM
+57s         Normal    LLMFinalAnswer              task/fetch-task   LLM response received successfully
 ```
+
+You can also explore the TaskRunToolCall events
 
 
 ```
-kubectl get taskrun fetch-task-1 -o jsonpath='{.status.output}'
+kubectl get task fetch-task -o jsonpath='{.status.output}'
 ```
 
 > The URL [https://swapi.dev/api/people/1](https://swapi.dev/api/people/1) contains the following data about a Star Wars character:
@@ -826,13 +699,13 @@ kubectl get taskrun fetch-task-1 -o jsonpath='{.status.output}'
 > - **Edited**: 2014-12-20T21:17:56.891000Z
 > - **URL**: [https://swapi.dev/api/people/1/](https://swapi.dev/api/people/1/)
 
-and you can describe the taskrun to see the full context window and tool-calling turns
+and you can describe the task to see the full context window and tool-calling turns
 
 ```
-kubectl describe taskrun fetch-task-1
+kubectl describe task fetch-task
 ```
 
-A simplified view of the taskrun:
+A simplified view of the task:
 
 ```mermaid
 flowchart TD
@@ -844,30 +717,29 @@ flowchart TD
     subgraph MCPServer
       fetch
     end
-    subgraph TaskRun
+    subgraph Task
       subgraph ContextWindow
         direction LR
-        SystemMessage
-        UserMessage
-        ToolCall-1
-        ToolResponse-1
-        AssistantMessage
+        SystemMessage[system:content]
+        UserMessage[user:content]
+        ToolCall-1[assistant:tool_calls]
+        ToolResponse-1[tool:result]
+        AssistantMessage[assistant:content]
       end
     end
     SystemMessage --> UserMessage
 
-    Task2[Task]
     Agent2[Agent]
 
-    UserMessage --> Task --> Agent --> LLM
+    UserMessage --> Agent --> LLM
     Provider --> OpenAI
     Secret --> Credentials
     Credentials --> OpenAI
     OpenAI --> ToolCall-1
-    ToolCall-1 --> Task2 --> Agent2 --> fetch
+    ToolCall-1 --> Agent2 --> fetch
     fetch --> ToolResponse-1
     ToolResponse-1 --> OpenAI2[OpenAI]
-    OpenAI2 --> AssistantMessage
+    OpenAI2 --> AssistantMessage[assistant:content]
 ```
 
 * * *
@@ -875,26 +747,8 @@ flowchart TD
 Your describe should return:
 
 ```
-Name:         fetch-task-1
-Namespace:    default
-Labels:       kubechain.humanlayer.dev/task=fetch-task
-Annotations:  <none>
-API Version:  kubechain.humanlayer.dev/v1alpha1
-Kind:         TaskRun
-Metadata:
-  Creation Timestamp:  2025-03-25T22:32:30Z
-  Generation:          1
-  Owner References:
-    API Version:     kubechain.humanlayer.dev/v1alpha1
-    Controller:      true
-    Kind:            Task
-    Name:            fetch-task
-    UID:             b461354c-f4c7-4cd3-93ec-7546c892d10e
-  Resource Version:  1731
-  UID:               e57a39a2-4c6f-42db-80f0-d48f9bd1d5b4
-Spec:
-  Task Ref:
-    Name:  fetch-task
+# ...snip...
+
 Status:
   Context Window:
     Content:  You are a helpful assistant. Your job is to help the user with their tasks.
@@ -942,48 +796,19 @@ Contents of https://swapi.dev/api/people/1:
 - **Edited**: 2014-12-20T21:17:56.891000Z
 - **URL**: [https://swapi.dev/api/people/1/](https://swapi.dev/api/people/1/)
     Role:  assistant
-  Output:  The URL [https://swapi.dev/api/people/1](https://swapi.dev/api/people/1) contains the following data about a Star Wars character:
 
-- **Name**: Luke Skywalker
-- **Height**: 172 cm
-- **Mass**: 77 kg
-- **Hair Color**: Blond
-- **Skin Color**: Fair
-- **Eye Color**: Blue
-- **Birth Year**: 19BBY
-- **Gender**: Male
-- **Homeworld**: [Link to Homeworld](https://swapi.dev/api/planets/1/)
-- **Films**: Appeared in several films, linked as:
-  - [Film 1](https://swapi.dev/api/films/1/)
-  - [Film 2](https://swapi.dev/api/films/2/)
-  - [Film 3](https://swapi.dev/api/films/3/)
-  - [Film 6](https://swapi.dev/api/films/6/)
-- **Species**: None listed
-- **Vehicles**:
-  - [Vehicle 14](https://swapi.dev/api/vehicles/14/)
-  - [Vehicle 30](https://swapi.dev/api/vehicles/30/)
-- **Starships**:
-  - [Starship 12](https://swapi.dev/api/starships/12/)
-  - [Starship 22](https://swapi.dev/api/starships/22/)
-- **Created**: 2014-12-09T13:50:51.644000Z
-- **Edited**: 2014-12-20T21:17:56.891000Z
-- **URL**: [https://swapi.dev/api/people/1/](https://swapi.dev/api/people/1/)
-  Phase:  FinalAnswer
-  Ready:  true
-  Span Context:
-    Span ID:      6f20c4536fa90bdc
-    Trace ID:     aab3bbe4e9ea84218ee0a848b5958dcb
-  Status:         Ready
+# ...snip...
+
   Status Detail:  LLM final response received
 Events:
   Type    Reason                     Age                  From                Message
   ----    ------                     ----                 ----                -------
-  Normal  ValidationSucceeded        114s                 taskrun-controller  Task validated successfully
-  Normal  ToolCallsPending           114s                 taskrun-controller  LLM response received, tool calls pending
-  Normal  ToolCallCreated            114s                 taskrun-controller  Created TaskRunToolCall fetch-task-1-toolcall-01
-  Normal  SendingContextWindowToLLM  109s (x2 over 114s)  taskrun-controller  Sending context window to LLM
-  Normal  AllToolCallsCompleted      109s                 taskrun-controller  All tool calls completed, ready to send tool results to LLM
-  Normal  LLMFinalAnswer             105s                 taskrun-controller  LLM response received successfully
+  Normal  ValidationSucceeded        114s                 task-controller  Task validated successfully
+  Normal  ToolCallsPending           114s                 task-controller  LLM response received, tool calls pending
+  Normal  ToolCallCreated            114s                 task-controller  Created TaskRunToolCall fetch-task-1-toolcall-01
+  Normal  SendingContextWindowToLLM  109s (x2 over 114s)  task-controller  Sending context window to LLM
+  Normal  AllToolCallsCompleted      109s                 task-controller  All tool calls completed, ready to send tool results to LLM
+  Normal  LLMFinalAnswer             105s                 task-controller  LLM response received successfully
 ```
 
 That's it! Go add your favorite MCPs and start running durable agents in Kubernetes!
@@ -1110,7 +935,7 @@ Metadata:
   Owner References:
     API Version:     kubechain.humanlayer.dev/v1alpha1
     Controller:      true
-    Kind:            TaskRun
+    Kind:            Task
     Name:            approved-fetch-task-1
     UID:             52893dec-c5a5-424d-983f-13a89215b084
   Resource Version:  91939
@@ -1135,14 +960,14 @@ Events:
   Normal  HumanLayerRequestSent  2m41s  taskruntoolcall-controller  HumanLayer request sent
 ```
 
-Note as well, at this point our `taskrun` has not completed. If we run `kubectl get taskrun approved-fetch-task-1` no `OUTPUT` has yet been returned.
+Note as well, at this point our `task` has not completed. If we run `kubectl get task approved-fetch-task` no `OUTPUT` has yet been returned.
 
-Go ahead and approve the email you should have received via HumanLayer requesting approval to run our `fetch` tool. After a few seconds, running `kubectl get taskruntoolcall approved-fetch-task-1-tc-01` should show our tool has been called. Additionally, if we run `kubectl describe taskrun approved-fetch-task-1`, we should see the following (truncated a bit for brevity):
+Go ahead and approve the email you should have received via HumanLayer requesting approval to run our `fetch` tool. After a few seconds, running `kubectl get taskruntoolcall approved-fetch-task-1-tc-01` should show our tool has been called. Additionally, if we run `kubectl describe task approved-fetch-task`, we should see the following (truncated a bit for brevity):
 
 ```
-$ kubectl describe taskrun approved-fetch-task-1
-Name:         approved-fetch-task-1
-Kind:         TaskRun
+$ kubectl describe task approved-fetch-task
+Name:         approved-fetch-task
+Kind:         Task
 Metadata:
   Creation Timestamp:  2025-04-01T16:16:13Z
   UID:               58c9d760-a160-4386-9d8d-ae9da0286125
@@ -1186,12 +1011,12 @@ Droid with gentle heart.
 Events:
   Type    Reason                     Age               From                Message
   ----    ------                     ----              ----                -------
-  Normal  ValidationSucceeded        48s               taskrun-controller  Task validated successfully
-  Normal  ToolCallsPending           47s               taskrun-controller  LLM response received, tool calls pending
-  Normal  ToolCallCreated            47s               taskrun-controller  Created TaskRunToolCall approved-fetch-task-1-tc-01
-  Normal  SendingContextWindowToLLM  7s (x2 over 48s)  taskrun-controller  Sending context window to LLM
-  Normal  AllToolCallsCompleted      7s                taskrun-controller  All tool calls completed, ready to send tool results to LLM
-  Normal  LLMFinalAnswer             6s                taskrun-controller  LLM response received successfully
+  Normal  ValidationSucceeded        48s               task-controller  Task validated successfully
+  Normal  ToolCallsPending           47s               task-controller  LLM response received, tool calls pending
+  Normal  ToolCallCreated            47s               task-controller  Created TaskRunToolCall approved-fetch-task-1-tc-01
+  Normal  SendingContextWindowToLLM  7s (x2 over 48s)  task-controller  Sending context window to LLM
+  Normal  AllToolCallsCompleted      7s                task-controller  All tool calls completed, ready to send tool results to LLM
+  Normal  LLMFinalAnswer             6s                task-controller  LLM response received successfully
 ```
 
 ### Using other Language Models
@@ -1204,7 +1029,7 @@ Let's create a new LLM and Agent that uses the `claude-3-5-sonnet` model from An
 #### Create a secret
 
 ```
-cat <<EOF | kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
 ```
 
 #### Create an LLM
@@ -1217,7 +1042,12 @@ metadata:
   name: claude-3-5-sonnet
 spec:
   provider: anthropic
-  model: claude-3-5-sonnet
+  parameters:
+    model: claude-3-5-sonnet-latest
+  apiKeyFrom:
+    secretKeyRef:
+      name: anthropic
+      key: ANTHROPIC_API_KEY
 EOF
 ```
 
@@ -1228,12 +1058,45 @@ kubectl get llm claude-3-5-sonnet
 ```
 
 ```
-#TODO paste output
+NAME                PROVIDER    READY   STATUS
+claude-3-5-sonnet   anthropic   true    Ready
 ```
 
+#### Create an Agent and assign a task
 
-**Exercise for the reader**: create a new Agent that uses the `claude-3-5-sonnet` model and our MCP server, and assign it a task!
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: Agent
+metadata:
+  name: claude
+spec:
+  llmRef:
+    name: claude-3-5-sonnet
+  system: |
+    You are a helpful assistant. Your job is to help the user with their tasks.
+EOF
+```
 
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: Task
+metadata:
+  name: claude-task
+spec:
+  agentRef:
+    name: claude
+  userMessage: "What is your name and primary directive?"
+EOF
+```
+
+After a few seconds, running `kubectl get task claude-task` should show our task has completed.
+
+```
+NAME          READY   STATUS   PHASE         PREVIEW   OUTPUT
+claude-task   true    Ready    FinalAnswer             I am Claude, an AI assistant created by Anthropic. My primary directive is to be helpful while being direct and honest in my interactions. I aim to help users with their tasks while adhering to ethical principles.
+```
 
 
 ### Cleaning Up
@@ -1242,7 +1105,6 @@ Remove our agent, task and related resources:
 
 ```
 kubectl delete taskruntoolcall --all
-kubectl delete taskrun --all
 kubectl delete task --all
 kubectl delete agent --all
 kubectl delete mcpserver --all
@@ -1271,7 +1133,7 @@ kind delete cluster
 
 ## Key Features
 
-- **Kubernetes-Native Architecture**: KubeChain is built as a Kubernetes operator, using Custom Resource Definitions (CRDs) to define and manage LLMs, Agents, Tools, Tasks, and TaskRuns.
+- **Kubernetes-Native Architecture**: KubeChain is built as a Kubernetes operator, using Custom Resource Definitions (CRDs) to define and manage LLMs, Agents, Tools, and Tasks.
 
 - **Durable Agent Execution**: KubeChain implements something like async/await at the infrastructure layer, checkpointing a conversation chain whenever a tool call or agent delegation occurs, with the ability to resume from that checkpoint when the operation completes.
 

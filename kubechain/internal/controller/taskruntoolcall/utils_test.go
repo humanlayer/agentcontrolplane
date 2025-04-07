@@ -166,8 +166,8 @@ func (t *TestTaskRunToolCall) Setup(ctx context.Context) *kubechainv1alpha1.Task
 			Namespace: "default",
 		},
 		Spec: kubechainv1alpha1.TaskRunToolCallSpec{
-			TaskRunRef: kubechainv1alpha1.LocalObjectReference{
-				Name: "parent-taskrun",
+			TaskRef: kubechainv1alpha1.LocalObjectReference{
+				Name: "parent-task",
 			},
 			ToolRef: kubechainv1alpha1.LocalObjectReference{
 				Name: t.toolName,

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 
 	"github.com/google/uuid"
 	kubechainv1alpha1 "github.com/humanlayer/smallchain/kubechain/api/v1alpha1"
-	externalapi "github.com/humanlayer/smallchain/kubechain/internal/externalAPI"
 	"github.com/humanlayer/smallchain/kubechain/internal/humanlayer"
 	"github.com/humanlayer/smallchain/kubechain/internal/humanlayerapi"
 	"github.com/humanlayer/smallchain/kubechain/internal/mcpmanager"
@@ -123,20 +121,6 @@ func (r *TaskRunToolCallReconciler) updateTaskRunToolCall(ctx context.Context, w
 	return nil
 }
 
-// Helper function to convert various value types to float64
-func convertToFloat(val interface{}) (float64, error) {
-	switch v := val.(type) {
-	case float64:
-		return v, nil
-	case int:
-		return float64(v), nil
-	case string:
-		return strconv.ParseFloat(v, 64)
-	default:
-		return 0, fmt.Errorf("cannot convert %T to float64", val)
-	}
-}
-
 // checkIfMCPTool checks if a tool name follows the MCPServer tool pattern (serverName__toolName)
 // and returns the serverName, toolName, and whether it's an MCP tool
 func isMCPTool(toolName string) (serverName string, actualToolName string, isMCP bool) {
@@ -208,13 +192,13 @@ func (r *TaskRunToolCallReconciler) checkCompletedOrExisting(ctx context.Context
 	logger := log.FromContext(ctx)
 
 	// Check if a child TaskRun already exists for this tool call
-	var taskRunList kubechainv1alpha1.TaskRunList
-	if err := r.List(ctx, &taskRunList, client.InNamespace(trtc.Namespace), client.MatchingLabels{"kubechain.humanlayer.dev/taskruntoolcall": trtc.Name}); err != nil {
-		logger.Error(err, "Failed to list child TaskRuns")
+	var taskList kubechainv1alpha1.TaskList
+	if err := r.List(ctx, &taskList, client.InNamespace(trtc.Namespace), client.MatchingLabels{"kubechain.humanlayer.dev/task": trtc.Name}); err != nil {
+		logger.Error(err, "Failed to list child Tasks")
 		return true, err, true
 	}
-	if len(taskRunList.Items) > 0 {
-		logger.Info("Child TaskRun already exists", "childTaskRun", taskRunList.Items[0].Name)
+	if len(taskList.Items) > 0 {
+		logger.Info("Child Task already exists", "childTask", taskList.Items[0].Name)
 		// Optionally, sync status from child to parent.
 		return true, nil, true
 	}
@@ -301,8 +285,6 @@ func (r *TaskRunToolCallReconciler) getTraditionalTool(ctx context.Context, trtc
 		toolType = "function"
 	} else if tool.Spec.AgentRef != nil {
 		toolType = "delegateToAgent"
-	} else if tool.Spec.Execute.ExternalAPI != nil {
-		toolType = "externalAPI"
 	} else if tool.Spec.ToolType != "" {
 		toolType = tool.Spec.ToolType
 	} else {
@@ -337,274 +319,6 @@ func (r *TaskRunToolCallReconciler) processDelegateToAgent(ctx context.Context, 
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, err
-}
-
-// processBuiltinFunction handles built-in function execution
-func (r *TaskRunToolCallReconciler) processBuiltinFunction(ctx context.Context, trtc *kubechainv1alpha1.TaskRunToolCall, tool *kubechainv1alpha1.Tool, args map[string]interface{}) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	logger.Info("Tool call arguments", "toolName", tool.Name, "arguments", args)
-
-	var res float64
-	// Determine which function to execute based on the builtin name
-	switch tool.Spec.Execute.Builtin.Name {
-	case "add":
-		a, err1 := convertToFloat(args["a"])
-		b, err2 := convertToFloat(args["b"])
-		if err1 != nil {
-			logger.Error(err1, "Failed to parse first argument")
-			return ctrl.Result{}, err1
-		}
-		if err2 != nil {
-			logger.Error(err2, "Failed to parse second argument")
-			return ctrl.Result{}, err2
-		}
-		res = a + b
-	case "subtract":
-		a, err1 := convertToFloat(args["a"])
-		b, err2 := convertToFloat(args["b"])
-		if err1 != nil {
-			logger.Error(err1, "Failed to parse first argument")
-			return ctrl.Result{}, err1
-		}
-		if err2 != nil {
-			logger.Error(err2, "Failed to parse second argument")
-			return ctrl.Result{}, err2
-		}
-		res = a - b
-	case "multiply":
-		a, err1 := convertToFloat(args["a"])
-		b, err2 := convertToFloat(args["b"])
-		if err1 != nil {
-			logger.Error(err1, "Failed to parse first argument")
-			return ctrl.Result{}, err1
-		}
-		if err2 != nil {
-			logger.Error(err2, "Failed to parse second argument")
-			return ctrl.Result{}, err2
-		}
-		res = a * b
-	case "divide":
-		a, err1 := convertToFloat(args["a"])
-		b, err2 := convertToFloat(args["b"])
-		if err1 != nil {
-			logger.Error(err1, "Failed to parse first argument")
-			return ctrl.Result{}, err1
-		}
-		if err2 != nil {
-			logger.Error(err2, "Failed to parse second argument")
-			return ctrl.Result{}, err2
-		}
-		if b == 0 {
-			err := fmt.Errorf("division by zero")
-			logger.Error(err, "Division by zero")
-			trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeError
-			trtc.Status.StatusDetail = "Division by zero"
-			trtc.Status.Error = err.Error()
-			r.recorder.Event(trtc, corev1.EventTypeWarning, "ExecutionFailed", err.Error())
-			if err := r.Status().Update(ctx, trtc); err != nil {
-				logger.Error(err, "Failed to update status")
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, err
-		}
-		res = a / b
-	default:
-		err := fmt.Errorf("unsupported builtin function %q", tool.Spec.Execute.Builtin.Name)
-		logger.Error(err, "Unsupported builtin")
-		trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeError
-		trtc.Status.StatusDetail = err.Error()
-		trtc.Status.Error = err.Error()
-		r.recorder.Event(trtc, corev1.EventTypeWarning, "ExecutionFailed", err.Error())
-		if err := r.Status().Update(ctx, trtc); err != nil {
-			logger.Error(err, "Failed to update status")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, err
-	}
-
-	// Update TaskRunToolCall status with the function result
-	trtc.Status.Result = fmt.Sprintf("%v", res)
-	trtc.Status.Phase = kubechainv1alpha1.TaskRunToolCallPhaseSucceeded
-	trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeSucceeded
-	trtc.Status.StatusDetail = DetailToolExecutedSuccess
-	if err := r.Status().Update(ctx, trtc); err != nil {
-		logger.Error(err, "Failed to update TaskRunToolCall status after execution")
-		return ctrl.Result{}, err
-	}
-	logger.Info("Direct execution completed", "result", res)
-	r.recorder.Event(trtc, corev1.EventTypeNormal, "ExecutionSucceeded", fmt.Sprintf("Tool %q executed successfully", tool.Name))
-	return ctrl.Result{}, nil
-}
-
-// getExternalAPICredentials fetches and validates credentials for external API
-func (r *TaskRunToolCallReconciler) getExternalAPICredentials(ctx context.Context, trtc *kubechainv1alpha1.TaskRunToolCall, tool *kubechainv1alpha1.Tool) (string, error) {
-	logger := log.FromContext(ctx)
-
-	if tool.Spec.Execute.ExternalAPI == nil {
-		err := fmt.Errorf("externalAPI tool missing execution details")
-		logger.Error(err, "Missing execution details")
-		trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeError
-		trtc.Status.StatusDetail = err.Error()
-		trtc.Status.Error = err.Error()
-		r.recorder.Event(trtc, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-		if err := r.Status().Update(ctx, trtc); err != nil {
-			logger.Error(err, "Failed to update status")
-			return "", err
-		}
-		return "", err
-	}
-
-	// Get API key from secret
-	var apiKey string
-	if tool.Spec.Execute.ExternalAPI.CredentialsFrom != nil {
-		var secret corev1.Secret
-		err := r.Get(ctx, client.ObjectKey{
-			Namespace: trtc.Namespace,
-			Name:      tool.Spec.Execute.ExternalAPI.CredentialsFrom.Name,
-		}, &secret)
-		if err != nil {
-			logger.Error(err, "Failed to get API credentials")
-			trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeError
-			trtc.Status.StatusDetail = fmt.Sprintf("Failed to get API credentials: %v", err)
-			trtc.Status.Error = err.Error()
-			r.recorder.Event(trtc, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-			if err := r.Status().Update(ctx, trtc); err != nil {
-				logger.Error(err, "Failed to update status")
-				return "", err
-			}
-			return "", err
-		}
-
-		apiKey = string(secret.Data[tool.Spec.Execute.ExternalAPI.CredentialsFrom.Key])
-		logger.Info("Retrieved API key", "key", apiKey)
-		if apiKey == "" {
-			err := fmt.Errorf("empty API key in secret")
-			logger.Error(err, "Empty API key")
-			trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeError
-			trtc.Status.StatusDetail = err.Error()
-			trtc.Status.Error = err.Error()
-			r.recorder.Event(trtc, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-			if err := r.Status().Update(ctx, trtc); err != nil {
-				logger.Error(err, "Failed to update status")
-				return "", err
-			}
-			return "", err
-		}
-	}
-
-	return apiKey, nil
-}
-
-// processExternalAPI executes a call to an external API
-func (r *TaskRunToolCallReconciler) processExternalAPI(ctx context.Context, trtc *kubechainv1alpha1.TaskRunToolCall, tool *kubechainv1alpha1.Tool) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Get API credentials
-	_, err := r.getExternalAPICredentials(ctx, trtc, tool)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Parse arguments
-	var argsMap map[string]interface{}
-	if err := json.Unmarshal([]byte(trtc.Spec.Arguments), &argsMap); err != nil {
-		logger.Error(err, "Failed to parse arguments")
-		trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeError
-		trtc.Status.StatusDetail = DetailInvalidArgsJSON
-		trtc.Status.Error = err.Error()
-		trtc.Status.Phase = kubechainv1alpha1.TaskRunToolCallPhaseFailed
-		r.recorder.Event(trtc, corev1.EventTypeWarning, "ExecutionFailed", err.Error())
-		if err := r.Status().Update(ctx, trtc); err != nil {
-			logger.Error(err, "Failed to update status")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, err
-	}
-
-	// Special handling for HumanLayer function calls
-	if len(argsMap) == 0 && tool.Name == "humanlayer-function-call" {
-		humanlayer.RegisterClient()
-
-		// Create kwargs map first to ensure it's properly initialized
-		kwargs := map[string]interface{}{
-			"tool_name": trtc.Spec.ToolRef.Name,
-			"task_run":  trtc.Spec.TaskRunRef.Name,
-			"namespace": trtc.Namespace,
-		}
-
-		// Default function call for HumanLayer with verified kwargs
-		argsMap = map[string]interface{}{
-			"fn":     "approve_tool_call",
-			"kwargs": kwargs,
-		}
-
-		// Log to verify
-		logger.Info("Created humanlayer function call args",
-			"argsMap", argsMap,
-			"kwargs", kwargs)
-	}
-
-	// Get the external client
-	externalClient, err := externalapi.DefaultRegistry.GetClient(
-		tool.Name,
-		r.Client,
-		trtc.Namespace,
-		tool.Spec.Execute.ExternalAPI.CredentialsFrom,
-	)
-	if err != nil {
-		logger.Error(err, "Failed to get external client")
-		trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeError
-		trtc.Status.StatusDetail = fmt.Sprintf("Failed to get external client: %v", err)
-		trtc.Status.Error = err.Error()
-		trtc.Status.Phase = kubechainv1alpha1.TaskRunToolCallPhaseFailed
-		r.recorder.Event(trtc, corev1.EventTypeWarning, "ExecutionFailed", err.Error())
-		if err := r.Status().Update(ctx, trtc); err != nil {
-			logger.Error(err, "Failed to update status")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, err
-	}
-
-	var fn string
-	var kwargs map[string]interface{}
-
-	// Extract function name
-	if fnVal, fnExists := argsMap["fn"]; fnExists && fnVal != nil {
-		fn, _ = fnVal.(string)
-	}
-
-	// Extract kwargs
-	if kwargsVal, kwargsExists := argsMap["kwargs"]; kwargsExists && kwargsVal != nil {
-		kwargs, _ = kwargsVal.(map[string]interface{})
-	}
-
-	// Generate call ID - using a shorter format while maintaining uniqueness
-	callID := "c" + uuid.New().String()[:7]
-
-	// Prepare function call spec
-	functionSpec := map[string]interface{}{
-		"fn":     fn,
-		"kwargs": kwargs,
-	}
-
-	// Make the API call
-	_, err = externalClient.Call(ctx, trtc.Name, callID, functionSpec)
-	if err != nil {
-		logger.Error(err, "External API call failed")
-		return ctrl.Result{}, err
-	}
-
-	// Update TaskRunToolCall with the result
-	trtc.Status.Phase = kubechainv1alpha1.TaskRunToolCallPhaseSucceeded
-	trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeSucceeded
-	trtc.Status.StatusDetail = DetailToolExecutedSuccess
-	if err := r.Status().Update(ctx, trtc); err != nil {
-		logger.Error(err, "Failed to update TaskRunToolCall status")
-		return ctrl.Result{}, err
-	}
-	logger.Info("TaskRunToolCall completed", "phase", trtc.Status.Phase)
-	return ctrl.Result{}, nil
 }
 
 // handleUnsupportedToolType handles the fallback for unrecognized tool types
@@ -918,6 +632,7 @@ func (r *TaskRunToolCallReconciler) handleMCPApprovalFlow(ctx context.Context, t
 func (r *TaskRunToolCallReconciler) dispatchToolExecution(ctx context.Context, trtc *kubechainv1alpha1.TaskRunToolCall,
 	args map[string]interface{},
 ) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
 	// Check for MCP tool first
 	serverName, mcpToolName, isMCP := isMCPTool(trtc.Spec.ToolRef.Name)
 	if isMCP && r.MCPManager != nil {
@@ -935,9 +650,13 @@ func (r *TaskRunToolCallReconciler) dispatchToolExecution(ctx context.Context, t
 	case "delegateToAgent":
 		return r.processDelegateToAgent(ctx, trtc)
 	case "function":
-		return r.processBuiltinFunction(ctx, trtc, tool, args)
+		// return r.processBuiltinFunction(ctx, trtc, tool, args)
+		logger.V(1).Info("Builtin function not implemented", "tool", tool.Name)
+		return ctrl.Result{}, nil
 	case "externalAPI":
-		return r.processExternalAPI(ctx, trtc, tool)
+		// return r.processExternalAPI(ctx, trtc, tool)
+		logger.V(1).Info("External API not implemented", "tool", tool.Name)
+		return ctrl.Result{}, nil
 	default:
 		return r.handleUnsupportedToolType(ctx, trtc)
 	}

@@ -1,7 +1,0 @@
-apiVersion: kubechain.humanlayer.dev/v1alpha1
-kind: TaskRun
-metadata:
-  name: pizdarija
-spec:
-  taskRef:
-    name: approve-summation

@@ -1,7 +1,6 @@
 package taskruntoolcall
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -88,51 +87,6 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			Expect(updatedTRTC.Status.Phase).To(Equal(kubechainv1alpha1.TaskRunToolCallPhasePending))
 			Expect(updatedTRTC.Status.Status).To(Equal(kubechainv1alpha1.TaskRunToolCallStatusTypeReady))
 			Expect(updatedTRTC.Status.StatusDetail).To(Equal("Setup complete"))
-		})
-	})
-
-	Context("Ready:Pending -> Succeeded:Succeeded", func() {
-		It("moves to Succeeded:Succeeded after executing a simple function tool call", func() {
-			ctx := context.Background()
-
-			teardown := setupTestAddTool(ctx)
-			defer teardown()
-
-			// Create TaskRunToolCall with Ready:Pending status
-			taskRunToolCall := trtcForAddTool.SetupWithStatus(ctx, kubechainv1alpha1.TaskRunToolCallStatus{
-				Phase:        kubechainv1alpha1.TaskRunToolCallPhasePending,
-				Status:       kubechainv1alpha1.TaskRunToolCallStatusTypeReady,
-				StatusDetail: "Setup complete",
-				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-			})
-
-			By("reconciling the trtc")
-			reconciler, recorder := reconciler()
-
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      taskRunToolCall.Name,
-					Namespace: taskRunToolCall.Namespace,
-				},
-			})
-
-			Expect(err).NotTo(HaveOccurred())
-
-			By("checking the taskruntoolcall status has changed to Succeeded")
-			updatedTRTC := &kubechainv1alpha1.TaskRunToolCall{}
-			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      taskRunToolCall.Name,
-				Namespace: taskRunToolCall.Namespace,
-			}, updatedTRTC)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(updatedTRTC.Status.Phase).To(Equal(kubechainv1alpha1.TaskRunToolCallPhaseSucceeded))
-			Expect(updatedTRTC.Status.Result).To(Equal("5")) // 2 + 3 = 5
-			Expect(updatedTRTC.Status.Status).To(Equal(kubechainv1alpha1.TaskRunToolCallStatusTypeSucceeded))
-			Expect(updatedTRTC.Status.StatusDetail).To(Equal("Tool executed successfully"))
-
-			By("checking that execution events were emitted")
-			utils.ExpectRecorder(recorder).ToEmitEventContaining("ExecutionSucceeded")
 		})
 	})
 

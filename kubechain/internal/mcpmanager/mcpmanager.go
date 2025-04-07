@@ -19,6 +19,8 @@ import (
 )
 
 // MCPServerManager manages MCP server connections and tools
+var _ MCPManagerInterface = &MCPServerManager{}
+
 type MCPServerManager struct {
 	connections map[string]*MCPConnection
 	mu          sync.RWMutex
@@ -290,7 +292,6 @@ func (m *MCPServerManager) CallTool(ctx context.Context, serverName, toolName st
 			Arguments: arguments,
 		},
 	})
-
 	if err != nil {
 		return "", fmt.Errorf("error calling tool %s on server %s: %w", toolName, serverName, err)
 	}

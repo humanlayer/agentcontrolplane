@@ -5,4 +5,4 @@ metadata:
 spec:
   agentRef:
     name: web-fetch-agent
-  message: "Please fetch the content from example.com and summarize what's on the site."
+  userMessage: "Please fetch the content from example.com and summarize what's on the site."

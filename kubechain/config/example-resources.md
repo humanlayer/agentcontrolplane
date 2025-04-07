@@ -159,8 +159,6 @@ See the samples file for examples of all supported providers.
 - **message:**
   - The task prompt or request (e.g. `"What is 2 + 2?"`)
 
-_Note:_ The Task controller automatically launches a TaskRun resource when a Task is created. (The TaskRun's execution is managed by the TaskRun controller that builds the conversation context and handles tool calls.)
-
 ---
 
 ## Additional Notes
@@ -171,7 +169,6 @@ _Note:_ The Task controller automatically launches a TaskRun resource when a Tas
 
 - **CRDs & Controllers:** Before applying these sample files, ensure that the CRDs are installed (use `make manifests install`) and that the controllers are deployed (`make deploy`).
 
-- **Auto-Launching TaskRuns:** When a Task is created (as shown in the Task sample), the Task controller automatically creates a corresponding TaskRun (with a name like `<task-name>-run-1`). This TaskRun then "executes" the task by invoking the associated agent and tool.
 
 - **Secret Permissions:** The Kubechain controller needs permission to read secrets in the namespaces where your resources are deployed. The default RBAC rules in `config/rbac/role.yaml` include these permissions.
 

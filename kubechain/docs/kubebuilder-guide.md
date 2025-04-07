@@ -12,8 +12,7 @@ Current resources include:
 - `LLM` - Configuration for large language models
 - `Agent` - Defines an agent using an LLM and tools
 - `Tool` - Defines tools that can be used by agents
-- `Task` - Defines a task to be executed
-- `TaskRun` - Represents a run of a task
+- `Task` - Represents a run of a task
 - `TaskRunToolCall` - Represents a tool call during a task run
 - `MCPServer` - Defines a Model Control Protocol server for tool integration
 

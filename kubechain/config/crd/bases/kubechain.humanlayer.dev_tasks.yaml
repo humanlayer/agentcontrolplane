@@ -25,16 +25,27 @@ spec:
       name: Detail
       priority: 1
       type: string
-    - jsonPath: .spec.agentRef.name
-      name: Agent
+    - jsonPath: .status.phase
+      name: Phase
       type: string
-    - jsonPath: .spec.message
-      name: Message
+    - jsonPath: .status.userMsgPreview
+      name: Preview
       type: string
     - jsonPath: .status.output
       name: Output
+      type: string
+    - jsonPath: .status.error
+      name: Error
       priority: 1
       type: string
+    - jsonPath: .status.startTime
+      name: Started
+      priority: 1
+      type: date
+    - jsonPath: .status.completionTime
+      name: Completed
+      priority: 1
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -62,7 +73,7 @@ spec:
             properties:
               agentRef:
                 description: AgentRef references the agent that will execute this
-                  task
+                  Task.
                 properties:
                   name:
                     description: Name of the referent
@@ -71,32 +82,126 @@ spec:
                 required:
                 - name
                 type: object
-              everythingThatHappenedSoFar:
-                description: EverythingThatHappenedSoFar is a list of all the things
-                  that have happened so far
-                items:
-                  type: string
-                type: array
-              goal:
-                description: Goal is the goal of the task
-                type: string
-              message:
-                description: Message is the input prompt or request for the task
+              userMessage:
+                description: UserMessage is the message to send to the agent.
                 minLength: 1
                 type: string
             required:
             - agentRef
-            - message
+            - userMessage
             type: object
           status:
             description: TaskStatus defines the observed state of Task
             properties:
+              completionTime:
+                description: CompletionTime is when the Task completed
+                format: date-time
+                type: string
+              contextWindow:
+                description: ContextWindow maintains the conversation history as a
+                  sequence of messages
+                items:
+                  description: Message represents a single message in the conversation
+                  properties:
+                    content:
+                      description: Content is the message content
+                      type: string
+                    name:
+                      description: Name is the name of the tool that was called
+                      type: string
+                    role:
+                      description: Role is the role of the message sender (system,
+                        user, assistant, tool)
+                      enum:
+                      - system
+                      - user
+                      - assistant
+                      - tool
+                      type: string
+                    toolCallId:
+                      description: ToolCallID is the unique identifier for this tool
+                        call
+                      type: string
+                    toolCalls:
+                      description: ToolCalls contains any tool calls requested by
+                        this message
+                      items:
+                        description: ToolCall represents a request to call a tool
+                        properties:
+                          function:
+                            description: Function contains the details of the function
+                              to call
+                            properties:
+                              arguments:
+                                description: Arguments contains the arguments to pass
+                                  to the function in JSON format
+                                type: string
+                              name:
+                                description: Name is the name of the function to call
+                                type: string
+                            required:
+                            - arguments
+                            - name
+                            type: object
+                          id:
+                            description: ID is the unique identifier for this tool
+                              call
+                            type: string
+                          type:
+                            description: Type indicates the type of tool call. Currently
+                              only "function" is supported.
+                            type: string
+                        required:
+                        - function
+                        - id
+                        - type
+                        type: object
+                      type: array
+                  required:
+                  - content
+                  - role
+                  type: object
+                type: array
+              error:
+                description: Error message if the task failed
+                type: string
+              messageCount:
+                description: MessageCount contains the number of messages in the context
+                  window
+                type: integer
               output:
                 description: Output contains the result of the task execution
                 type: string
+              phase:
+                description: Phase indicates the current phase of the Task
+                enum:
+                - Initializing
+                - Pending
+                - ReadyForLLM
+                - SendContextWindowToLLM
+                - ToolCallsPending
+                - CheckingToolCalls
+                - FinalAnswer
+                - ErrorBackoff
+                - Failed
+                type: string
               ready:
-                description: Ready indicates if the task is ready to be executed
+                description: Ready indicates if the Task is ready to be executed
                 type: boolean
+              spanContext:
+                description: SpanContext contains OpenTelemetry span context information
+                properties:
+                  spanID:
+                    description: SpanID is the span ID
+                    type: string
+                  traceID:
+                    description: TraceID is the trace ID for the span
+                    type: string
+                type: object
+              startTime:
+                description: StartTime is when the Task started
+                format: date-time
+                type: string
               status:
                 description: Status indicates the current status of the task
                 enum:
@@ -107,6 +212,14 @@ spec:
               statusDetail:
                 description: StatusDetail provides additional details about the current
                   status
+                type: string
+              toolCallRequestId:
+                description: ToolCallRequestID uniquely identifies a set of tool calls
+                  from a single LLM response
+                type: string
+              userMsgPreview:
+                description: UserMsgPreview stores the first 50 characters of the
+                  user's message
                 type: string
             type: object
         type: object

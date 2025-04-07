@@ -1,8 +1,0 @@
-apiVersion: kubechain.humanlayer.dev/v1alpha1
-kind: Task
-metadata:
-  name: approve-summation
-spec:
-  agentRef:
-    name: humanlayer-agent
-  message: "What is 25 + 17?"
