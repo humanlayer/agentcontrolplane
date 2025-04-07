@@ -84,7 +84,8 @@ var _ = Describe("Agent Controller", func() {
 						},
 					},
 					Email: &kubechainv1alpha1.EmailChannelConfig{
-						Address: "test@example.com",
+						Address:          "test@example.com",
+						ContextAboutUser: "Test user",
 					},
 				},
 			}

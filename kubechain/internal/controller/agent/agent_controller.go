@@ -123,6 +123,7 @@ func (r *AgentReconciler) validateMCPServers(ctx context.Context, agent *kubecha
 }
 
 // validateHumanContactChannels checks if all referenced contact channels exist and are ready
+// and have the required context information for the LLM
 func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agent *kubechainv1alpha1.Agent) ([]kubechainv1alpha1.ResolvedContactChannel, error) {
 	validChannels := make([]kubechainv1alpha1.ResolvedContactChannel, 0, len(agent.Spec.HumanContactChannels))
 
@@ -140,6 +141,26 @@ func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agen
 			return validChannels, fmt.Errorf("ContactChannel %q is not ready", channelRef.Name)
 		}
 
+		// Check that the context about the user/channel is provided based on the channel type
+		switch channel.Spec.Type {
+		case kubechainv1alpha1.ContactChannelTypeEmail:
+			if channel.Spec.Email == nil {
+				return validChannels, fmt.Errorf("ContactChannel %q is missing Email configuration", channelRef.Name)
+			}
+			if channel.Spec.Email.ContextAboutUser == "" {
+				return validChannels, fmt.Errorf("ContactChannel %q must have ContextAboutUser set", channelRef.Name)
+			}
+		case kubechainv1alpha1.ContactChannelTypeSlack:
+			if channel.Spec.Slack == nil {
+				return validChannels, fmt.Errorf("ContactChannel %q is missing Slack configuration", channelRef.Name)
+			}
+			if channel.Spec.Slack.ContextAboutChannelOrUser == "" {
+				return validChannels, fmt.Errorf("ContactChannel %q must have ContextAboutChannelOrUser set", channelRef.Name)
+			}
+		default:
+			return validChannels, fmt.Errorf("ContactChannel %q has unsupported type %q", channelRef.Name, channel.Spec.Type)
+		}
+
 		validChannels = append(validChannels, kubechainv1alpha1.ResolvedContactChannel{
 			Name: channelRef.Name,
 			Type: string(channel.Spec.Type),
@@ -147,6 +168,23 @@ func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agen
 	}
 
 	return validChannels, nil
+}
+
+//nolint:unparam
+func (r *AgentReconciler) setStatusError(ctx context.Context, agent *kubechainv1alpha1.Agent, err error, statusUpdate *kubechainv1alpha1.Agent, reason string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	statusUpdate.Status.Ready = false
+	statusUpdate.Status.Status = StatusError
+	statusUpdate.Status.StatusDetail = err.Error()
+	r.recorder.Event(agent, corev1.EventTypeWarning, reason, err.Error())
+
+	if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
+		logger.Error(updateErr, "Failed to update Agent status")
+		return ctrl.Result{}, fmt.Errorf("failed to update agent status: %v", err)
+	}
+
+	return ctrl.Result{}, err
 }
 
 // Reconcile validates the agent's LLM and Tool references
@@ -175,59 +213,34 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	validMCPServers := make([]kubechainv1alpha1.ResolvedMCPServer, 0)
 	validHumanContactChannels := make([]kubechainv1alpha1.ResolvedContactChannel, 0)
 
+	statusUpdate.Status.ValidTools = validTools
+	statusUpdate.Status.ValidMCPServers = validMCPServers
+	statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
+
 	// Validate LLM reference
 	if err := r.validateLLM(ctx, &agent); err != nil {
 		logger.Error(err, "LLM validation failed")
-		statusUpdate.Status.Ready = false
-		statusUpdate.Status.Status = StatusError
-		statusUpdate.Status.StatusDetail = err.Error()
-		statusUpdate.Status.ValidTools = validTools
-		statusUpdate.Status.ValidMCPServers = validMCPServers
-		statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
-		r.recorder.Event(&agent, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
-			logger.Error(updateErr, "Failed to update Agent status")
-			return ctrl.Result{}, fmt.Errorf("failed to update agent status: %v", err)
-		}
-		return ctrl.Result{}, err // requeue
+		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 	}
 
 	// Validate Tool references
 	validTools, err := r.validateTools(ctx, &agent)
 	if err != nil {
 		logger.Error(err, "Tool validation failed")
-		statusUpdate.Status.Ready = false
-		statusUpdate.Status.Status = StatusError
-		statusUpdate.Status.StatusDetail = err.Error()
-		statusUpdate.Status.ValidTools = validTools
-		statusUpdate.Status.ValidMCPServers = validMCPServers
-		statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
-		r.recorder.Event(&agent, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
-			logger.Error(updateErr, "Failed to update Agent status")
-			return ctrl.Result{}, fmt.Errorf("failed to update agent status: %v", err)
-		}
-		return ctrl.Result{}, err // requeue
+		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 	}
+
+	statusUpdate.Status.ValidTools = validTools
 
 	// Validate MCP server references, if any
 	if len(agent.Spec.MCPServers) > 0 && r.MCPManager != nil {
 		validMCPServers, err = r.validateMCPServers(ctx, &agent)
 		if err != nil {
 			logger.Error(err, "MCP server validation failed")
-			statusUpdate.Status.Ready = false
-			statusUpdate.Status.Status = StatusError
-			statusUpdate.Status.StatusDetail = err.Error()
-			statusUpdate.Status.ValidTools = validTools
-			statusUpdate.Status.ValidMCPServers = validMCPServers
-			statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
-			r.recorder.Event(&agent, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-			if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
-				logger.Error(updateErr, "Failed to update Agent status")
-				return ctrl.Result{}, fmt.Errorf("failed to update agent status: %v", err)
-			}
-			return ctrl.Result{}, err // requeue
+			return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 		}
+
+		statusUpdate.Status.ValidMCPServers = validMCPServers
 	}
 
 	// Validate HumanContactChannel references, if any
@@ -235,28 +248,17 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		validHumanContactChannels, err = r.validateHumanContactChannels(ctx, &agent)
 		if err != nil {
 			logger.Error(err, "HumanContactChannel validation failed")
-			statusUpdate.Status.Ready = false
-			statusUpdate.Status.Status = StatusError
-			statusUpdate.Status.StatusDetail = err.Error()
-			statusUpdate.Status.ValidTools = validTools
-			statusUpdate.Status.ValidMCPServers = validMCPServers
-			statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
-			r.recorder.Event(&agent, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-			if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
-				logger.Error(updateErr, "Failed to update Agent status")
-				return ctrl.Result{}, fmt.Errorf("failed to update agent status: %v", err)
-			}
-			return ctrl.Result{}, err // requeue
+			return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 		}
+
+		statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
 	}
 
 	// All validations passed
 	statusUpdate.Status.Ready = true
 	statusUpdate.Status.Status = StatusReady
 	statusUpdate.Status.StatusDetail = "All dependencies validated successfully"
-	statusUpdate.Status.ValidTools = validTools
-	statusUpdate.Status.ValidMCPServers = validMCPServers
-	statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
+
 	r.recorder.Event(&agent, corev1.EventTypeNormal, "ValidationSucceeded", "All dependencies validated successfully")
 
 	// Update status
