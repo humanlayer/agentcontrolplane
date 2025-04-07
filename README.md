@@ -813,6 +813,85 @@ Events:
 
 That's it! Go add your favorite MCPs and start running durable agents in Kubernetes!
 
+### Using other Language Models
+
+So far we've been using the `gpt-4o` model from OpenAI. KubeChain also supports using other language models from OpenAI, Anthropic, Vertex, and more.
+
+
+Let's create a new LLM and Agent that uses the `claude-3-5-sonnet` model from Anthropic.
+
+#### Create a secret
+
+```
+kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+```
+
+#### Create an LLM
+
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: LLM
+metadata:
+  name: claude-3-5-sonnet
+spec:
+  provider: anthropic
+  parameters:
+    model: claude-3-5-sonnet-latest
+  apiKeyFrom:
+    secretKeyRef:
+      name: anthropic
+      key: ANTHROPIC_API_KEY
+EOF
+```
+
+fetch the LLM to verify it was created:
+
+```
+kubectl get llm claude-3-5-sonnet
+```
+
+```
+NAME                PROVIDER    READY   STATUS
+claude-3-5-sonnet   anthropic   true    Ready
+```
+
+#### Create an Agent and assign a task
+
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: Agent
+metadata:
+  name: claude
+spec:
+  llmRef:
+    name: claude-3-5-sonnet
+  system: |
+    You are a helpful assistant. Your job is to help the user with their tasks.
+EOF
+```
+
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: kubechain.humanlayer.dev/v1alpha1
+kind: Task
+metadata:
+  name: claude-task
+spec:
+  agentRef:
+    name: claude
+  userMessage: "What is your name and primary directive?"
+EOF
+```
+
+After a few seconds, running `kubectl get task claude-task` should show our task has completed.
+
+```
+NAME          READY   STATUS   PHASE         PREVIEW   OUTPUT
+claude-task   true    Ready    FinalAnswer             I am Claude, an AI assistant created by Anthropic. My primary directive is to be helpful while being direct and honest in my interactions. I aim to help users with their tasks while adhering to ethical principles.
+```
+
 ### Incorporating Human Approval
 
 For certain classes of MCP tools, you may want to incorporate human approval into an agent's workflow.
@@ -1019,84 +1098,6 @@ Events:
   Normal  LLMFinalAnswer             6s                task-controller  LLM response received successfully
 ```
 
-### Using other Language Models
-
-So far we've been using the `gpt-4o` model from OpenAI. KubeChain also supports using other language models from OpenAI, Anthropic, Vertex, and more.
-
-
-Let's create a new LLM and Agent that uses the `claude-3-5-sonnet` model from Anthropic.
-
-#### Create a secret
-
-```
-kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
-```
-
-#### Create an LLM
-
-```
-cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
-kind: LLM
-metadata:
-  name: claude-3-5-sonnet
-spec:
-  provider: anthropic
-  parameters:
-    model: claude-3-5-sonnet-latest
-  apiKeyFrom:
-    secretKeyRef:
-      name: anthropic
-      key: ANTHROPIC_API_KEY
-EOF
-```
-
-fetch the LLM to verify it was created:
-
-```
-kubectl get llm claude-3-5-sonnet
-```
-
-```
-NAME                PROVIDER    READY   STATUS
-claude-3-5-sonnet   anthropic   true    Ready
-```
-
-#### Create an Agent and assign a task
-
-```
-cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
-kind: Agent
-metadata:
-  name: claude
-spec:
-  llmRef:
-    name: claude-3-5-sonnet
-  system: |
-    You are a helpful assistant. Your job is to help the user with their tasks.
-EOF
-```
-
-```
-cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
-kind: Task
-metadata:
-  name: claude-task
-spec:
-  agentRef:
-    name: claude
-  userMessage: "What is your name and primary directive?"
-EOF
-```
-
-After a few seconds, running `kubectl get task claude-task` should show our task has completed.
-
-```
-NAME          READY   STATUS   PHASE         PREVIEW   OUTPUT
-claude-task   true    Ready    FinalAnswer             I am Claude, an AI assistant created by Anthropic. My primary directive is to be helpful while being direct and honest in my interactions. I aim to help users with their tasks while adhering to ethical principles.
-```
 
 
 ### Cleaning Up

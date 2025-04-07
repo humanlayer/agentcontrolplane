@@ -2,6 +2,7 @@
 
 Breaking Changes:
 - `Task` and `TaskRun` have been combined into a single resource called `Task`. This greatly simplies the API and onboarding documentation.
+- Removed experimental `externalAPI` and `builtin` tool types
 
 Features:
 - Added support for [multiple LLM providers](../README.md#using-other-language-models)
@@ -9,7 +10,7 @@ Features:
   - Google AI support
   - Mistral AI support
   - Vertex AI support
-- 
+- Better handling when a [human rejects a proposed tool call](../README.md#incorporating-human-approval)
 
 
 Fixes:
@@ -17,7 +18,6 @@ Fixes:
 - Improved error handling for LLM API failures
   - Distinct handling of retriable vs non-retriable errors
   - Better error reporting in task status
-- Removed experimental `externalAPI` and `builtin` tool types
 
 ### v0.1.13 (March 25, 2025)
 
