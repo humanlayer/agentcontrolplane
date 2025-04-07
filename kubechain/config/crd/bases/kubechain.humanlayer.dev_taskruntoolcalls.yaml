@@ -87,6 +87,13 @@ spec:
                 required:
                 - name
                 type: object
+              toolType:
+                description: ToolType identifies the type of the tool (Standard, MCP,
+                  HumanContact)
+                enum:
+                - MCP
+                - HumanContact
+                type: string
             required:
             - arguments
             - taskRef

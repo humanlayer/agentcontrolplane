@@ -175,6 +175,7 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 				name:      "test-mcp-no-approval-trtc",
 				toolName:  tool.Spec.Name,
 				arguments: `{"a": 2, "b": 3}`,
+				toolType:  kubechainv1alpha1.ToolTypeMCP,
 			}
 			trtc := taskRunToolCall.SetupWithStatus(ctx, kubechainv1alpha1.TaskRunToolCallStatus{
 				Phase:        kubechainv1alpha1.TaskRunToolCallPhasePending,
@@ -182,6 +183,7 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 				StatusDetail: "Setup complete",
 				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 			})
+
 			defer taskRunToolCall.Teardown(ctx)
 
 			By("reconciling the taskruntoolcall that uses MCP tool without approval")

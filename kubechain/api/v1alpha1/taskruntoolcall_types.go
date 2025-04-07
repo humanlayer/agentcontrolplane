@@ -26,6 +26,10 @@ type TaskRunToolCallSpec struct {
 	// +kubebuilder:validation:Required
 	ToolRef LocalObjectReference `json:"toolRef"`
 
+	// ToolType identifies the type of the tool (Standard, MCP, HumanContact)
+	// +optional
+	ToolType ToolType `json:"toolType,omitempty"`
+
 	// Arguments contains the arguments for the tool call
 	// +kubebuilder:validation:Required
 	Arguments string `json:"arguments"`
