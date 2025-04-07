@@ -6,7 +6,7 @@ import (
 )
 
 // ToolType defines the type of a tool in the system
-// +kubebuilder:validation:Enum=Standard;MCP;HumanContact
+// +kubebuilder:validation:Enum=MCP;HumanContact
 type ToolType string
 
 const (

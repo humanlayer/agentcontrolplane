@@ -123,18 +123,18 @@ func (r *TaskRunToolCallReconciler) updateTaskRunToolCall(ctx context.Context, w
 
 // isMCPTool checks if a tool is an MCP tool and extracts the server name and actual tool name
 func isMCPTool(trtc *kubechainv1alpha1.TaskRunToolCall) (serverName string, actualToolName string, isMCP bool) {
-	// First check if we have a tool type field
-	if trtc.Spec.ToolType == kubechainv1alpha1.ToolTypeMCP {
-		// For MCP tools, we still need to parse the name to get the server and tool parts
-		parts := strings.Split(trtc.Spec.ToolRef.Name, "__")
-		if len(parts) == 2 {
-			return parts[0], parts[1], true
-		}
-		// This shouldn't happen if toolType is set correctly, but just in case
-		return "", trtc.Spec.ToolRef.Name, true
+	// If this isn't an MCP, no server name__tool_name to split
+	if trtc.Spec.ToolType != kubechainv1alpha1.ToolTypeMCP {
+		return "", trtc.Spec.ToolRef.Name, false
 	}
 
-	return "", trtc.Spec.ToolRef.Name, false
+	// For MCP tools, we still need to parse the name to get the server and tool parts
+	parts := strings.Split(trtc.Spec.ToolRef.Name, "__")
+	if len(parts) == 2 {
+		return parts[0], parts[1], true
+	}
+	// This shouldn't happen if toolType is set correctly, but just in case
+	return "", trtc.Spec.ToolRef.Name, true
 }
 
 // executeMCPTool executes a tool call on an MCP server

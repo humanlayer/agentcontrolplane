@@ -91,7 +91,6 @@ spec:
                 description: ToolType identifies the type of the tool (Standard, MCP,
                   HumanContact)
                 enum:
-                - Standard
                 - MCP
                 - HumanContact
                 type: string

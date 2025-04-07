@@ -320,7 +320,7 @@ func (r *TaskReconciler) endTaskSpan(ctx context.Context, task *kubechain.Task, 
 // collectTools collects all tools from the agent's MCP servers
 func (r *TaskReconciler) collectTools(ctx context.Context, agent *kubechain.Agent) []llmclient.Tool {
 	logger := log.FromContext(ctx)
-	var tools []llmclient.Tool
+	tools := make([]llmclient.Tool, 0)
 
 	// Get tools from MCP manager
 	mcpTools := r.MCPManager.GetToolsForAgent(agent)
@@ -331,7 +331,6 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *kubechain.Agen
 	}
 
 	// Convert HumanContactChannel tools to LLM tools
-
 	for _, validChannel := range agent.Status.ValidHumanContactChannels {
 		channel := &v1alpha1.ContactChannel{}
 		if err := r.Get(ctx, client.ObjectKey{Namespace: agent.Namespace, Name: validChannel.Name}, channel); err != nil {
