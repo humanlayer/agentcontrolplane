@@ -30,10 +30,9 @@ KubeChain is a cloud-native orchestrator for AI Agents built on Kubernetes. It s
   - [Prerequisites](#prerequisites)
   - [Setting Up a Local Cluster](#setting-up-a-local-cluster)
   - [Deploying KubeChain](#deploying-kubechain)
-  - [Creating Your First Agent](#creating-your-first-agent)
-  - [Running Your First Task](#running-your-first-task)
-  - [Inspecting the Task more closely](#inspecting-the-task-more-closely)
+  - [Creating an Agent and Running your first task](#creating-an-agent-and-running-your-first-task)
   - [Adding Tools with MCP](#adding-tools-with-mcp)
+  - [Using other language models](#using-other-language-models)
   - [Cleaning Up](#cleaning-up)
 - [Design Principles](#design-principles)
 - [Contributing](#contributing)
@@ -72,6 +71,8 @@ kind create cluster
 ```
 
 ### Add your OpenAI API key as a Kubernetes secret
+
+For Anthropic and other providers, see [Using other language models](#using-other-language-models)
 
 ```bash
 kubectl create secret generic openai \
@@ -117,7 +118,7 @@ kubectl apply -f https://raw.githubusercontent.com/humanlayer/smallchain/refs/he
 
 This command will build the operator, create necessary CRDs, and deploy the KubeChain components to your cluster.
 
-### Creating Your First Agent
+### Creating Your First Agent and Running your first task
 
 1. **Define an LLM resource**
 
@@ -129,6 +130,8 @@ metadata:
   name: gpt-4o
 spec:
   provider: openai
+  parameters:
+    model: gpt-4o
   apiKeyFrom:
     secretKeyRef:
       name: openai
@@ -311,7 +314,7 @@ Events:
 
 </details>
 
-### Running Your First Task
+#### Running Your First Task
 Create a Task to interact with your agent:
 
 
@@ -364,8 +367,8 @@ kubectl get task
    Output:
 
 ```
-NAME            READY   STATUS   PHASE         PREVIEW   OUTPUT
-hello-world-1   true    Ready    FinalAnswer             The Moon does not have a capital, as it is not a governed entity like a country. It is a natural satellite of Earth. However, if you are referring to human activity on the Moon, there is no permanent settlement or colony established there as of now. Most activities on the Moon have been in the form of missions or landings conducted by various space agencies.
+NAME            READY   STATUS   PHASE         PREVIEW                            OUTPUT
+hello-world-1   true    Ready    FinalAnswer   What is the capital of the moon?   The Moon does not have a capital. It is a natural satellite of Earth and does not have any political or administrative divisions like a country does. There are no permanent human settlements on the Moon, so it does not have a capital city.
 ```
 
 You can describe the task to see the full context window
@@ -978,7 +981,7 @@ metadata:
 spec:
   agentRef:
     name: agent-with-fetch 
-  message: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
+  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
 EOF
 ```
 
