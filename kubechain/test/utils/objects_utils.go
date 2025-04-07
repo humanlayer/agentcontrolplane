@@ -12,11 +12,12 @@ import (
 )
 
 type TestScopedAgent struct {
-	Name         string
-	SystemPrompt string
-	Tools        []string
-	LLM          string
-	client       client.Client
+	Name                 string
+	SystemPrompt         string
+	Tools                []string
+	LLM                  string
+	HumanContactChannels []string
+	client               client.Client
 }
 
 func (t *TestScopedAgent) Setup(k8sClient client.Client) {
@@ -39,6 +40,13 @@ func (t *TestScopedAgent) Setup(k8sClient client.Client) {
 				}
 				return refs
 			}(),
+			HumanContactChannels: func() []kubechain.LocalObjectReference {
+				refs := make([]kubechain.LocalObjectReference, len(t.HumanContactChannels))
+				for i, channel := range t.HumanContactChannels {
+					refs[i] = kubechain.LocalObjectReference{Name: channel}
+				}
+				return refs
+			}(),
 		},
 	}
 	Expect(t.client.Create(context.Background(), agent)).To(Succeed())
@@ -56,6 +64,16 @@ func (t *TestScopedAgent) Setup(k8sClient client.Client) {
 			}
 		}
 		return tools
+	}()
+	agent.Status.ValidHumanContactChannels = func() []kubechain.ResolvedContactChannel {
+		channels := make([]kubechain.ResolvedContactChannel, len(t.HumanContactChannels))
+		for i, channel := range t.HumanContactChannels {
+			channels[i] = kubechain.ResolvedContactChannel{
+				Name: channel,
+				Type: "email", // Default type for testing
+			}
+		}
+		return channels
 	}()
 	Expect(t.client.Status().Update(context.Background(), agent)).To(Succeed())
 
