@@ -121,14 +121,20 @@ func (r *TaskRunToolCallReconciler) updateTaskRunToolCall(ctx context.Context, w
 	return nil
 }
 
-// checkIfMCPTool checks if a tool name follows the MCPServer tool pattern (serverName__toolName)
-// and returns the serverName, toolName, and whether it's an MCP tool
-func isMCPTool(toolName string) (serverName string, actualToolName string, isMCP bool) {
-	parts := strings.Split(toolName, "__")
-	if len(parts) == 2 {
-		return parts[0], parts[1], true
+// isMCPTool checks if a tool is an MCP tool and extracts the server name and actual tool name
+func isMCPTool(trtc *kubechainv1alpha1.TaskRunToolCall) (serverName string, actualToolName string, isMCP bool) {
+	// First check if we have a tool type field
+	if trtc.Spec.ToolType == kubechainv1alpha1.ToolTypeMCP {
+		// For MCP tools, we still need to parse the name to get the server and tool parts
+		parts := strings.Split(trtc.Spec.ToolRef.Name, "__")
+		if len(parts) == 2 {
+			return parts[0], parts[1], true
+		}
+		// This shouldn't happen if toolType is set correctly, but just in case
+		return "", trtc.Spec.ToolRef.Name, true
 	}
-	return "", toolName, false
+
+	return "", trtc.Spec.ToolRef.Name, false
 }
 
 // executeMCPTool executes a tool call on an MCP server
@@ -343,7 +349,7 @@ func (r *TaskRunToolCallReconciler) getMCPServer(ctx context.Context, trtc *kube
 	logger := log.FromContext(ctx)
 
 	// Check if this is an MCP tool
-	serverName, _, isMCP := isMCPTool(trtc.Spec.ToolRef.Name)
+	serverName, _, isMCP := isMCPTool(trtc)
 	if !isMCP {
 		return nil, false, nil
 	}
@@ -634,7 +640,7 @@ func (r *TaskRunToolCallReconciler) dispatchToolExecution(ctx context.Context, t
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	// Check for MCP tool first
-	serverName, mcpToolName, isMCP := isMCPTool(trtc.Spec.ToolRef.Name)
+	serverName, mcpToolName, isMCP := isMCPTool(trtc)
 	if isMCP && r.MCPManager != nil {
 		return r.processMCPTool(ctx, trtc, serverName, mcpToolName, args)
 	}

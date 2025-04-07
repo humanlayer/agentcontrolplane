@@ -5,6 +5,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// ToolType defines the type of a tool in the system
+// +kubebuilder:validation:Enum=Standard;MCP;HumanContact
+type ToolType string
+
+const (
+	// ToolTypeMCP indicates a tool provided by an MCP server
+	ToolTypeMCP ToolType = "MCP"
+	// ToolTypeHumanContact indicates a tool for human interaction
+	ToolTypeHumanContact ToolType = "HumanContact"
+)
+
 // ToolSpec defines the desired state of Tool
 type ToolSpec struct {
 	// Name is used for inline/function tools (optional if the object name is used).

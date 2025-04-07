@@ -147,6 +147,7 @@ type TestTaskRunToolCall struct {
 	name            string
 	toolName        string
 	arguments       string
+	toolType        kubechainv1alpha1.ToolType
 	taskRunToolCall *kubechainv1alpha1.TaskRunToolCall
 }
 
@@ -172,6 +173,7 @@ func (t *TestTaskRunToolCall) Setup(ctx context.Context) *kubechainv1alpha1.Task
 			ToolRef: kubechainv1alpha1.LocalObjectReference{
 				Name: t.toolName,
 			},
+			ToolType:  t.toolType,
 			Arguments: t.arguments,
 		},
 	}
@@ -431,6 +433,7 @@ func setupTestApprovalResources(ctx context.Context, config *SetupTestApprovalCo
 		name:      name,
 		toolName:  mcpTool.Spec.Name,
 		arguments: args,
+		toolType:  kubechainv1alpha1.ToolTypeMCP,
 	}
 
 	status := kubechainv1alpha1.TaskRunToolCallStatus{
