@@ -1,3 +1,24 @@
+### v0.2.0 (March 26, 2025)
+
+Breaking Changes:
+- `Task` and `TaskRun` have been combined into a single resource called `Task`. This greatly simplies the API and onboarding documentation.
+- Removed experimental `externalAPI` and `builtin` tool types
+
+Features:
+- Added support for [multiple LLM providers](../README.md#using-other-language-models)
+  - Anthropic Claude support
+  - Google AI support
+  - Mistral AI support
+  - Vertex AI support
+- Better handling when a [human rejects a proposed tool call](../README.md#incorporating-human-approval)
+
+
+Fixes:
+- Fixed a bug where a multi-turn tool-calling workflow could result in the wrong tool results being sent to the LLM
+- Improved error handling for LLM API failures
+  - Distinct handling of retriable vs non-retriable errors
+  - Better error reporting in task status
+
 ### v0.1.13 (March 25, 2025)
 
 Features:
@@ -11,7 +32,6 @@ Changes:
 - Enhanced TaskRunToolCall status tracking
   - Added `externalCallID` field for tracking external service calls
   - Added new phases: `ErrorRequestingHumanApproval`, `ReadyToExecuteApprovedTool`, `ToolCallRejected`
-
 
 ### v0.1.12 (March 24, 2025)
 
