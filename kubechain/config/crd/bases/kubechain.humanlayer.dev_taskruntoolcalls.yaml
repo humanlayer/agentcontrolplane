@@ -75,7 +75,7 @@ spec:
                 - name
                 type: object
               toolCallId:
-                description: ToolCallId is the unique identifier for this tool call
+                description: ToolCallID is the unique identifier for this tool call
                 type: string
               toolRef:
                 description: ToolRef references the tool to execute

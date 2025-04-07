@@ -15,8 +15,8 @@ const (
 
 // TaskRunToolCallSpec defines the desired state of TaskRunToolCall
 type TaskRunToolCallSpec struct {
-	// ToolCallId is the unique identifier for this tool call
-	ToolCallId string `json:"toolCallId"`
+	// ToolCallID is the unique identifier for this tool call
+	ToolCallID string `json:"toolCallId"`
 
 	// TaskRef references the parent Task
 	// +kubebuilder:validation:Required

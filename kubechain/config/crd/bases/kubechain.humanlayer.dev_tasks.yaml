@@ -119,7 +119,7 @@ spec:
                       - tool
                       type: string
                     toolCallId:
-                      description: ToolCallId is the unique identifier for this tool
+                      description: ToolCallID is the unique identifier for this tool
                         call
                       type: string
                     toolCalls:

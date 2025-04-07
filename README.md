@@ -1099,7 +1099,6 @@ claude-task   true    Ready    FinalAnswer             I am Claude, an AI assist
 ```
 
 
-
 ### Cleaning Up
 
 Remove our agent, task and related resources:

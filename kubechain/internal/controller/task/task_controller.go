@@ -202,7 +202,7 @@ func (r *TaskReconciler) processToolCalls(ctx context.Context, task *kubechain.T
 		task.Status.ContextWindow = append(task.Status.ContextWindow, kubechain.Message{
 			Role:       "tool",
 			Content:    tc.Status.Result,
-			ToolCallId: tc.Spec.ToolCallId,
+			ToolCallID: tc.Spec.ToolCallID,
 		})
 	}
 
@@ -438,7 +438,7 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *kubechain.Ta
 				},
 			},
 			Spec: kubechain.TaskRunToolCallSpec{
-				ToolCallId: tc.ID,
+				ToolCallID: tc.ID,
 				TaskRef: kubechain.LocalObjectReference{
 					Name: statusUpdate.Name,
 				},

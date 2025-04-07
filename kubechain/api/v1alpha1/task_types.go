@@ -29,9 +29,9 @@ type Message struct {
 	// +optional
 	ToolCalls []ToolCall `json:"toolCalls,omitempty"`
 
-	// ToolCallId is the unique identifier for this tool call
+	// ToolCallID is the unique identifier for this tool call
 	// +optional
-	ToolCallId string `json:"toolCallId,omitempty"`
+	ToolCallID string `json:"toolCallId,omitempty"`
 
 	// Name is the name of the tool that was called
 	// +optional
