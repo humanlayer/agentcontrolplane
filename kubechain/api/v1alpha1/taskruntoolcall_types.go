@@ -4,6 +4,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ToolType defines the type of a tool in the system
+// +kubebuilder:validation:Enum=MCP;HumanContact
+type ToolType string
+
+const (
+	// ToolTypeMCP indicates a tool provided by an MCP server
+	ToolTypeMCP ToolType = "MCP"
+	// ToolTypeHumanContact indicates a tool for human interaction
+	ToolTypeHumanContact ToolType = "HumanContact"
+)
+
 type TaskRunToolCallStatusType string
 
 const (
@@ -78,7 +89,7 @@ type TaskRunToolCallStatus struct {
 }
 
 // TaskRunToolCallPhase represents the phase of a TaskRunToolCall
-// +kubebuilder:validation:Enum=Pending;Running;Succeeded;Failed;AwaitingHumanInput;AwaitingSubAgent;AwaitingHumanApproval;ReadyToExecuteApprovedTool;ErrorRequestingHumanApproval;ToolCallRejected
+// +kubebuilder:validation:Enum=Pending;Running;Succeeded;Failed;AwaitingHumanInput;AwaitingSubAgent;AwaitingHumanApproval;ReadyToExecuteApprovedTool;ErrorRequestingHumanApproval;ToolCallRejected;ErrorRequestingHumanInput
 type TaskRunToolCallPhase string
 
 const (
@@ -102,6 +113,8 @@ const (
 	TaskRunToolCallPhaseErrorRequestingHumanApproval TaskRunToolCallPhase = "ErrorRequestingHumanApproval"
 	// TaskRunToolCallPhaseToolCallRejected indicates the tool call was rejected by human approval
 	TaskRunToolCallPhaseToolCallRejected TaskRunToolCallPhase = "ToolCallRejected"
+	// TaskRunToolCallPhaseErrorRequestingHumanInput indicates there was an error requesting human input
+	TaskRunToolCallPhaseErrorRequestingHumanInput TaskRunToolCallPhase = "ErrorRequestingHumanInput"
 )
 
 // +kubebuilder:object:root=true

@@ -84,7 +84,6 @@ func (m *MockHumanLayerClientWrapper) SetAPIKey(apiKey string) {
 
 // GetFunctionCallStatus implements HumanLayerClientWrapper
 func (m *MockHumanLayerClientWrapper) GetFunctionCallStatus(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
-
 	if m.parent.ShouldReturnApproval {
 		now := time.Now()
 		approved := true
@@ -130,4 +129,14 @@ func (m *MockHumanLayerClientWrapper) RequestApproval(ctx context.Context) (*hum
 
 	// Return a successful mock response
 	return &humanlayerapi.FunctionCallOutput{}, m.parent.StatusCode, nil
+}
+
+// RequestHumanContact implements HumanLayerClientWrapper
+func (m *MockHumanLayerClientWrapper) RequestHumanContact(ctx context.Context, userMsg string) (*humanlayerapi.HumanContactOutput, int, error) {
+	return nil, m.parent.StatusCode, m.parent.ReturnError
+}
+
+// GetHumanContactStatus implements HumanLayerClientWrapper
+func (m *MockHumanLayerClientWrapper) GetHumanContactStatus(ctx context.Context) (*humanlayerapi.HumanContactOutput, int, error) {
+	return nil, m.parent.StatusCode, m.parent.ReturnError
 }
