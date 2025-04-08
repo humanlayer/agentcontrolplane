@@ -466,10 +466,18 @@ var _ = Describe("Task Controller", func() {
 			defer testTask.Teardown(ctx)
 
 			testTaskRunToolCall.SetupWithStatus(ctx, acp.TaskRunToolCallStatus{
+				Status: acp.TaskRunToolCallStatusTypeSucceeded,
 				Phase:  acp.TaskRunToolCallPhaseSucceeded,
 				Result: `{"data": "test-data"}`,
 			})
 			defer testTaskRunToolCall.Teardown(ctx)
+
+			testTaskRunToolCallTwo.SetupWithStatus(ctx, acp.TaskRunToolCallStatus{
+				Status: acp.TaskRunToolCallStatusTypeSucceeded,
+				Phase:  acp.TaskRunToolCallPhaseToolCallRejected,
+				Result: `human contact channel rejected this tool call with the following response: "I'm out here just testing things okay, try again later."`,
+			})
+			defer testTaskRunToolCallTwo.Teardown(ctx)
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
@@ -487,9 +495,11 @@ var _ = Describe("Task Controller", func() {
 			ExpectRecorder(recorder).ToEmitEventContaining("AllToolCallsCompleted")
 
 			// todo expect the context window has the tool call result appended
-			Expect(task.Status.ContextWindow).To(HaveLen(4))
+			Expect(task.Status.ContextWindow).To(HaveLen(5))
 			Expect(task.Status.ContextWindow[3].Role).To(Equal("tool"))
 			Expect(task.Status.ContextWindow[3].Content).To(ContainSubstring("test-data"))
+			Expect(task.Status.ContextWindow[4].Role).To(Equal("tool"))
+			Expect(task.Status.ContextWindow[4].Content).To(ContainSubstring("I'm out here just testing things okay, try again later."))
 		})
 	})
 	Context("LLMFinalAnswer -> LLMFinalAnswer", func() {

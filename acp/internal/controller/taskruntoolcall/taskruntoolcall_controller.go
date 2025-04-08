@@ -441,7 +441,8 @@ func (r *TaskRunToolCallReconciler) updateTRTCStatus(ctx context.Context, trtc *
 
 	// Store the result for tool call rejection
 	if trtcStatusPhase == acp.TaskRunToolCallPhaseToolCallRejected {
-		trtcDeepCopy.Status.Result = result
+		toolName := trtc.Spec.ToolRef.Name
+		trtcDeepCopy.Status.Result = fmt.Sprintf("User denied `%s` with feedback: %s", toolName, result)
 	}
 
 	if err := r.Status().Update(ctx, trtcDeepCopy); err != nil {
