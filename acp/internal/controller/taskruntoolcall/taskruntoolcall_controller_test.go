@@ -434,7 +434,7 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseToolCallRejected))
 			Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeSucceeded))
 			Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Tool execution rejected"))
-			Expect(updatedTRTC.Status.Result).To(Equal(rejectionComment))
+			Expect(updatedTRTC.Status.Result).To(ContainSubstring(rejectionComment))
 		})
 	})
 

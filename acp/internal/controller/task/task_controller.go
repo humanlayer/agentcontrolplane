@@ -194,7 +194,7 @@ func (r *TaskReconciler) processToolCalls(ctx context.Context, task *acp.Task) (
 	// Check if all tool calls are completed
 	allCompleted := true
 	for _, tc := range toolCalls.Items {
-		if tc.Status.Phase != acp.TaskRunToolCallPhaseSucceeded {
+		if tc.Status.Status != acp.TaskRunToolCallStatusTypeSucceeded {
 			allCompleted = false
 			break
 		}

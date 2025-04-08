@@ -247,6 +247,10 @@ var testTaskRunToolCall = &TestTaskRunToolCall{
 	name: "test-taskrun-toolcall",
 }
 
+var testTaskRunToolCallTwo = &TestTaskRunToolCall{
+	name: "test-taskrun-toolcall-two",
+}
+
 // nolint:golint,unparam
 func setupSuiteObjects(ctx context.Context) (secret *corev1.Secret, llm *acp.LLM, agent *acp.Agent, teardown func()) {
 	secret = testSecret.Setup(ctx)
