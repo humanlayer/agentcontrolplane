@@ -70,22 +70,6 @@ func ToolFromContactChannel(channel v1alpha1.ContactChannel) *Tool {
 	}
 
 	var description string
-	// var name string
-
-	// // Customize based on channel type
-	// switch channel.Spec.Type {
-	// case v1alpha1.ContactChannelTypeEmail:
-	// 	name = fmt.Sprintf("human_contact_email_%s", channel.Name)
-	// 	description = channel.Spec.Email.ContextAboutUser
-
-	// case v1alpha1.ContactChannelTypeSlack:
-	// 	name = fmt.Sprintf("human_contact_slack_%s", channel.Name)
-	// 	description = channel.Spec.Slack.ContextAboutChannelOrUser
-
-	// default:
-	// 	name = fmt.Sprintf("human_contact_%s", channel.Name)
-	// 	description = fmt.Sprintf("Contact a human via %s channel", channel.Spec.Type)
-	// }
 
 	// Create the Tool
 	return &Tool{
