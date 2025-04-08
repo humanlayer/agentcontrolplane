@@ -127,6 +127,7 @@ spec:
                 - ReadyToExecuteApprovedTool
                 - ErrorRequestingHumanApproval
                 - ToolCallRejected
+                - ErrorRequestingHumanInput
                 type: string
               ready:
                 description: Ready indicates if the tool call is ready to be executed

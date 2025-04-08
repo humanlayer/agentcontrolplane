@@ -579,7 +579,10 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		defer childSpan.End()
 	}
 
-	logger.V(3).Info("Sending LLM request")
+	logger.V(1).Info("Sending LLM request",
+		"phase", task.Status.Phase,
+		"status", task.Status.Status)
+
 	// Step 8: Send the prompt to the LLM
 	output, err := llmClient.SendRequest(childCtx, task.Status.ContextWindow, tools)
 	if err != nil {

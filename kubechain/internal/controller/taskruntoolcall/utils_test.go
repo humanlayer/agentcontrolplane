@@ -38,6 +38,11 @@ var testMCPTool = &TestMCPTool{
 	mcpToolName: "test-tool",
 }
 
+var testHumanContactTool = &TestTool{
+	name:     "human-contact-tool",
+	toolType: "function",
+}
+
 var trtcForAddTool = &TestTaskRunToolCall{
 	name:      "test-taskruntoolcall",
 	toolName:  addTool.name,
@@ -211,7 +216,7 @@ func (t *TestTool) Setup(ctx context.Context) *kubechainv1alpha1.Tool {
 			Description: "Test tool for " + t.toolType,
 			Execute: kubechainv1alpha1.ToolExecute{
 				Builtin: &kubechainv1alpha1.BuiltinToolSpec{
-					Name: t.name,
+					Name: "add", // Use a valid builtin name from the allowed list
 				},
 			},
 		},
@@ -452,6 +457,81 @@ func setupTestApprovalResources(ctx context.Context, config *SetupTestApprovalCo
 	return trtc, func() {
 		testMCPTool.Teardown(ctx)
 		testMCPServer.Teardown(ctx)
+		testContactChannel.Teardown(ctx)
+		testSecret.Teardown(ctx)
+	}
+}
+
+// SetupTestHumanContactConfig contains optional configuration for setupTestHumanContactResources
+type SetupTestHumanContactConfig struct {
+	TaskRunToolCallStatus *kubechainv1alpha1.TaskRunToolCallStatus
+	TaskRunToolCallName   string
+	TaskRunToolCallArgs   string
+	ContactChannelType    kubechainv1alpha1.ContactChannelType
+}
+
+// setupTestHumanContactResources sets up all resources needed for testing human contact
+func setupTestHumanContactResources(ctx context.Context, config *SetupTestHumanContactConfig) (*kubechainv1alpha1.TaskRunToolCall, func()) {
+	By("creating the secret")
+	testSecret.Setup(ctx)
+	By("creating the contact channel")
+
+	// Set contact channel type based on config or default to ContactChannelTypeSlack
+	channelType := kubechainv1alpha1.ContactChannelTypeSlack
+	if config != nil && config.ContactChannelType != "" {
+		switch config.ContactChannelType {
+		case "email":
+			channelType = kubechainv1alpha1.ContactChannelTypeEmail
+		default:
+			channelType = kubechainv1alpha1.ContactChannelTypeSlack
+		}
+	}
+
+	testContactChannel.channelType = channelType
+	testContactChannel.SetupWithStatus(ctx, kubechainv1alpha1.ContactChannelStatus{
+		Ready:  true,
+		Status: "Ready",
+	})
+
+	By("creating the human contact tool")
+	testHumanContactTool.SetupWithStatus(ctx, kubechainv1alpha1.ToolStatus{
+		Ready:  true,
+		Status: "Ready",
+	})
+
+	name := "test-human-contact-trtc"
+	args := `{"message": "This is a test human contact message", "options": ["Yes", "No"]}`
+	if config != nil {
+		if config.TaskRunToolCallName != "" {
+			name = config.TaskRunToolCallName
+		}
+		if config.TaskRunToolCallArgs != "" {
+			args = config.TaskRunToolCallArgs
+		}
+	}
+
+	taskRunToolCall := &TestTaskRunToolCall{
+		name:      name,
+		toolName:  testContactChannel.name, // For human contact, we reference the contact channel directly
+		arguments: args,
+		toolType:  kubechainv1alpha1.ToolTypeHumanContact,
+	}
+
+	status := kubechainv1alpha1.TaskRunToolCallStatus{
+		Phase:        kubechainv1alpha1.TaskRunToolCallPhasePending,
+		Status:       kubechainv1alpha1.TaskRunToolCallStatusTypeReady,
+		StatusDetail: "Setup complete",
+		StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+	}
+
+	if config != nil && config.TaskRunToolCallStatus != nil {
+		status = *config.TaskRunToolCallStatus
+	}
+
+	trtc := taskRunToolCall.SetupWithStatus(ctx, status)
+
+	return trtc, func() {
+		testHumanContactTool.Teardown(ctx)
 		testContactChannel.Teardown(ctx)
 		testSecret.Teardown(ctx)
 	}

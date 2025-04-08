@@ -60,7 +60,9 @@ type HumanLayerClientWrapper interface {
 	SetAPIKey(apiKey string)
 
 	RequestApproval(ctx context.Context) (functionCall *humanlayerapi.FunctionCallOutput, statusCode int, err error)
+	RequestHumanContact(ctx context.Context, userMsg string) (humanContact *humanlayerapi.HumanContactOutput, statusCode int, err error)
 	GetFunctionCallStatus(ctx context.Context) (functionCall *humanlayerapi.FunctionCallOutput, statusCode int, err error)
+	GetHumanContactStatus(ctx context.Context) (humanContact *humanlayerapi.HumanContactOutput, statusCode int, err error)
 }
 
 type HumanLayerClientFactory interface {
@@ -148,10 +150,42 @@ func (h *RealHumanLayerClientWrapper) RequestApproval(ctx context.Context) (func
 	return functionCall, resp.StatusCode, err
 }
 
+func (h *RealHumanLayerClientWrapper) RequestHumanContact(ctx context.Context, userMsg string) (humanContact *humanlayerapi.HumanContactOutput, statusCode int, err error) {
+	channel := humanlayerapi.NewContactChannelInput()
+
+	if h.slackChannelInput != nil {
+		channel.SetSlack(*h.slackChannelInput)
+	}
+
+	if h.emailContactChannel != nil {
+		channel.SetEmail(*h.emailContactChannel)
+	}
+
+	humanContactSpecInput := humanlayerapi.NewHumanContactSpecInput(userMsg)
+	humanContactSpecInput.SetChannel(*channel)
+
+	humanContactInput := humanlayerapi.NewHumanContactInput(h.runID, h.callID, *humanContactSpecInput)
+
+	humanContact, resp, err := h.client.DefaultAPI.RequestHumanContact(ctx).
+		Authorization("Bearer " + h.apiKey).
+		HumanContactInput(*humanContactInput).
+		Execute()
+
+	return humanContact, resp.StatusCode, err
+}
+
 func (h *RealHumanLayerClientWrapper) GetFunctionCallStatus(ctx context.Context) (functionCall *humanlayerapi.FunctionCallOutput, statusCode int, err error) {
 	functionCall, resp, err := h.client.DefaultAPI.GetFunctionCallStatus(ctx, h.callID).
 		Authorization("Bearer " + h.apiKey).
 		Execute()
 
 	return functionCall, resp.StatusCode, err
+}
+
+func (h *RealHumanLayerClientWrapper) GetHumanContactStatus(ctx context.Context) (humanContact *humanlayerapi.HumanContactOutput, statusCode int, err error) {
+	humanContact, resp, err := h.client.DefaultAPI.GetHumanContactStatus(ctx, h.callID).
+		Authorization("Bearer " + h.apiKey).
+		Execute()
+
+	return humanContact, resp.StatusCode, err
 }
