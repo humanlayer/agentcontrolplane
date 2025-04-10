@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>ACP (Agent Control Plane)</h1>
+<h1>Agent Control Plane (ACP)</h1>
 
 </div>
 
