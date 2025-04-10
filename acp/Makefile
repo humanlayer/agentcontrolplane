@@ -153,7 +153,7 @@ release-local: manifests generate kustomize ## Build cross-platform image (amd64
 	fi
 	@echo "Building and pushing image for platforms linux/amd64,linux/arm64 with tag: $(tag)"
 	$(eval VERSION=$(shell echo $(tag) | sed 's/^v//'))
-	$(eval REPO=ghcr.io/humanlayer/acp)
+	$(eval REPO=ghcr.io/humanlayer/agentcontrolplane)
 	$(eval RELEASE_IMG=$(REPO):$(tag))
 	@echo "Setting image to: $(RELEASE_IMG)"
 	
