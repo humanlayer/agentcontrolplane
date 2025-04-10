@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
+    app.kubernetes.io/name: acp
     control-plane: controller-manager
   name: default
 ---
@@ -12,9 +12,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: agents.kubechain.humanlayer.dev
+  name: agents.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: Agent
     listKind: AgentList
@@ -169,9 +169,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: contactchannels.kubechain.humanlayer.dev
+  name: contactchannels.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: ContactChannel
     listKind: ContactChannelList
@@ -319,9 +319,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: llms.kubechain.humanlayer.dev
+  name: llms.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: LLM
     listKind: LLMList
@@ -539,9 +539,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: mcpservers.kubechain.humanlayer.dev
+  name: mcpservers.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: MCPServer
     listKind: MCPServerList
@@ -725,9 +725,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: taskruntoolcalls.kubechain.humanlayer.dev
+  name: taskruntoolcalls.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: TaskRunToolCall
     listKind: TaskRunToolCallList
@@ -888,9 +888,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: tasks.kubechain.humanlayer.dev
+  name: tasks.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: Task
     listKind: TaskList
@@ -1117,9 +1117,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: tools.kubechain.humanlayer.dev
+  name: tools.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: Tool
     listKind: ToolList
@@ -1241,8 +1241,8 @@ kind: ServiceAccount
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-controller-manager
+    app.kubernetes.io/name: acp
+  name: acp-controller-manager
   namespace: default
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1250,8 +1250,8 @@ kind: Role
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-leader-election-role
+    app.kubernetes.io/name: acp
+  name: acp-leader-election-role
   namespace: default
 rules:
 - apiGroups:
@@ -1291,17 +1291,17 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-contactchannel-admin-role
+    app.kubernetes.io/name: acp
+  name: acp-contactchannel-admin-role
 rules:
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels
   verbs:
   - '*'
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels/status
   verbs:
@@ -1312,11 +1312,11 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-contactchannel-editor-role
+    app.kubernetes.io/name: acp
+  name: acp-contactchannel-editor-role
 rules:
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels
   verbs:
@@ -1328,7 +1328,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels/status
   verbs:
@@ -1339,11 +1339,11 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-contactchannel-viewer-role
+    app.kubernetes.io/name: acp
+  name: acp-contactchannel-viewer-role
 rules:
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels
   verbs:
@@ -1351,7 +1351,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels/status
   verbs:
@@ -1362,17 +1362,17 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-llm-admin-role
+    app.kubernetes.io/name: acp
+  name: acp-llm-admin-role
 rules:
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - llms
   verbs:
   - '*'
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - llms/status
   verbs:
@@ -1383,11 +1383,11 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-llm-editor-role
+    app.kubernetes.io/name: acp
+  name: acp-llm-editor-role
 rules:
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - llms
   verbs:
@@ -1399,7 +1399,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - llms/status
   verbs:
@@ -1410,11 +1410,11 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-llm-viewer-role
+    app.kubernetes.io/name: acp
+  name: acp-llm-viewer-role
 rules:
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - llms
   verbs:
@@ -1422,7 +1422,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - llms/status
   verbs:
@@ -1431,7 +1431,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubechain-manager-role
+  name: acp-manager-role
 rules:
 - apiGroups:
   - ""
@@ -1442,7 +1442,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - agents
   - contactchannels
@@ -1460,7 +1460,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - agents/status
   - contactchannels/status
@@ -1474,7 +1474,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels/finalizers
   verbs:
@@ -1483,7 +1483,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubechain-metrics-auth-role
+  name: acp-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -1501,7 +1501,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubechain-metrics-reader
+  name: acp-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics
@@ -1513,16 +1513,16 @@ kind: RoleBinding
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-leader-election-rolebinding
+    app.kubernetes.io/name: acp
+  name: acp-leader-election-rolebinding
   namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: kubechain-leader-election-role
+  name: acp-leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: kubechain-controller-manager
+  name: acp-controller-manager
   namespace: default
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1530,28 +1530,28 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
-  name: kubechain-manager-rolebinding
+    app.kubernetes.io/name: acp
+  name: acp-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubechain-manager-role
+  name: acp-manager-role
 subjects:
 - kind: ServiceAccount
-  name: kubechain-controller-manager
+  name: acp-controller-manager
   namespace: default
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubechain-metrics-auth-rolebinding
+  name: acp-metrics-auth-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubechain-metrics-auth-role
+  name: acp-metrics-auth-role
 subjects:
 - kind: ServiceAccount
-  name: kubechain-controller-manager
+  name: acp-controller-manager
   namespace: default
 ---
 apiVersion: v1
@@ -1559,9 +1559,9 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
+    app.kubernetes.io/name: acp
     control-plane: controller-manager
-  name: kubechain-controller-manager-metrics-service
+  name: acp-controller-manager-metrics-service
   namespace: default
 spec:
   ports:
@@ -1570,7 +1570,7 @@ spec:
     protocol: TCP
     targetPort: 8443
   selector:
-    app.kubernetes.io/name: kubechain
+    app.kubernetes.io/name: acp
     control-plane: controller-manager
 ---
 apiVersion: apps/v1
@@ -1578,22 +1578,22 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubechain
+    app.kubernetes.io/name: acp
     control-plane: controller-manager
-  name: kubechain-controller-manager
+  name: acp-controller-manager
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: kubechain
+      app.kubernetes.io/name: acp
       control-plane: controller-manager
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        app.kubernetes.io/name: kubechain
+        app.kubernetes.io/name: acp
         control-plane: controller-manager
     spec:
       containers:
@@ -1635,6 +1635,6 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: kubechain-controller-manager
+      serviceAccountName: acp-controller-manager
       terminationGracePeriodSeconds: 10
       volumes: []

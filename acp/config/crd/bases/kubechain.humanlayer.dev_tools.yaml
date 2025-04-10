@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: tools.kubechain.humanlayer.dev
+  name: tools.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: Tool
     listKind: ToolList

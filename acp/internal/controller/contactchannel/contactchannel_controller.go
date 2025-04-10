@@ -56,9 +56,9 @@ type ContactChannelReconciler struct {
 	recorder record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=contactchannels,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=contactchannels/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=contactchannels/finalizers,verbs=update
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=contactchannels,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=contactchannels/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=contactchannels/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // validateHumanLayerAPIKey checks if the HumanLayer API key is valid and gets project info

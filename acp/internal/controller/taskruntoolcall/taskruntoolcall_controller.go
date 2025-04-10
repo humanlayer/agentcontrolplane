@@ -28,9 +28,9 @@ const (
 	DetailInvalidArgsJSON     = "Invalid arguments JSON"
 )
 
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=taskruntoolcalls,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=taskruntoolcalls/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=tools,verbs=get;list;watch
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=taskruntoolcalls,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=taskruntoolcalls/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=tools,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // TaskRunToolCallReconciler reconciles a TaskRunToolCall object.
@@ -199,7 +199,7 @@ func (r *TaskRunToolCallReconciler) checkCompletedOrExisting(ctx context.Context
 
 	// Check if a child TaskRun already exists for this tool call
 	var taskList acp.TaskList
-	if err := r.List(ctx, &taskList, client.InNamespace(trtc.Namespace), client.MatchingLabels{"kubechain.humanlayer.dev/task": trtc.Name}); err != nil {
+	if err := r.List(ctx, &taskList, client.InNamespace(trtc.Namespace), client.MatchingLabels{"acp.humanlayer.dev/task": trtc.Name}); err != nil {
 		logger.Error(err, "Failed to list child Tasks")
 		return true, err, true
 	}

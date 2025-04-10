@@ -5,7 +5,7 @@
 
 # What is happening here?
 
-This is a demo environment for Kubechain that also deploys a complete observability stack (Prometheus, Grafana, Tempo, Loki) for monitoring LLM operations. You can use this demo to test and interact with LLM-powered agents running in a K8s cluster (behind `kind`).
+This is a demo environment for the Agent Control Plane that also deploys a complete observability stack (Prometheus, Grafana, Tempo, Loki) for monitoring LLM operations. You can use this demo to test and interact with LLM-powered agents running in a K8s cluster (behind `kind`).
 
 # Prerequisites
 
@@ -27,7 +27,7 @@ This is a demo environment for Kubechain that also deploys a complete observabil
    make otel-stack
    ```
 
-3. Build and deploy the Kubechain operator:
+3. Build and deploy the Agent Control Plane operator:
    ```
    make operator-build operator-deploy
    ```

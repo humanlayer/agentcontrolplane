@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: llms.kubechain.humanlayer.dev
+  name: llms.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: LLM
     listKind: LLMList

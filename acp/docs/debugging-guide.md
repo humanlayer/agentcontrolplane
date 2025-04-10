@@ -1,6 +1,6 @@
 # Debugging Guide
 
-This guide explains how to debug the Kubechain operator locally using VS Code's debugger, allowing you to set breakpoints and step through the code execution.
+This guide explains how to debug the ACP operator locally using VS Code's debugger, allowing you to set breakpoints and step through the code execution.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ This guide explains how to debug the Kubechain operator locally using VS Code's 
 
 ## Setup VS Code Debugging Configuration
 
-1. Create a `.vscode/launch.json` file in the kubechain directory with the following configuration:
+1. Create a `.vscode/launch.json` file in the acp directory with the following configuration:
 
 ```json
 {
@@ -50,7 +50,7 @@ This command removes both the operator deployment and the CRDs from your cluster
 To debug with existing resources, reinstall just the CRDs:
 
 ```bash
-make kubechain-install
+make acp-install
 ```
 
 This command reinstalls the CRDs into your cluster without deploying the operator.

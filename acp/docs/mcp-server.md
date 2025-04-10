@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Model Control Protocol (MCP) is a standard interface for connecting AI/LLM agents with external tools and capabilities. In Kubechain, MCP servers are defined using the `MCPServer` custom resource type.
+The Model Control Protocol (MCP) is a standard interface for connecting AI/LLM agents with external tools and capabilities. In ACP, MCP servers are defined using the `MCPServer` custom resource type.
 
 ## MCPServer Resource
 

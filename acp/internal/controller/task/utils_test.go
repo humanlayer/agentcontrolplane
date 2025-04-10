@@ -10,6 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
+	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 )
 
@@ -47,20 +49,20 @@ var testSecret = &TestSecret{
 
 type TestLLM struct {
 	name string
-	llm  *kubechain.LLM
+	llm  *acp.LLM
 }
 
-func (t *TestLLM) Setup(ctx context.Context) *kubechain.LLM {
+func (t *TestLLM) Setup(ctx context.Context) *acp.LLM {
 	By("creating the llm")
-	llm := &kubechain.LLM{
+	llm := &acp.LLM{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      t.name,
 			Namespace: "default",
 		},
-		Spec: kubechain.LLMSpec{
+		Spec: acp.LLMSpec{
 			Provider: "openai",
-			APIKeyFrom: &kubechain.APIKeySource{
-				SecretKeyRef: kubechain.SecretKeyRef{
+			APIKeyFrom: &acp.APIKeySource{
+				SecretKeyRef: acp.SecretKeyRef{
 					Name: testSecret.name,
 					Key:  "api-key",
 				},
@@ -74,7 +76,7 @@ func (t *TestLLM) Setup(ctx context.Context) *kubechain.LLM {
 	return llm
 }
 
-func (t *TestLLM) SetupWithStatus(ctx context.Context, status kubechain.LLMStatus) *kubechain.LLM {
+func (t *TestLLM) SetupWithStatus(ctx context.Context, status acp.LLMStatus) *acp.LLM {
 	llm := t.Setup(ctx)
 	llm.Status = status
 	Expect(k8sClient.Status().Update(ctx, llm)).To(Succeed())
@@ -95,20 +97,20 @@ type TestAgent struct {
 	name       string
 	llmName    string
 	system     string
-	mcpServers []kubechain.LocalObjectReference
-	agent      *kubechain.Agent
+	mcpServers []acp.LocalObjectReference
+	agent      *acp.Agent
 }
 
-func (t *TestAgent) Setup(ctx context.Context) *kubechain.Agent {
+func (t *TestAgent) Setup(ctx context.Context) *acp.Agent {
 	By("creating the agent")
-	agent := &kubechain.Agent{
+	agent := &acp.Agent{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: t.name,
 
 			Namespace: "default",
 		},
-		Spec: kubechain.AgentSpec{
-			LLMRef: kubechain.LocalObjectReference{
+		Spec: acp.AgentSpec{
+			LLMRef: acp.LocalObjectReference{
 				Name: t.llmName,
 			},
 			System:     t.system,
@@ -122,7 +124,7 @@ func (t *TestAgent) Setup(ctx context.Context) *kubechain.Agent {
 	return agent
 }
 
-func (t *TestAgent) SetupWithStatus(ctx context.Context, status kubechain.AgentStatus) *kubechain.Agent {
+func (t *TestAgent) SetupWithStatus(ctx context.Context, status acp.AgentStatus) *acp.Agent {
 	agent := t.Setup(ctx)
 	agent.Status = status
 	Expect(k8sClient.Status().Update(ctx, agent)).To(Succeed())
@@ -139,27 +141,27 @@ var testAgent = &TestAgent{
 	name:       "test-agent",
 	llmName:    testLLM.name,
 	system:     "you are a testing assistant",
-	mcpServers: []kubechain.LocalObjectReference{},
+	mcpServers: []acp.LocalObjectReference{},
 }
 
 type TestTask struct {
 	name        string
 	agentName   string
 	userMessage string
-	task        *kubechain.Task
+	task        *acp.Task
 }
 
-func (t *TestTask) Setup(ctx context.Context) *kubechain.Task {
+func (t *TestTask) Setup(ctx context.Context) *acp.Task {
 	By("creating the task")
-	task := &kubechain.Task{
+	task := &acp.Task{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      t.name,
 			Namespace: "default",
 		},
-		Spec: kubechain.TaskSpec{},
+		Spec: acp.TaskSpec{},
 	}
 	if t.agentName != "" {
-		task.Spec.AgentRef = kubechain.LocalObjectReference{
+		task.Spec.AgentRef = acp.LocalObjectReference{
 			Name: t.agentName,
 		}
 	}
@@ -175,7 +177,7 @@ func (t *TestTask) Setup(ctx context.Context) *kubechain.Task {
 	return task
 }
 
-func (t *TestTask) SetupWithStatus(ctx context.Context, status kubechain.TaskStatus) *kubechain.Task {
+func (t *TestTask) SetupWithStatus(ctx context.Context, status acp.TaskStatus) *acp.Task {
 	task := t.Setup(ctx)
 	task.Status = status
 	Expect(k8sClient.Status().Update(ctx, task)).To(Succeed())
@@ -197,25 +199,25 @@ var testTask = &TestTask{
 
 type TestTaskRunToolCall struct {
 	name            string
-	taskRunToolCall *kubechain.TaskRunToolCall
+	taskRunToolCall *acp.TaskRunToolCall
 }
 
-func (t *TestTaskRunToolCall) Setup(ctx context.Context) *kubechain.TaskRunToolCall {
+func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.TaskRunToolCall {
 	By("creating the taskruntoolcall")
-	taskRunToolCall := &kubechain.TaskRunToolCall{
+	taskRunToolCall := &acp.TaskRunToolCall{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      t.name,
 			Namespace: "default",
 			Labels: map[string]string{
-				"kubechain.humanlayer.dev/task":            testTask.name,
-				"kubechain.humanlayer.dev/toolcallrequest": "test123",
+				"acp.humanlayer.dev/task":            testTask.name,
+				"acp.humanlayer.dev/toolcallrequest": "test123",
 			},
 		},
-		Spec: kubechain.TaskRunToolCallSpec{
-			TaskRef: kubechain.LocalObjectReference{
+		Spec: acp.TaskRunToolCallSpec{
+			TaskRef: acp.LocalObjectReference{
 				Name: testTask.name,
 			},
-			ToolRef: kubechain.LocalObjectReference{
+			ToolRef: acp.LocalObjectReference{
 				Name: "test-tool",
 			},
 			Arguments: `{"url": "https://api.example.com/data"}`,
@@ -228,7 +230,7 @@ func (t *TestTaskRunToolCall) Setup(ctx context.Context) *kubechain.TaskRunToolC
 	return taskRunToolCall
 }
 
-func (t *TestTaskRunToolCall) SetupWithStatus(ctx context.Context, status kubechain.TaskRunToolCallStatus) *kubechain.TaskRunToolCall {
+func (t *TestTaskRunToolCall) SetupWithStatus(ctx context.Context, status acp.TaskRunToolCallStatus) *acp.TaskRunToolCall {
 	taskRunToolCall := t.Setup(ctx)
 	taskRunToolCall.Status = status
 	Expect(k8sClient.Status().Update(ctx, taskRunToolCall)).To(Succeed())
@@ -246,13 +248,13 @@ var testTaskRunToolCall = &TestTaskRunToolCall{
 }
 
 // nolint:golint,unparam
-func setupSuiteObjects(ctx context.Context) (secret *corev1.Secret, llm *kubechain.LLM, agent *kubechain.Agent, teardown func()) {
+func setupSuiteObjects(ctx context.Context) (secret *corev1.Secret, llm *acp.LLM, agent *acp.Agent, teardown func()) {
 	secret = testSecret.Setup(ctx)
-	llm = testLLM.SetupWithStatus(ctx, kubechain.LLMStatus{
+	llm = testLLM.SetupWithStatus(ctx, acp.LLMStatus{
 		Status: "Ready",
 		Ready:  true,
 	})
-	agent = testAgent.SetupWithStatus(ctx, kubechain.AgentStatus{
+	agent = testAgent.SetupWithStatus(ctx, acp.AgentStatus{
 		Status: "Ready",
 		Ready:  true,
 	})

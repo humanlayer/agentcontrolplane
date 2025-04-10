@@ -14,7 +14,7 @@ spec:
     contextAboutChannelOrUser: "Channel for approving web fetch operations"
   email:
     address: "approver@example.com" # Replace with actual target email address
-    subject: "Approval Request from Kubechain"
+    subject: "Approval Request from acp"
     contextAboutUser: "Primary approver for web fetch operations"
 ---
 apiVersion: acp.humanlayer.dev/v1alpha1 

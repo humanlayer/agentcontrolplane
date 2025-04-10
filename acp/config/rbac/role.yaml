@@ -13,7 +13,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - agents
   - contactchannels
@@ -31,7 +31,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - agents/status
   - contactchannels/status
@@ -45,7 +45,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels/finalizers
   verbs:

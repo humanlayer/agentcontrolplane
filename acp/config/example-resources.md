@@ -12,13 +12,13 @@ kustomize build samples | kubectl apply -f -
 
 ## MCPServer Resource with Secret References
 
-[./samples/kubechain_acp_mcpserver_with_secrets.yaml](./samples/kubechain_acp_mcpserver_with_secrets.yaml)
+[./samples/acp_mcpserver_with_secrets.yaml](./samples/acp_mcpserver_with_secrets.yaml)
 
 **Resource:** `MCPServer`  
-**API Version:** `kubechain.humanlayer.dev/acp`  
+**API Version:** `acp.humanlayer.dev/v1alpha1`  
 **Kind:** `MCPServer`
 
-**Sample File:** `config/samples/kubechain_acp_mcpserver_with_secrets.yaml`
+**Sample File:** `config/samples/acp_mcpserver_with_secrets.yaml`
 
 **Key Fields:**
 
@@ -72,13 +72,13 @@ data:
 
 ## LLM
 
-[./samples/kubechain_acp_llm.yaml](./samples/kubechain_acp_llm.yaml)
+[./samples/acp_llm.yaml](./samples/acp_llm.yaml)
 
 **Resource:** `LLM`  
-**API Version:** `kubechain.humanlayer.dev/acp`  
+**API Version:** `acp.humanlayer.dev/v1alpha1`  
 **Kind:** `LLM`
 
-**Sample File:** `config/samples/kubechain_acp_llm.yaml`
+**Sample File:** `config/samples/acp_llm.yaml`
 
 **Key Fields:**
 
@@ -101,13 +101,13 @@ See the samples file for examples of all supported providers.
 
 ## Agent
 
-[./samples/kubechain_acp_agent.yaml](./samples/kubechain_acp_agent.yaml)
+[./samples/acp_agent.yaml](./samples/acp_agent.yaml)
 
 **Resource:** `Agent`  
-**API Version:** `kubechain.humanlayer.dev/acp`  
+**API Version:** `acp.humanlayer.dev/v1alpha1`  
 **Kind:** `Agent`
 
-**Sample File:** `config/samples/kubechain_acp_agent.yaml`
+**Sample File:** `config/samples/acp_agent.yaml`
 
 **Key Fields:**
 
@@ -122,13 +122,13 @@ See the samples file for examples of all supported providers.
 
 ## Tool
 
-[./samples/kubechain_acp_tool.yaml](./samples/kubechain_acp_tool.yaml)
+[./samples/acp_tool.yaml](./samples/acp_tool.yaml)
 
 **Resource:** `Tool`  
-**API Version:** `kubechain.humanlayer.dev/acp`  
+**API Version:** `acp.humanlayer.dev/v1alpha1`  
 **Kind:** `Tool`
 
-**Sample File:** `config/samples/kubechain_acp_tool.yaml`
+**Sample File:** `config/samples/acp_tool.yaml`
 
 **Key Fields:**
 
@@ -144,13 +144,13 @@ See the samples file for examples of all supported providers.
 
 ## Task
 
-[./samples/kubechain_acp_task.yaml](./samples/kubechain_acp_task.yaml)
+[./samples/acp_task.yaml](./samples/acp_task.yaml)
 
 **Resource:** `Task`  
-**API Version:** `kubechain.humanlayer.dev/acp`  
+**API Version:** `acp.humanlayer.dev/v1alpha1`  
 **Kind:** `Task`
 
-**Sample File:** `config/samples/kubechain_acp_task.yaml`
+**Sample File:** `config/samples/acp_task.yaml`
 
 **Key Fields:**
 
@@ -170,7 +170,7 @@ See the samples file for examples of all supported providers.
 - **CRDs & Controllers:** Before applying these sample files, ensure that the CRDs are installed (use `make manifests install`) and that the controllers are deployed (`make deploy`).
 
 
-- **Secret Permissions:** The Kubechain controller needs permission to read secrets in the namespaces where your resources are deployed. The default RBAC rules in `config/rbac/role.yaml` include these permissions.
+- **Secret Permissions:** The ACP controller needs permission to read secrets in the namespaces where your resources are deployed. The default RBAC rules in `config/rbac/role.yaml` include these permissions.
 
 These sample files now match our example application design, where:
 

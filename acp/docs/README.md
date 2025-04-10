@@ -1,8 +1,8 @@
-# Kubechain Documentation
+# Agent Control Plane Documentation
 
 ## Overview
 
-Kubechain is a Kubernetes operator for managing Large Language Model (LLM) workflows. It provides custom resources for:
+The Agent Control Plane is a Kubernetes operator for managing Large Language Model (LLM) workflows. It provides custom resources for:
 
 - LLM configurations
 - Agent definitions
@@ -26,12 +26,12 @@ See the [Example Resources](../config/example-resources.md) document for details
 
 For concrete examples, check the sample YAML files in the [`config/samples/`](../config/samples/) directory:
 
-- [`kubechain_acp_mcpserver.yaml`](../config/samples/kubechain_acp_mcpserver.yaml) - Basic MCP server
-- [`kubechain_acp_mcpserver_with_secrets.yaml`](../config/samples/kubechain_acp_mcpserver_with_secrets.yaml) - MCP server with secret references
-- [`kubechain_acp_llm.yaml`](../config/samples/kubechain_acp_llm.yaml) - LLM configuration
-- [`kubechain_acp_agent.yaml`](../config/samples/kubechain_acp_agent.yaml) - Agent definition
-- [`kubechain_acp_tool.yaml`](../config/samples/kubechain_acp_tool.yaml) - Tool definition
-- [`kubechain_acp_task.yaml`](../config/samples/kubechain_acp_task.yaml) - Task execution
+- [`acp_mcpserver.yaml`](../config/samples/acp_mcpserver.yaml) - Basic MCP server
+- [`acp_mcpserver_with_secrets.yaml`](../config/samples/acp_mcpserver_with_secrets.yaml) - MCP server with secret references
+- [`acp_llm.yaml`](../config/samples/acp_llm.yaml) - LLM configuration
+- [`acp_agent.yaml`](../config/samples/acp_agent.yaml) - Agent definition
+- [`acp_tool.yaml`](../config/samples/acp_tool.yaml) - Tool definition
+- [`acp_task.yaml`](../config/samples/acp_task.yaml) - Task execution
 
 ## Development
 

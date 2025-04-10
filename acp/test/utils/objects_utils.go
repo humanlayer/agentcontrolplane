@@ -7,6 +7,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -22,27 +24,27 @@ type TestScopedAgent struct {
 func (t *TestScopedAgent) Setup(k8sClient client.Client) {
 	t.client = k8sClient
 	// Create a test Agent
-	agent := &kubechain.Agent{
+	agent := &acp.Agent{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      t.Name,
 			Namespace: "default",
 		},
-		Spec: kubechain.AgentSpec{
-			LLMRef: kubechain.LocalObjectReference{
+		Spec: acp.AgentSpec{
+			LLMRef: acp.LocalObjectReference{
 				Name: t.LLM,
 			},
 			System: t.SystemPrompt,
-			Tools: func() []kubechain.LocalObjectReference {
-				refs := make([]kubechain.LocalObjectReference, len(t.Tools))
+			Tools: func() []acp.LocalObjectReference {
+				refs := make([]acp.LocalObjectReference, len(t.Tools))
 				for i, tool := range t.Tools {
-					refs[i] = kubechain.LocalObjectReference{Name: tool}
+					refs[i] = acp.LocalObjectReference{Name: tool}
 				}
 				return refs
 			}(),
-			HumanContactChannels: func() []kubechain.LocalObjectReference {
-				refs := make([]kubechain.LocalObjectReference, len(t.HumanContactChannels))
+			HumanContactChannels: func() []acp.LocalObjectReference {
+				refs := make([]acp.LocalObjectReference, len(t.HumanContactChannels))
 				for i, channel := range t.HumanContactChannels {
-					refs[i] = kubechain.LocalObjectReference{Name: channel}
+					refs[i] = acp.LocalObjectReference{Name: channel}
 				}
 				return refs
 			}(),
@@ -54,20 +56,20 @@ func (t *TestScopedAgent) Setup(k8sClient client.Client) {
 	agent.Status.Ready = true
 	agent.Status.Status = "Ready"
 	agent.Status.StatusDetail = "Ready for testing"
-	agent.Status.ValidTools = func() []kubechain.ResolvedTool {
-		tools := make([]kubechain.ResolvedTool, len(t.Tools))
+	agent.Status.ValidTools = func() []acp.ResolvedTool {
+		tools := make([]acp.ResolvedTool, len(t.Tools))
 		for i, tool := range t.Tools {
-			tools[i] = kubechain.ResolvedTool{
+			tools[i] = acp.ResolvedTool{
 				Kind: "Tool",
 				Name: tool,
 			}
 		}
 		return tools
 	}()
-	agent.Status.ValidHumanContactChannels = func() []kubechain.ResolvedContactChannel {
-		channels := make([]kubechain.ResolvedContactChannel, len(t.HumanContactChannels))
+	agent.Status.ValidHumanContactChannels = func() []acp.ResolvedContactChannel {
+		channels := make([]acp.ResolvedContactChannel, len(t.HumanContactChannels))
 		for i, channel := range t.HumanContactChannels {
-			channels[i] = kubechain.ResolvedContactChannel{
+			channels[i] = acp.ResolvedContactChannel{
 				Name: channel,
 				Type: "email", // Default type for testing
 			}
@@ -78,7 +80,7 @@ func (t *TestScopedAgent) Setup(k8sClient client.Client) {
 }
 
 func (t *TestScopedAgent) Teardown() {
-	agent := &kubechain.Agent{}
+	agent := &acp.Agent{}
 	err := t.client.Get(context.Background(), types.NamespacedName{Name: t.Name, Namespace: "default"}, agent)
 	if err == nil {
 		Expect(t.client.Delete(context.Background(), agent)).To(Succeed())

@@ -35,8 +35,8 @@ type MCPServerManagerInterface interface {
 	Close()
 }
 
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=mcpservers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=mcpservers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=mcpservers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=mcpservers/status,verbs=get;update;patch
 
 // MCPServerReconciler reconciles a MCPServer object
 type MCPServerReconciler struct {

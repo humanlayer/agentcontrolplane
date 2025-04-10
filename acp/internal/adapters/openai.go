@@ -4,8 +4,8 @@ import (
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 )
 
-// CastOpenAIToolCallsToKubechain converts OpenAI tool calls to TaskRun tool calls
-func CastOpenAIToolCallsToKubechain(openaiToolCalls []acp.ToolCall) []acp.ToolCall {
+// CastOpenAIToolCallsToACP converts OpenAI tool calls to TaskRun tool calls
+func CastOpenAIToolCallsToACP(openaiToolCalls []acp.ToolCall) []acp.ToolCall {
 	toolCalls := make([]acp.ToolCall, 0, len(openaiToolCalls))
 	for _, tc := range openaiToolCalls {
 		toolCall := acp.ToolCall{

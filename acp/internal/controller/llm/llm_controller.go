@@ -38,8 +38,8 @@ import (
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 )
 
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=llms,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=llms/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=llms,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=llms/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // LLMReconciler reconciles a LLM object

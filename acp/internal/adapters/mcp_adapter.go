@@ -8,7 +8,7 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
 )
 
-// ConvertMCPToolsToLLMClientTools converts KubeChain MCPTool objects to LLM client tool format
+// ConvertMCPToolsToLLMClientTools converts ACP MCPTool objects to LLM client tool format
 func ConvertMCPToolsToLLMClientTools(mcpTools []acp.MCPTool, serverName string) []llmclient.Tool {
 	clientTools := make([]llmclient.Tool, 0, len(mcpTools))
 
@@ -41,9 +41,9 @@ func ConvertMCPToolsToLLMClientTools(mcpTools []acp.MCPTool, serverName string) 
 
 		// Create the tool with the function definition
 		clientTools = append(clientTools, llmclient.Tool{
-			Type:              "function",
-			Function:          toolFunction,
-			KubechainToolType: acp.ToolTypeMCP,
+			Type:        "function",
+			Function:    toolFunction,
+			ACPToolType: acp.ToolTypeMCP,
 		})
 	}
 

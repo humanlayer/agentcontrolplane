@@ -1,6 +1,6 @@
 # Custom Resource Definition (CRD) Reference
 
-This document provides reference information for the Custom Resource Definitions (CRDs) used in Kubechain.
+This document provides reference information for the Custom Resource Definitions (CRDs) used in the Agent Control Plane.
 
 ## MCPServer
 

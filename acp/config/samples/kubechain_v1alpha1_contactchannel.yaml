@@ -2,7 +2,7 @@ apiVersion: acp.humanlayer.dev/v1alpha1
 kind: ContactChannel
 metadata:
   labels:
-    app.kubernetes.io/name: kubechain
+    app.kubernetes.io/name: acp
     app.kubernetes.io/managed-by: kustomize
   name: slack-channel-sample
 spec:
@@ -19,7 +19,7 @@ apiVersion: acp.humanlayer.dev/v1alpha1
 kind: ContactChannel
 metadata:
   labels:
-    app.kubernetes.io/name: kubechain
+    app.kubernetes.io/name: acp
     app.kubernetes.io/managed-by: kustomize
   name: email-channel-sample
 spec:

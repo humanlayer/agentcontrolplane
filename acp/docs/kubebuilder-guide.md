@@ -2,11 +2,11 @@
 
 ## Overview
 
-Kubechain is built using [Kubebuilder](https://book.kubebuilder.io/), a framework for building Kubernetes APIs using custom resource definitions (CRDs). This guide explains how to use kubebuilder in this project, particularly for adding new resources and maintaining existing ones.
+ACP is built using [Kubebuilder](https://book.kubebuilder.io/), a framework for building Kubernetes APIs using custom resource definitions (CRDs). This guide explains how to use kubebuilder in this project, particularly for adding new resources and maintaining existing ones.
 
 ## Current Project Structure
 
-The project uses Kubebuilder v4 with a domain of `humanlayer.dev` and an API group of `kubechain`. All resources are in the `acp` version and are namespaced.
+The project uses Kubebuilder v4 with a domain of `humanlayer.dev` and an API group of `acp`. All resources are in the `acp` version and are namespaced.
 
 Current resources include:
 - `LLM` - Configuration for large language models
@@ -23,7 +23,7 @@ To add a new resource to the project, follow these steps:
 1. Create the new resource using kubebuilder:
 
 ```bash
-kubebuilder create api --group kubechain --version acp --kind YourNewResource --namespaced true --resource true --controller true
+kubebuilder create api --group acp --version v1alpha1 --kind YourNewResource --namespaced true --resource true --controller true
 ```
 
 This will:
@@ -36,14 +36,14 @@ This will:
 3. Add RBAC annotations to the controller in `internal/controller/yournewresource/yournewresource_controller.go`:
 
 ```go
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=yournewresources,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=yournewresources/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=yournewresources,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=yournewresources/status,verbs=get;update;patch
 ```
 
 Add additional RBAC annotations for any other resources your controller needs to access:
 
 ```go
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=someotherresource,verbs=get;list;watch
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=someotherresource,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 ```
 
@@ -65,7 +65,7 @@ make manifests
 Here's an example of creating a ContactChannel resource:
 
 ```bash
-kubebuilder create api --group kubechain --version acp --kind ContactChannel --namespaced true --resource true --controller true
+kubebuilder create api --group acp --version v1alpha1 --kind ContactChannel --namespaced true --resource true --controller true
 ```
 
 Then, edit the generated `api/acp/contactchannel_types.go` file:
@@ -102,8 +102,8 @@ type ContactChannelStatus struct {
 Edit the controller to add RBAC annotations:
 
 ```go
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=contactchannels,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubechain.humanlayer.dev,resources=contactchannels/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=contactchannels,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=contactchannels/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // ContactChannelReconciler reconciles a ContactChannel object

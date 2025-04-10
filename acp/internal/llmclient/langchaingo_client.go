@@ -108,11 +108,11 @@ func (c *LangchainClient) SendRequest(ctx context.Context, messages []acp.Messag
 			"choiceCount", len(response.Choices))
 	}
 
-	// Convert response back to Kubechain format
+	// Convert response back to ACP format
 	return convertFromLangchainResponse(response), nil
 }
 
-// convertToLangchainMessages converts Kubechain messages to langchaingo format
+// convertToLangchainMessages converts ACP messages to langchaingo format
 func convertToLangchainMessages(messages []acp.Message) []llms.MessageContent {
 	langchainMessages := make([]llms.MessageContent, 0, len(messages))
 
@@ -182,7 +182,7 @@ func convertToLangchainMessages(messages []acp.Message) []llms.MessageContent {
 	return langchainMessages
 }
 
-// convertToLangchainTools converts Kubechain tools to langchaingo format
+// convertToLangchainTools converts ACP tools to langchaingo format
 func convertToLangchainTools(tools []Tool) []llms.Tool {
 	langchainTools := make([]llms.Tool, 0, len(tools))
 
@@ -200,7 +200,7 @@ func convertToLangchainTools(tools []Tool) []llms.Tool {
 	return langchainTools
 }
 
-// convertFromLangchainResponse converts a langchaingo response to Kubechain format.
+// convertFromLangchainResponse converts a langchaingo response to ACP format.
 // It handles different response structures from various LLM providers by
 // collecting all tool calls from all choices.
 func convertFromLangchainResponse(response *llms.ContentResponse) *acp.Message {
@@ -287,8 +287,8 @@ func truncateString(s string, maxLength int) string {
 	return s[:maxLength] + "..."
 }
 
-// FromKubechainTool converts a Kubechain Tool to the LLM client Tool format
-func FromKubechainTool(tool acp.Tool) *Tool {
+// FromACPTool converts an ACP Tool to the LLM client Tool format
+func FromACPTool(tool acp.Tool) *Tool {
 	// Create a new Tool with function type
 	clientTool := &Tool{
 		Type: "function",

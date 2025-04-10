@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
 	. "github.com/humanlayer/agentcontrolplane/acp/test/utils"
 )
@@ -39,7 +40,7 @@ var _ = Describe("Task Controller", func() {
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
 			By("checking the task status")
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseInitializing))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseInitializing))
 			Expect(task.Status.SpanContext).NotTo(BeNil())
 			Expect(task.Status.SpanContext.TraceID).NotTo(BeEmpty())
 			Expect(task.Status.SpanContext.SpanID).NotTo(BeEmpty())
@@ -47,8 +48,8 @@ var _ = Describe("Task Controller", func() {
 	})
 	Context("Initializing -> Error", func() {
 		It("moves to error if the agent is not found", func() {
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseInitializing,
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseInitializing,
 			})
 			defer testTask.Teardown(ctx)
 
@@ -63,15 +64,15 @@ var _ = Describe("Task Controller", func() {
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhasePending))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhasePending))
 			Expect(task.Status.StatusDetail).To(ContainSubstring("Waiting for Agent to exist"))
 			ExpectRecorder(recorder).ToEmitEventContaining("Waiting")
 		})
 	})
 	Context("Initializing -> Pending", func() {
 		It("moves to pending if upstream agent does not exist", func() {
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseInitializing,
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseInitializing,
 			})
 			defer testTask.Teardown(ctx)
 
@@ -86,18 +87,18 @@ var _ = Describe("Task Controller", func() {
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhasePending))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhasePending))
 			Expect(task.Status.StatusDetail).To(ContainSubstring("Waiting for Agent to exist"))
 			ExpectRecorder(recorder).ToEmitEventContaining("Waiting")
 		})
 		It("moves to pending if upstream agent is not ready", func() {
-			_ = testAgent.SetupWithStatus(ctx, kubechain.AgentStatus{
+			_ = testAgent.SetupWithStatus(ctx, acp.AgentStatus{
 				Ready: false,
 			})
 			defer testAgent.Teardown(ctx)
 
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseInitializing,
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseInitializing,
 			})
 			defer testTask.Teardown(ctx)
 
@@ -112,14 +113,14 @@ var _ = Describe("Task Controller", func() {
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhasePending))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhasePending))
 			Expect(task.Status.StatusDetail).To(ContainSubstring("Waiting for agent \"test-agent\" to become ready"))
 			ExpectRecorder(recorder).ToEmitEventContaining("Waiting for agent")
 		})
 	})
 	Context("Initializing -> ReadyForLLM", func() {
 		It("moves to ReadyForLLM if there is a userMessage + agentRef", func() {
-			testAgent.SetupWithStatus(ctx, kubechain.AgentStatus{
+			testAgent.SetupWithStatus(ctx, acp.AgentStatus{
 				Status: "Ready",
 				Ready:  true,
 			})
@@ -130,8 +131,8 @@ var _ = Describe("Task Controller", func() {
 				agentName:   testAgent.name,
 				userMessage: "test-user-message",
 			}
-			task := testTask2.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseInitializing,
+			task := testTask2.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseInitializing,
 			})
 			defer testTask2.Teardown(ctx)
 
@@ -147,7 +148,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("ensuring the context window is set correctly")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask2.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseReadyForLLM))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM))
 			Expect(task.Status.ContextWindow).To(HaveLen(2))
 			Expect(task.Status.ContextWindow[0].Role).To(Equal("system"))
 			Expect(task.Status.ContextWindow[0].Content).To(ContainSubstring(testAgent.system))
@@ -158,14 +159,14 @@ var _ = Describe("Task Controller", func() {
 	})
 	Context("Pending -> ReadyForLLM", func() {
 		It("moves to ReadyForLLM if upstream dependencies are ready", func() {
-			testAgent.SetupWithStatus(ctx, kubechain.AgentStatus{
+			testAgent.SetupWithStatus(ctx, acp.AgentStatus{
 				Status: "Ready",
 				Ready:  true,
 			})
 			defer testAgent.Teardown(ctx)
 
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhasePending,
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhasePending,
 			})
 			defer testTask.Teardown(ctx)
 
@@ -180,7 +181,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("ensuring the context window is set correctly")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseReadyForLLM))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM))
 			Expect(task.Status.StatusDetail).To(ContainSubstring("Ready to send to LLM"))
 			Expect(task.Status.ContextWindow).To(HaveLen(2))
 			Expect(task.Status.ContextWindow[0].Role).To(Equal("system"))
@@ -195,9 +196,9 @@ var _ = Describe("Task Controller", func() {
 			_, _, _, teardown := setupSuiteObjects(ctx)
 			defer teardown()
 
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseReadyForLLM,
-				ContextWindow: []kubechain.Message{
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseReadyForLLM,
+				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
 						Content: testAgent.system,
@@ -213,12 +214,12 @@ var _ = Describe("Task Controller", func() {
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
 			mockLLMClient := &llmclient.MockLLMClient{
-				Response: &kubechain.Message{
+				Response: &acp.Message{
 					Role:    "assistant",
 					Content: "The moon is a natural satellite of the Earth and lacks any formal government or capital.",
 				},
 			}
-			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
 
@@ -230,7 +231,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("ensuring the task status is updated with the llm final answer")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseFinalAnswer))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFinalAnswer))
 			Expect(task.Status.StatusDetail).To(ContainSubstring("LLM final response received"))
 			Expect(task.Status.Output).To(Equal("The moon is a natural satellite of the Earth and lacks any formal government or capital."))
 			Expect(task.Status.ContextWindow).To(HaveLen(3))
@@ -252,9 +253,9 @@ var _ = Describe("Task Controller", func() {
 			_, _, _, teardown := setupSuiteObjects(ctx)
 			defer teardown()
 
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseReadyForLLM,
-				ContextWindow: []kubechain.Message{
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseReadyForLLM,
+				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
 						Content: testAgent.system,
@@ -272,7 +273,7 @@ var _ = Describe("Task Controller", func() {
 			mockLLMClient := &llmclient.MockLLMClient{
 				Error: fmt.Errorf("connection timeout"),
 			}
-			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
 
@@ -283,9 +284,9 @@ var _ = Describe("Task Controller", func() {
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Status).To(Equal(kubechain.TaskStatusTypeError))
+			Expect(task.Status.Status).To(Equal(acp.TaskStatusTypeError))
 			// Phase shouldn't be Failed for general errors
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseReadyForLLM))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM))
 			Expect(task.Status.Error).To(Equal("connection timeout"))
 			ExpectRecorder(recorder).ToEmitEventContaining("LLMRequestFailed")
 		})
@@ -294,9 +295,9 @@ var _ = Describe("Task Controller", func() {
 			_, _, _, teardown := setupSuiteObjects(ctx)
 			defer teardown()
 
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseReadyForLLM,
-				ContextWindow: []kubechain.Message{
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseReadyForLLM,
+				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
 						Content: testAgent.system,
@@ -318,7 +319,7 @@ var _ = Describe("Task Controller", func() {
 					Err:        fmt.Errorf("LLM API request failed"),
 				},
 			}
-			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
 
@@ -329,9 +330,9 @@ var _ = Describe("Task Controller", func() {
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Status).To(Equal(kubechain.TaskStatusTypeError))
+			Expect(task.Status.Status).To(Equal(acp.TaskStatusTypeError))
 			// Phase should be Failed for 4xx errors
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseFailed))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFailed))
 			Expect(task.Status.Error).To(ContainSubstring("LLM request failed with status 400"))
 			ExpectRecorder(recorder).ToEmitEventContaining("LLMRequestFailed4xx")
 		})
@@ -350,25 +351,25 @@ var _ = Describe("Task Controller", func() {
 			_, _, _, teardown := setupSuiteObjects(ctx)
 			defer teardown()
 
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseReadyForLLM,
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseReadyForLLM,
 			})
 			defer testTask.Teardown(ctx)
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
 			mockLLMClient := &llmclient.MockLLMClient{
-				Response: &kubechain.Message{
+				Response: &acp.Message{
 					Role: "assistant",
-					ToolCalls: []kubechain.ToolCall{
+					ToolCalls: []acp.ToolCall{
 						{
 							ID:       "1",
-							Function: kubechain.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url": "https://api.example.com/data"}`},
+							Function: acp.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url": "https://api.example.com/data"}`},
 						},
 					},
 				},
 			}
-			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
 
@@ -380,12 +381,12 @@ var _ = Describe("Task Controller", func() {
 
 			By("ensuring the task status is updated with the tool calls pending")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseToolCallsPending))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseToolCallsPending))
 			Expect(task.Status.StatusDetail).To(ContainSubstring("LLM response received, tool calls pending"))
 			ExpectRecorder(recorder).ToEmitEventContaining("SendingContextWindowToLLM", "ToolCallsPending")
 
 			By("ensuring the tool call was created")
-			toolCalls := &kubechain.TaskRunToolCallList{}
+			toolCalls := &acp.TaskRunToolCallList{}
 			Expect(k8sClient.List(ctx, toolCalls, client.InNamespace("default"))).To(Succeed())
 			Expect(toolCalls.Items).To(HaveLen(1))
 			Expect(toolCalls.Items[0].Spec.ToolRef.Name).To(Equal("fetch__fetch"))
@@ -405,14 +406,14 @@ var _ = Describe("Task Controller", func() {
 			_, _, _, teardown := setupSuiteObjects(ctx)
 			defer teardown()
 
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase:             kubechain.TaskPhaseToolCallsPending,
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase:             acp.TaskPhaseToolCallsPending,
 				ToolCallRequestID: "test123",
 			})
 			defer testTask.Teardown(ctx)
 
-			testTaskRunToolCall.SetupWithStatus(ctx, kubechain.TaskRunToolCallStatus{
-				Phase: kubechain.TaskRunToolCallPhasePending,
+			testTaskRunToolCall.SetupWithStatus(ctx, acp.TaskRunToolCallStatus{
+				Phase: acp.TaskRunToolCallPhasePending,
 			})
 			defer testTaskRunToolCall.Teardown(ctx)
 
@@ -427,7 +428,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseToolCallsPending))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseToolCallsPending))
 		})
 	})
 	Context("ToolCallsPending -> ReadyForLLM", func() {
@@ -436,10 +437,10 @@ var _ = Describe("Task Controller", func() {
 			defer teardown()
 
 			By("setting up the task with a tool call pending")
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase:             kubechain.TaskPhaseToolCallsPending,
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase:             acp.TaskPhaseToolCallsPending,
 				ToolCallRequestID: "test123",
-				ContextWindow: []kubechain.Message{
+				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
 						Content: testAgent.system,
@@ -450,10 +451,10 @@ var _ = Describe("Task Controller", func() {
 					},
 					{
 						Role: "assistant",
-						ToolCalls: []kubechain.ToolCall{
+						ToolCalls: []acp.ToolCall{
 							{
 								ID: "1",
-								Function: kubechain.ToolCallFunction{
+								Function: acp.ToolCallFunction{
 									Name:      "fetch__fetch",
 									Arguments: `{"url": "https://api.example.com/data"}`,
 								},
@@ -464,8 +465,8 @@ var _ = Describe("Task Controller", func() {
 			})
 			defer testTask.Teardown(ctx)
 
-			testTaskRunToolCall.SetupWithStatus(ctx, kubechain.TaskRunToolCallStatus{
-				Phase:  kubechain.TaskRunToolCallPhaseSucceeded,
+			testTaskRunToolCall.SetupWithStatus(ctx, acp.TaskRunToolCallStatus{
+				Phase:  acp.TaskRunToolCallPhaseSucceeded,
 				Result: `{"data": "test-data"}`,
 			})
 			defer testTaskRunToolCall.Teardown(ctx)
@@ -481,7 +482,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseReadyForLLM))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM))
 			Expect(task.Status.StatusDetail).To(ContainSubstring("All tool calls completed, ready to send tool results to LLM"))
 			ExpectRecorder(recorder).ToEmitEventContaining("AllToolCallsCompleted")
 
@@ -515,9 +516,9 @@ var _ = Describe("Task Controller", func() {
 			testTaskName := fmt.Sprintf("multi-message-%s", uniqueSuffix)
 
 			By("setting up the task with an existing conversation history")
-			task := testTask.SetupWithStatus(ctx, kubechain.TaskStatus{
-				Phase: kubechain.TaskPhaseReadyForLLM,
-				ContextWindow: []kubechain.Message{
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseReadyForLLM,
+				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
 						Content: "you are a testing assistant",
@@ -540,11 +541,11 @@ var _ = Describe("Task Controller", func() {
 
 			By("creating a mock LLM client that validates context window messages are passed correctly")
 			mockClient := &llmclient.MockLLMClient{
-				Response: &kubechain.Message{
+				Response: &acp.Message{
 					Role:    "assistant",
 					Content: "4 + 4 = 8",
 				},
-				ValidateContextWindow: func(contextWindow []kubechain.Message) error {
+				ValidateContextWindow: func(contextWindow []acp.Message) error {
 					Expect(contextWindow).To(HaveLen(4), "All 4 messages should be sent to the LLM")
 
 					// Verify all messages are present in the correct order
@@ -566,7 +567,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task")
 			reconciler, _ := reconciler()
-			reconciler.newLLMClient = func(ctx context.Context, llm kubechain.LLM, apiKey string) (llmclient.LLMClient, error) {
+			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockClient, nil
 			}
 
@@ -580,7 +581,7 @@ var _ = Describe("Task Controller", func() {
 
 			By("checking that the task moved to FinalAnswer phase")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTaskName, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(kubechain.TaskPhaseFinalAnswer))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFinalAnswer))
 
 			By("checking that the new assistant response was appended to the context window")
 			Expect(task.Status.ContextWindow).To(HaveLen(5))

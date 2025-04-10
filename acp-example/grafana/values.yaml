@@ -54,7 +54,7 @@ dashboardProviders:
 
 dashboards:
   default:
-    kubechain-traces:
+    acp-traces:
       json: |
         {
           "annotations": {
@@ -282,12 +282,12 @@ dashboards:
                     "uid": "tempo"
                   },
                   "limit": 20,
-                  "query": "{resource.service.name=\"kubechain-controller\"}",
+                  "query": "{resource.service.name=\"acp-controller\"}",
                   "queryType": "traceql",
                   "tableType": "traces"
                 }
               ],
-              "title": "Recent Kubechain Controller Traces",
+              "title": "Recent acp Controller Traces",
               "type": "table"
             },
             {
@@ -314,7 +314,7 @@ dashboards:
                       "operator": "=",
                       "scope": "resource",
                       "tag": "service.name",
-                      "value": "kubechain-controller"
+                      "value": "acp-controller"
                     }
                   ]
                 },
@@ -327,7 +327,7 @@ dashboards:
           "refresh": "5s",
           "schemaVersion": 38,
           "style": "dark",
-          "tags": ["kubechain"],
+          "tags": ["acp"],
           "templating": {
             "list": []
           },
@@ -337,8 +337,8 @@ dashboards:
           },
           "timepicker": {},
           "timezone": "",
-          "title": "Kubechain Traces",
-          "uid": "kubechain-traces",
+          "title": "acp Traces",
+          "uid": "acp-traces",
           "version": 1,
           "weekStart": ""
         }

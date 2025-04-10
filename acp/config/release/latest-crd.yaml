@@ -3,9 +3,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: agents.kubechain.humanlayer.dev
+  name: agents.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: Agent
     listKind: AgentList
@@ -160,9 +160,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: contactchannels.kubechain.humanlayer.dev
+  name: contactchannels.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: ContactChannel
     listKind: ContactChannelList
@@ -310,9 +310,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: llms.kubechain.humanlayer.dev
+  name: llms.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: LLM
     listKind: LLMList
@@ -530,9 +530,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: mcpservers.kubechain.humanlayer.dev
+  name: mcpservers.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: MCPServer
     listKind: MCPServerList
@@ -716,9 +716,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: taskruntoolcalls.kubechain.humanlayer.dev
+  name: taskruntoolcalls.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: TaskRunToolCall
     listKind: TaskRunToolCallList
@@ -879,9 +879,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: tasks.kubechain.humanlayer.dev
+  name: tasks.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: Task
     listKind: TaskList
@@ -1108,9 +1108,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: tools.kubechain.humanlayer.dev
+  name: tools.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: Tool
     listKind: ToolList

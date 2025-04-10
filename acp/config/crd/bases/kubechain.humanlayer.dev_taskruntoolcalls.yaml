@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: taskruntoolcalls.kubechain.humanlayer.dev
+  name: taskruntoolcalls.acp.humanlayer.dev
 spec:
-  group: kubechain.humanlayer.dev
+  group: acp.humanlayer.dev
   names:
     kind: TaskRunToolCall
     listKind: TaskRunToolCallList

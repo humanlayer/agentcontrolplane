@@ -2,11 +2,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-- kubechain_acp_llm.yaml
-- kubechain_acp_agent.yaml
-- kubechain_acp_task.yaml
-- kubechain_acp_mcpserver.yaml
-- kubechain_acp_contactchannel.yaml
-- kubechain_acp_claude_agent.yaml
-- kubechain_acp_claude_task.yaml
+- acp_acp_llm.yaml
+- acp_acp_agent.yaml
+- acp_acp_task.yaml
+- acp_acp_mcpserver.yaml
+- acp_acp_contactchannel.yaml
+- acp_acp_claude_agent.yaml
+- acp_acp_claude_task.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

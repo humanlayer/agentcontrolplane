@@ -1,10 +1,10 @@
 # LLM Providers Guide
 
-This document provides detailed information about configuring different LLM providers in Kubechain.
+This document provides detailed information about configuring different LLM providers in the Agent Control Plane.
 
 ## Supported Providers
 
-Kubechain supports the following LLM providers:
+ACP supports the following LLM providers:
 
 - OpenAI
 - Anthropic

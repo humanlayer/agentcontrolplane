@@ -33,9 +33,9 @@ func (e *LLMRequestError) Unwrap() error {
 type Tool struct {
 	Type     string       `json:"type"`
 	Function ToolFunction `json:"function"`
-	// KubechainToolType represents the Kubechain-specific type of tool (MCP, HumanContact)
+	// ACPToolType represents the ACP-specific type of tool (MCP, HumanContact)
 	// This field is not sent to the LLM API but is used internally for tool identification
-	KubechainToolType acp.ToolType `json:"-"`
+	ACPToolType acp.ToolType `json:"-"`
 }
 
 // ToolFunction contains the function details
@@ -94,6 +94,6 @@ func ToolFromContactChannel(channel acp.ContactChannel) *Tool {
 			Description: description,
 			Parameters:  params,
 		},
-		KubechainToolType: acp.ToolTypeHumanContact, // Set as HumanContact type
+		ACPToolType: acp.ToolTypeHumanContact, // Set as HumanContact type
 	}
 }

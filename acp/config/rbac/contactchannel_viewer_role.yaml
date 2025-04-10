@@ -1,7 +1,7 @@
-# This rule is not used by the project kubechain itself.
+# This rule is not used by the project acp itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants read-only access to kubechain.humanlayer.dev resources.
+# Grants read-only access to acp.humanlayer.dev resources.
 # This role is intended for users who need visibility into these resources
 # without permissions to modify them. It is ideal for monitoring purposes and limited-access viewing.
 
@@ -9,12 +9,12 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/name: kubechain
+    app.kubernetes.io/name: acp
     app.kubernetes.io/managed-by: kustomize
   name: contactchannel-viewer-role
 rules:
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels
   verbs:
@@ -22,7 +22,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubechain.humanlayer.dev
+  - acp.humanlayer.dev
   resources:
   - contactchannels/status
   verbs:
