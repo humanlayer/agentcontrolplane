@@ -28,7 +28,7 @@ spec:
       name: Detail
       priority: 1
       type: string
-    name: acp
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: LLM is the Schema for the llms API

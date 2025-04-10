@@ -14,10 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package acp contains API Schema definitions for the acp API group
+// Package v1alpha1 contains API Schema definitions for the acp API group
 // +kubebuilder:object:generate=true
 // +groupName=acp.humanlayer.dev
-package acp
+package v1alpha1
 
 import (
 	"k8s.io/apimachinery/pkg/runtime/schema"

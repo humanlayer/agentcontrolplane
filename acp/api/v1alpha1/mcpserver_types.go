@@ -1,4 +1,4 @@
-package acp
+package v1alpha1
 
 import (
 	"k8s.io/apimachinery/pkg/api/resource"
