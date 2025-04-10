@@ -6,17 +6,17 @@
 
 ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on Kubernetes. It supports [long-lived outer-loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards) that can process asynchronous execution of both LLM inference and long-running tool calls. It's designed for simplicity and gives strong durability and reliability guarantees for agents that make asynchronous tool calls like contacting humans or delegating work to other agents.
 
-:warning: **Note** - ACP is experimental and some known issues and race conditions. Use at your own risk.
+:warning: **Note** - ACP is in alpha. Use at your own risk.
 
 <div align="center">
 
 <h3>
 
-[Discord](https://discord.gg/AK6bWGFY7d) | [Documentation](./docs) | [Examples](./acp-example) <!-- Updated Links -->
+[Discord](https://discord.gg/AK6bWGFY7d) | [Documentation](./docs) | [Examples](./acp-example) 
 
 </h3>
 
-[![GitHub Repo stars](https://img.shields.io/github/stars/humanlayer/agentcontrolplane)](https://github.com/humanlayer/agentcontrolplane) <!-- Updated Badge Link -->
+[![GitHub Repo stars](https://img.shields.io/github/stars/humanlayer/agentcontrolplane)](https://github.com/humanlayer/agentcontrolplane) 
 [![License: Apache-2](https://img.shields.io/badge/License-Apache-green.svg)](https://opensource.org/licenses/Apache-2)
 
 </div>
@@ -29,11 +29,11 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Setting Up a Local Cluster](#setting-up-a-local-cluster)
-  - [Deploying ACP](#deploying-acp) <!-- Updated Heading -->
+  - [Deploying ACP](#deploying-acp) 
   - [Creating an Agent and Running your first task](#creating-an-agent-and-running-your-first-task)
   - [Adding Tools with MCP](#adding-tools-with-mcp)
   - [Using other language models](#using-other-language-models)
-  - [Incorporating Human Approval](#incorporating-human-approval) <!-- Added missing TOC entry -->
+  - [Incorporating Human Approval](#incorporating-human-approval)
   - [Cleaning Up](#cleaning-up)
 - [Design Principles](#design-principles)
 - [Contributing](#contributing)
@@ -42,24 +42,26 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
 
 ## Architecture
 
+<img width="1918" alt="Screenshot 2025-04-10 at 9 00 58 AM" src="https://github.com/user-attachments/assets/854a2496-0e6c-438f-aee5-6805263fface" />
+
 ### Core Objects
 
 - **LLM**: Provider + API Keys + Parameters
 - **Agent**: LLM + System Prompt + Tools
 - **Tools**: MCP Servers, Humans, Other Agents
 - **Task**: Agent + User Message + Current context window
-- **TaskRunToolCall**: A single tool call that occurred during a Task
+- **ToolCall**: A single tool call that occurred during a Task
 
 ## Getting Started
 
 ### Prerequisites
 
-To run ACP, you'll need: <!-- Updated Name -->
+To run ACP, you'll need: 
 
 - **kubectl** - Command-line tool for Kubernetes `brew install kubectl`
 - **OpenAI API Key** - For LLM functionality https://platform.openai.com
 
-To run ACP locally on macos, you'll also need: <!-- Updated Name -->
+To run ACP locally on macos, you'll also need: 
 
 - **kind** - For running local Kubernetes clusters `brew install kind` (other cluster options should work too)
 - **Docker** - For building and running container images `brew install --cask docker`
@@ -80,7 +82,7 @@ kubectl create secret generic openai \
   --namespace=default
 ```
 
-### Deploying ACP <!-- Updated Heading -->
+### Deploying ACP 
 
 
 > [!TIP]
@@ -92,17 +94,17 @@ kubectl create secret generic openai \
 > kubectl get events --watch
 > ```
 
-Deploy the ACP operator to your cluster: <!-- Updated Name -->
+Deploy the ACP operator to your cluster:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest.yaml # Updated Path
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest.yaml
 ```
 
 <details>
 <summary>Just the CRDs</summary>
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest-crd.yaml # Updated Path (assuming -crd suffix)
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest-crd.yaml
 ```
 
 </details>
@@ -111,7 +113,7 @@ kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/
 <summary>Install a specific version</summary>
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/v0.1.0.yaml # Updated Path
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/v0.1.0.yaml
 ```
 
 </details>
@@ -180,7 +182,7 @@ gpt-4o   openai     true    Ready    OpenAI API key validated successfully
 ```
 
 ```bash
-kubectl describe llm gpt-4o # Added resource name for clarity
+kubectl describe llm gpt-4o
 ```
 
 Output:
@@ -890,7 +892,12 @@ spec:
 EOF
 ```
 
-After a few seconds, running `kubectl get task claude-task` should show our task has completed.
+After a few seconds, running 
+```
+kubectl get task claude-task
+```
+
+should show our task has completed:
 
 ```
 NAME          READY   STATUS   PHASE         PREVIEW   OUTPUT
