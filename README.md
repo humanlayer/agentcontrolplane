@@ -97,14 +97,14 @@ kubectl create secret generic openai \
 Deploy the ACP operator to your cluster:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest.yaml
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/acp/config/release/latest.yaml
 ```
 
 <details>
 <summary>Just the CRDs</summary>
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest-crd.yaml
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/acp/config/release/latest-crd.yaml
 ```
 
 </details>
@@ -113,7 +113,7 @@ kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/
 <summary>Install a specific version</summary>
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/v0.1.0.yaml
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/acp/config/release/v0.1.0.yaml
 ```
 
 </details>
