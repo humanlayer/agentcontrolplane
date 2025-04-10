@@ -205,7 +205,7 @@ Spec:
       Key:   OPENAI_API_KEY
       Name:  openai
   Provider:  openai
-  Parameters: # Added missing parameters section for consistency with YAML
+  Parameters: 
     Model: gpt-4o
 Status:
   Ready:          true
@@ -283,7 +283,7 @@ my-assistant   true    Ready    All dependencies validated successfully
 ```
 
 ```bash
-kubectl describe agent my-assistant # Added resource name for clarity
+kubectl describe agent my-assistant 
 ```
 
 Output:
@@ -378,7 +378,7 @@ hello-world-1   true    Ready    FinalAnswer   What is the capital of the moon? 
 You can describe the task to see the full context window
 
 ```bash
-kubectl describe task hello-world-1 # Added resource name
+kubectl describe task hello-world-1
 ```
 
 Output:
@@ -407,7 +407,7 @@ Events:
 
 ```
 
-</details> <!-- Closing the describe details -->
+</details>
 
 The Task object stores and manages the context window of a agent conversation loop.
 
@@ -448,7 +448,7 @@ graph RL
 To get just the output, run
 
 ```
-kubectl get task hello-world-1 -o jsonpath='{.status.output}' # Added resource name
+kubectl get task -o jsonpath='{.status.output}' 
 ```
 
 and you'll see
@@ -456,10 +456,10 @@ and you'll see
 
 > The Moon does not have a capital. It is a natural satellite of Earth and lacks any governmental structure or human habitation that would necessitate a capital city.
 
-you can also describe the task to see the full context window in a slightly more readable format (but without the events)
+you can also use `get -o yaml` to see the full context window in a slightly more readable format (but without the events)
 
 ```bash
-kubectl get task hello-world-1 -o yaml # Added resource name
+kubectl get task hello-world-1 -o yaml
 ```
 
 <details>
@@ -543,7 +543,7 @@ fetch    true    Ready
 ```
 
 ```bash
-kubectl describe mcpserver fetch # Added resource name
+kubectl describe mcpserver
 ```
 Output:
 
@@ -660,7 +660,7 @@ EOF
 You should see some events in the output of
 
 ```
-kubectl get events --field-selector "involvedObject.kind=Task,involvedObject.name=fetch-task" --sort-by='.lastTimestamp' # Added name selector
+kubectl get events --field-selector "involvedObject.kind=Task" --sort-by='.lastTimestamp'
 ```
 
 ```
@@ -1024,7 +1024,7 @@ Metadata:
   Creation Timestamp:  2025-04-01T16:09:02Z
   Generation:          1
   Owner References:
-    API Version:     acp.humanlayer.dev/acp # Updated API Group
+    API Version:     acp.humanlayer.dev/v1alpha1
     Controller:      true
     Kind:            Task
     Name:            approved-fetch-task-1
@@ -1126,11 +1126,11 @@ kubectl delete taskruntoolcall --all
 kubectl delete task --all
 kubectl delete agent --all
 kubectl delete mcpserver --all
+kubectl delete contactchannel --all 
 kubectl delete llm --all
-kubectl delete contactchannel --all # Added ContactChannel cleanup
 ```
 
-Remove the OpenAI secret:
+Remove the any secrets:
 
 ```
 kubectl delete secret openai
