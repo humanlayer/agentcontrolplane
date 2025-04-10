@@ -227,7 +227,7 @@ func (r *LLMReconciler) validateProviderConfig(ctx context.Context, llm *acp.LLM
 
 		// TODO: Elipsis had feedback that should be looked at later maybe:
 		// In the Mistral case, the branch calls GenerateFromSinglePrompt inside the switch then returns nil early. This deviates from the pattern of test-validation call that happens afterwards. Ensure the intended logic is maintained.
-		// https://github.com/humanlayer/kubechain/pull/35#discussion_r2013064446
+		// https://github.com/humanlayer/agentcontrolplane/pull/35#discussion_r2013064446
 		// Pass any common options to the model during generation test
 		if len(commonOpts) > 0 {
 			commonOpts = append(commonOpts, llms.WithMaxTokens(1), llms.WithTemperature(0))

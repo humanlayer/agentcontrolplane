@@ -1,8 +1,9 @@
-# Makefile for kubechain-example
+# Makefile for acp-example
 
 # Cluster name and configuration
 CLUSTER_NAME = kind
 KIND_CONFIG = kind/kind-config.yaml
+
 OTEL_CONFIG = otel/otel-config.yaml
 
 # Environment variable to customize NodePort range (if supported by your setup)
@@ -10,32 +11,32 @@ export KIND_NODE_PORT_RANGE = 30000-35000
 
 .PHONY: kind-up kind-down operator-deploy-local operator-deploy ui-deploy otel-deploy prometheus-deploy grafana-deploy tempo-deploy loki-up loki-down otel-stack otel-stack-down all
 
-kind-up:
+kind-up: ## Create the Kind cluster
 	@echo "Creating kind cluster '$(CLUSTER_NAME)'..."
 	kind create cluster --name $(CLUSTER_NAME) --config $(KIND_CONFIG)
 
-kind-down:
+kind-down: ## Delete the Kind cluster
 	@echo "Deleting kind cluster '$(CLUSTER_NAME)'..."
 	kind delete cluster --name $(CLUSTER_NAME)
 
-operator-deploy-local:
-	@$(MAKE) -C ../kubechain deploy-local-kind
+operator-deploy-local: ## Deploy the locally built ACP operator
+	@$(MAKE) -C ../acp deploy-local-kind
 
-operator-deploy:
-	kubectl apply -f https://raw.githubusercontent.com/humanlayer/smallchain/refs/heads/main/kubechain/config/release/latest.yaml
+operator-deploy: ## Deploy the latest released ACP operator
+	kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest.yaml
 
-ui-deploy:
-	@echo "Deploying kubechain-ui to cluster..."
-	kubectl apply -f deploy/kubechain-ui.yaml
+ui-deploy: ## Deploy the ACP UI
+	@echo "Deploying acp-ui to cluster..."
+	kubectl apply -f deploy/acp-ui.yaml
 
-otel-deploy-base:
+otel-deploy-base: ## Deploy the base OpenTelemetry collector
 	@echo "Deploying OpenTelemetry collector to cluster..."
 	helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 	helm repo update
 	helm upgrade --install otel-collector open-telemetry/opentelemetry-collector \
-		--values otel/values.yaml 
+		--values otel/values.yaml
 
-otel-patch-service:
+otel-patch-service: ## Patch the OTEL collector service to use NodePorts
 	@echo "Patching OTEL collector service to use NodePorts..."
 	kubectl patch svc otel-collector-opentelemetry-collector -p '{"spec": {"type": "NodePort", "ports": [ \
 		{"name": "jaeger-compact", "port": 6831, "protocol": "UDP", "targetPort": 6831, "nodePort": 6831}, \
@@ -47,9 +48,9 @@ otel-patch-service:
 		{"name": "prometheus", "port": 8889, "protocol": "TCP", "targetPort": 8889, "nodePort": 8889} \
 	]}}'
 
-otel-up: otel-deploy-base otel-patch-service 
+otel-up: otel-deploy-base otel-patch-service ## Deploy OpenTelemetry collector and patch service
 
-otel-test:
+otel-test: ## Run a test to generate OpenTelemetry data
 	@echo "Waiting for OpenTelemetry collector deployment to be ready..."
 	kubectl wait --for=condition=Available deployment/otel-collector-opentelemetry-collector --timeout=300s
 	@echo "Waiting for Grafana deployment to be ready..."
@@ -73,33 +74,33 @@ otel-test:
 	: Open Telemetry data has been sent to the collector.
 	: you can view the data in grafana at http://localhost:13000/d/test-data/test-data
 
-otel-down:
+otel-down: ## Delete the OpenTelemetry collector
 	@echo "Deleting OpenTelemetry collector from cluster..."
 	helm delete otel-collector
 
-prometheus-up:
+prometheus-up: ## Deploy Prometheus
 	@echo "Deploying Prometheus to cluster..."
 	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 	helm repo update
 	helm upgrade --install prometheus prometheus-community/prometheus \
 		--values prometheus/values.yaml
 
-prometheus-down:
+prometheus-down: ## Delete Prometheus
 	@echo "Deleting Prometheus from cluster..."
 	helm delete prometheus
 
-grafana-up:
+grafana-up: ## Deploy Grafana
 	@echo "Deploying Grafana to cluster..."
 	helm repo add grafana https://grafana.github.io/helm-charts
 	helm repo update
 	helm upgrade --install grafana grafana/grafana \
 		--values grafana/values.yaml
 
-grafana-down:
+grafana-down: ## Delete Grafana
 	@echo "Deleting Grafana from cluster..."
 	helm delete grafana
 
-tempo-up:
+tempo-up: ## Deploy Tempo
 	@echo "Deploying Tempo to cluster..."
 	helm repo add grafana https://grafana.github.io/helm-charts
 	helm repo update
@@ -110,25 +111,25 @@ tempo-up:
 		--set service.ports.otlp-grpc.nodePort=4317 \
 		--set service.ports.otlp-http.nodePort=4318
 
-tempo-down:
+tempo-down: ## Delete Tempo
 	@echo "Deleting Tempo from cluster..."
 	helm delete tempo
 
-loki-up:
+loki-up: ## Deploy Loki
 	@echo "Deploying Loki to cluster..."
 	helm repo add grafana https://grafana.github.io/helm-charts
 	helm repo update
 	helm upgrade --install loki grafana/loki \
 		--values loki/values.yaml
 
-loki-down:
+loki-down: ## Delete Loki
 	@echo "Deleting Loki from cluster..."
 	helm delete loki
 
-otel-stack: prometheus-up otel-up grafana-up tempo-up loki-up otel-test
-otel-stack-down: otel-down prometheus-down grafana-down tempo-down loki-down
+otel-stack: prometheus-up otel-up grafana-up tempo-up loki-up otel-test ## Deploy the full observability stack
+otel-stack-down: otel-down prometheus-down grafana-down tempo-down loki-down ## Delete the full observability stack
 
-otel-access:
+otel-access: ## Display access instructions for the monitoring stack
 	@echo "Access instructions for monitoring stack:"
 	@echo "\nGrafana:"
 	@echo "Password: admin"
@@ -136,4 +137,4 @@ otel-access:
 	@echo "\nPrometheus:"
 	@echo "Access: http://localhost:9090"
 
-all: kind-up operator-build operator-deploy ui-deploy otel-deploy prometheus-deploy grafana-deploy tempo-deploy loki-deploy
+all: kind-up operator-deploy-local ui-deploy otel-stack ## Set up the full example environment (Kind, local operator, UI, observability)
