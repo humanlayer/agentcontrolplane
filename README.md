@@ -435,7 +435,7 @@ graph RL
 
     subgraph Task
       AgentRef
-      Message # Should this be UserMessage? Diagram doesn't match YAML. Keeping diagram as is for now.
+      UserMessage 
       subgraph ContextWindow
         direction LR
         SystemMessage
