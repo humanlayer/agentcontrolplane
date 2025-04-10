@@ -168,7 +168,7 @@ Alternatively, clean up components individually:
 - Add RBAC annotations to all controllers to generate proper permissions
 - Run `make manifests` after modifying CRD types or controller annotations
 - Run `make generate` after adding new struct fields to generate DeepCopy methods
-- When creating new resources, use `kubebuilder create api --group kubechain --version v1alpha1 --kind YourResource --namespaced true --resource true --controller true`
+- When creating new resources, use `kubebuilder create api --group kubechain --version acp --kind YourResource --namespaced true --resource true --controller true`
 - Ensure the PROJECT file contains entries for all resources before running `make manifests`
 - Follow the detailed guidance in the [Kubebuilder Guide](/kubechain/docs/kubebuilder-guide.md)
 
@@ -423,7 +423,7 @@ When designing controllers, distinguish between Status and Phase:
    ```go
    // Good: Only update Phase when transitioning to a new workflow stage
    // while preserving current Status (health)
-   trtc.Status.Phase = kubechainv1alpha1.TaskRunToolCallPhaseAwaitingHumanApproval
+   trtc.Status.Phase = acp.TaskRunToolCallPhaseAwaitingHumanApproval
    trtc.Status.StatusDetail = "Waiting for human approval"
    
    // Avoid: Don't modify Status when the change is just about workflow progress
@@ -433,11 +433,11 @@ When designing controllers, distinguish between Status and Phase:
 2. **Change Status Only When Health State Changes**: Status should change only when the health or readiness of the resource changes:
    ```go
    // When a resource encounters an error
-   trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeError
+   trtc.Status.Status = acp.TaskRunToolCallStatusTypeError
    trtc.Status.Error = err.Error()
    
    // When a resource becomes ready
-   trtc.Status.Status = kubechainv1alpha1.TaskRunToolCallStatusTypeReady
+   trtc.Status.Status = acp.TaskRunToolCallStatusTypeReady
    ```
 
 3. **Use Error Status with Descriptive Phase Values**: When handling errors, set Status to Error and use Phase to describe the specific error scenario:
