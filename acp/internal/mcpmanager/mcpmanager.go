@@ -70,7 +70,7 @@ func (m *MCPServerManager) GetConnection(serverName string) (*MCPConnection, boo
 	return conn, exists
 }
 
-// convertEnvVars converts kubechain EnvVar to string slice of env vars
+// convertEnvVars converts acp EnvVar to string slice of env vars
 func (m *MCPServerManager) convertEnvVars(ctx context.Context, envVars []acp.EnvVar, namespace string) ([]string, error) {
 	env := make([]string, 0, len(envVars))
 	for _, e := range envVars {
@@ -171,7 +171,7 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 		return fmt.Errorf("failed to list tools: %w", err)
 	}
 
-	// Convert tools to kubechain format
+	// Convert tools to acp format
 	tools := make([]acp.MCPTool, 0, len(toolsResp.Tools))
 	for _, tool := range toolsResp.Tools {
 		// Handle the InputSchema properly

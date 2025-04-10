@@ -25,7 +25,7 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("kubechain-controller"),
+			semconv.ServiceNameKey.String("acp-controller"),
 		)),
 	)
 	otel.SetTracerProvider(tp)
