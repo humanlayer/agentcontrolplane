@@ -1,0 +1,124 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.1
+  name: tools.kubechain.humanlayer.dev
+spec:
+  group: kubechain.humanlayer.dev
+  names:
+    kind: Tool
+    listKind: ToolList
+    plural: tools
+    singular: tool
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.statusDetail
+      name: Detail
+      priority: 1
+      type: string
+    name: acp
+    schema:
+      openAPIV3Schema:
+        description: Tool is the Schema for the tools API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ToolSpec defines the desired state of Tool
+            properties:
+              agentRef:
+                description: AgentRef is used for delegation-type tools.
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              arguments:
+                description: Arguments defines the JSON schema for the tool's arguments.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              description:
+                description: Description provides a description of the tool.
+                type: string
+              execute:
+                description: Execute defines how the tool should be executed.
+                properties:
+                  builtin:
+                    description: Builtin represents an inline (builtin) tool.
+                    properties:
+                      name:
+                        description: Name is the identifier of the builtin function
+                          to run. Today, supports simple math operations
+                        enum:
+                        - add
+                        - subtract
+                        - multiply
+                        - divide
+                        type: string
+                    type: object
+                type: object
+              name:
+                description: Name is used for inline/function tools (optional if the
+                  object name is used).
+                type: string
+              parameters:
+                description: Parameters defines the JSON schema for the tool's parameters.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              toolType:
+                description: ToolType represents the type of tool; e.g. "function",
+                  "delegateToAgent", "externalAPI" etc.
+                enum:
+                - function
+                - delegateToAgent
+                - externalAPI
+                type: string
+            type: object
+          status:
+            description: ToolStatus defines the observed state of Tool
+            properties:
+              ready:
+                description: Ready indicates if the tool is ready to be used
+                type: boolean
+              status:
+                description: Status indicates the current status of the tool
+                enum:
+                - Ready
+                - Error
+                - Pending
+                type: string
+              statusDetail:
+                description: StatusDetail provides additional details about the current
+                  status
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,21 @@
+// Kubechain UI Deployment placeholder
+// TODO: Add deployment manifest for kubechain-ui application
+// Example:
+// apiVersion: apps/v1
+// kind: Deployment
+// metadata:
+//   name: kubechain-ui
+// spec:
+//   replicas: 1
+//   selector:
+//     matchLabels:
+//       app: kubechain-ui
+//   template:
+//     metadata:
+//       labels:
+//         app: kubechain-ui
+//     spec:
+//       containers:
+//         - name: kubechain-ui
+//           image: myorg/kubechain-ui:latest
+//           imagePullPolicy: IfNotPresent

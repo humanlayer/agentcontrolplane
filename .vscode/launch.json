@@ -6,7 +6,7 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "${workspaceFolder}/kubechain/cmd/main.go",
+      "program": "${workspaceFolder}/acp/cmd/main.go",
       "args": [],
       "env": {
         "KUBECONFIG": "${env:HOME}/.kube/config"

@@ -1,0 +1,38 @@
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 10001
+        hostPort: 10001
+        listenAddress: "0.0.0.0"
+        protocol: tcp
+      - containerPort: 10002
+        hostPort: 10002
+        listenAddress: "0.0.0.0"
+        protocol: tcp
+      - containerPort: 4317
+        hostPort: 4317
+        listenAddress: "0.0.0.0"
+        protocol: tcp
+      - containerPort: 4318
+        hostPort: 4318
+        listenAddress: "0.0.0.0"
+        protocol: tcp
+      # Grafana
+      - containerPort: 13000
+        hostPort: 13000
+        listenAddress: "0.0.0.0"
+        protocol: tcp
+      # Prometheus
+      - containerPort: 9090
+        hostPort: 9092
+        listenAddress: "0.0.0.0"
+        protocol: tcp
+
+kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    apiServer:
+      extraArgs:
+        "service-node-port-range": "80-40000"

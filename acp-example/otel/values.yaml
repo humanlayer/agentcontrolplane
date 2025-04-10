@@ -1,0 +1,79 @@
+# minimal-values.yaml
+mode: deployment
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: latest
+service:
+  type: NodePort
+
+presets:
+  logsCollection:
+    enabled: false
+  hostMetrics:
+    enabled: false
+  kubernetesAttributes:
+    enabled: false
+  kubeletMetrics:
+    enabled: false
+  kubernetesEvents:
+    enabled: false
+  clusterMetrics:
+    enabled: false
+
+config:
+  exporters:
+    debug:
+      verbosity: detailed
+    otlp:
+      endpoint: tempo:4317
+      tls:
+        insecure: true
+    prometheus:
+      endpoint: "0.0.0.0:8889"
+    # Loki now supports OTLP natively
+    otlphttp:
+      endpoint: "http://loki:3100/otlp"
+      tls:
+        insecure: true
+  extensions:
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+  processors:
+    batch: {}
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: ${env:MY_POD_IP}:4317
+        http:
+          endpoint: ${env:MY_POD_IP}:4318
+  service:
+    extensions: [health_check]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [debug, otlp]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [debug, prometheus]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [debug, otlphttp]
+
+extraEnvs:
+  - name: MY_POD_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+# serviceMonitor:
+#   enabled: true
+#   namespace: default
+#   interval: 30s
+#   scrapeTimeout: 10s

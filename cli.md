@@ -1,53 +1,53 @@
-### Kubechain CLI
+### ACP CLI
 
 (this is a spec for a to-be-built CLI tool)
 
 ## Install
 
 ```bash
-brew install humanlayer/tap/kubechain
+brew install humanlayer/tap/acp
 ```
 
 ## Usage
 
 ```bash
-kubechain --help
+acp --help
 ```
 
 ## Commands
 
 
 ```
-$ kubechain version
-KubeChain CLI version 0.1.10
-KubeChain Operator version 0.1.10
+$ acp version
+ACP CLI version 0.1.10
+ACP Operator version 0.1.10
 ```
 
 ```
 # convenience command - uses a `kind` binary on your path to create a local cluster
-kubechain kind-dev
+acp kind-dev
 ```
 
 
 ```
 # installs the operator into the cluster
-kubechain install
+acp install
 ```
 
 ```
 # 
-kubechain create agent my-agent --system-prompt "You are a helpful assistant." --mcpservers=fetch,memory,linear
+acp create agent my-agent --system-prompt "You are a helpful assistant." --mcpservers=fetch,memory,linear
 ```
 
 ```
 # creates a task and runs it to completion, streaming model output, etc to the console
-kubechain create task my-task --message "What is on the front page of planetscale.com?" --agent my-agent --stream
+acp create task my-task --message "What is on the front page of planetscale.com?" --agent my-agent --stream
 ```
 
 e.g. 
 
 ```
-$ kubechain create task my-task --message "What is on the front page of planetscale.com?" --agent my-agent --stream
+$ acp create task my-task --message "What is on the front page of planetscale.com?" --agent my-agent --stream
 Creating task 'my-task'...
 Task created successfully
 Streaming output from taskrun 'my-task-1'...

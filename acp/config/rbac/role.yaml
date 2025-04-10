@@ -1,0 +1,52 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubechain.humanlayer.dev
+  resources:
+  - agents
+  - contactchannels
+  - llms
+  - mcpservers
+  - taskruntoolcalls
+  - tasks
+  - tools
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubechain.humanlayer.dev
+  resources:
+  - agents/status
+  - contactchannels/status
+  - llms/status
+  - mcpservers/status
+  - taskruntoolcalls/status
+  - tasks/status
+  - tools/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kubechain.humanlayer.dev
+  resources:
+  - contactchannels/finalizers
+  verbs:
+  - update

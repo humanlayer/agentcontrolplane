@@ -1,0 +1,1201 @@
+openapi: 3.1.0
+info:
+  title: FastAPI
+  version: 0.1.0
+servers:
+- url: /
+paths:
+  /humanlayer/v1/status:
+    get:
+      operationId: read_status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Read Status
+  /humanlayer/v1/project:
+    get:
+      description: Get information about the current project based on the API token.
+      operationId: get_project_info
+      parameters:
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Project Info
+  /humanlayer/v1/function_calls:
+    post:
+      operationId: request_approval
+      parameters:
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunctionCall-Input'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionCall-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Request Approval
+  /humanlayer/v1/agent/function_calls/{call_id}/escalate_email:
+    post:
+      operationId: escalate_email
+      parameters:
+      - explode: false
+        in: path
+        name: call_id
+        required: true
+        schema:
+          title: Call Id
+          type: string
+        style: simple
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Escalation'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionCall-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Escalate Email
+  /humanlayer/v1/function_calls/{call_id}:
+    get:
+      operationId: get_function_call_status
+      parameters:
+      - explode: false
+        in: path
+        name: call_id
+        required: true
+        schema:
+          title: Call Id
+          type: string
+        style: simple
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionCall-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Function Call Status
+  /humanlayer/v1/contact_requests:
+    post:
+      operationId: request_human_contact
+      parameters:
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HumanContact-Input'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanContact-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Request Human Contact
+  /humanlayer/v1/agent/human_contacts/{call_id}/escalate_email:
+    post:
+      operationId: escalate_email_human_contact
+      parameters:
+      - explode: false
+        in: path
+        name: call_id
+        required: true
+        schema:
+          title: Call Id
+          type: string
+        style: simple
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Escalation'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanContact-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Escalate Email Human Contact
+  /humanlayer/v1/contact_requests/{call_id}:
+    get:
+      operationId: get_human_contact_status
+      parameters:
+      - explode: false
+        in: path
+        name: call_id
+        required: true
+        schema:
+          title: Call Id
+          type: string
+        style: simple
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanContact-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Human Contact Status
+  /humanlayer/v1/human_contacts:
+    post:
+      operationId: _request_human_contact
+      parameters:
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HumanContact-Input'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanContact-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: ' Request Human Contact'
+  /humanlayer/v1/human_contacts/{call_id}:
+    get:
+      operationId: _get_human_contact_status
+      parameters:
+      - explode: false
+        in: path
+        name: call_id
+        required: true
+        schema:
+          title: Call Id
+          type: string
+        style: simple
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanContact-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: ' Get Human Contact Status'
+  /humanlayer/v1/agent/function_calls/{call_id}/respond:
+    post:
+      operationId: respond
+      parameters:
+      - explode: false
+        in: path
+        name: call_id
+        required: true
+        schema:
+          title: Call Id
+          type: string
+        style: simple
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunctionCallStatus'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionCall-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Respond
+  /humanlayer/v1/agent/human_contacts/{call_id}/respond:
+    post:
+      operationId: respond_to_human_contact
+      parameters:
+      - explode: false
+        in: path
+        name: call_id
+        required: true
+        schema:
+          title: Call Id
+          type: string
+        style: simple
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HumanContactStatus'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanContact-Output'
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Respond To Human Contact
+  /humanlayer/v1/agent/function_calls/pending:
+    get:
+      operationId: get_pending_function_calls
+      parameters:
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/FunctionCall-Output'
+                type: array
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Pending Function Calls
+  /humanlayer/v1/agent/human_contacts/pending:
+    get:
+      operationId: get_pending_human_contacts
+      parameters:
+      - explode: false
+        in: header
+        name: authorization
+        required: true
+        schema:
+          title: Authorization
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/HumanContact-Output'
+                type: array
+          description: Successful Response
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Get Pending Human Contacts
+  /version:
+    get:
+      description: Return the current version (git SHA) of the deployed application
+      operationId: version
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Version
+  /healthz:
+    get:
+      operationId: health_check
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: Successful Response
+      summary: Health Check
+components:
+  schemas:
+    ContactChannel-Input:
+      properties:
+        slack:
+          $ref: '#/components/schemas/SlackContactChannel-Input'
+        sms:
+          $ref: '#/components/schemas/SMSContactChannel'
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppContactChannel'
+        email:
+          $ref: '#/components/schemas/EmailContactChannel'
+      title: ContactChannel
+    ContactChannel-Output:
+      example:
+        whatsapp:
+          context_about_user: context_about_user
+          phone_number: phone_number
+        slack:
+          thread_ts: thread_ts
+          context_about_channel_or_user: context_about_channel_or_user
+          channel_or_user_id: channel_or_user_id
+          allowed_responder_ids:
+          - allowed_responder_ids
+          - allowed_responder_ids
+          experimental_slack_blocks: true
+        sms:
+          context_about_user: context_about_user
+          phone_number: phone_number
+        email:
+          template: template
+          address: address
+          context_about_user: context_about_user
+          experimental_references_message_id: experimental_references_message_id
+          experimental_subject_line: experimental_subject_line
+          additional_recipients:
+          - address: address
+            context_about_user: context_about_user
+            field: to
+          - address: address
+            context_about_user: context_about_user
+            field: to
+          experimental_in_reply_to_message_id: experimental_in_reply_to_message_id
+      properties:
+        slack:
+          $ref: '#/components/schemas/SlackContactChannel-Output'
+        sms:
+          $ref: '#/components/schemas/SMSContactChannel'
+        whatsapp:
+          $ref: '#/components/schemas/WhatsAppContactChannel'
+        email:
+          $ref: '#/components/schemas/EmailContactChannel'
+      title: ContactChannel
+    EmailContactChannel:
+      description: Route for contacting a user via email
+      example:
+        template: template
+        address: address
+        context_about_user: context_about_user
+        experimental_references_message_id: experimental_references_message_id
+        experimental_subject_line: experimental_subject_line
+        additional_recipients:
+        - address: address
+          context_about_user: context_about_user
+          field: to
+        - address: address
+          context_about_user: context_about_user
+          field: to
+        experimental_in_reply_to_message_id: experimental_in_reply_to_message_id
+      properties:
+        address:
+          title: Address
+          type: string
+        context_about_user:
+          nullable: true
+          type: string
+        additional_recipients:
+          items:
+            $ref: '#/components/schemas/EmailRecipient'
+          nullable: true
+          type: array
+        experimental_subject_line:
+          nullable: true
+          type: string
+        experimental_references_message_id:
+          nullable: true
+          type: string
+        experimental_in_reply_to_message_id:
+          nullable: true
+          type: string
+        template:
+          nullable: true
+          type: string
+      required:
+      - address
+      title: EmailContactChannel
+    EmailRecipient:
+      example:
+        address: address
+        context_about_user: context_about_user
+        field: to
+      properties:
+        address:
+          title: Address
+          type: string
+        context_about_user:
+          nullable: true
+          type: string
+        field:
+          $ref: '#/components/schemas/Field'
+      required:
+      - address
+      title: EmailRecipient
+    Escalation:
+      example:
+        escalation_msg: escalation_msg
+        additional_recipients:
+        - address: address
+          context_about_user: context_about_user
+          field: to
+        - address: address
+          context_about_user: context_about_user
+          field: to
+      properties:
+        escalation_msg:
+          title: Escalation Msg
+          type: string
+        additional_recipients:
+          items:
+            $ref: '#/components/schemas/EmailRecipient'
+          nullable: true
+          type: array
+      required:
+      - escalation_msg
+      title: Escalation
+    FunctionCall-Input:
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        call_id:
+          title: Call Id
+          type: string
+        spec:
+          $ref: '#/components/schemas/FunctionCallSpec-Input'
+        status:
+          $ref: '#/components/schemas/FunctionCallStatus'
+      required:
+      - call_id
+      - run_id
+      - spec
+      title: FunctionCall
+    FunctionCall-Output:
+      example:
+        run_id: run_id
+        spec:
+          reject_options:
+          - name: name
+            interactive: false
+            description: description
+            prompt_fill: prompt_fill
+            title: title
+          - name: name
+            interactive: false
+            description: description
+            prompt_fill: prompt_fill
+            title: title
+          fn: fn
+          kwargs: "{}"
+          channel:
+            whatsapp:
+              context_about_user: context_about_user
+              phone_number: phone_number
+            slack:
+              thread_ts: thread_ts
+              context_about_channel_or_user: context_about_channel_or_user
+              channel_or_user_id: channel_or_user_id
+              allowed_responder_ids:
+              - allowed_responder_ids
+              - allowed_responder_ids
+              experimental_slack_blocks: true
+            sms:
+              context_about_user: context_about_user
+              phone_number: phone_number
+            email:
+              template: template
+              address: address
+              context_about_user: context_about_user
+              experimental_references_message_id: experimental_references_message_id
+              experimental_subject_line: experimental_subject_line
+              additional_recipients:
+              - address: address
+                context_about_user: context_about_user
+                field: to
+              - address: address
+                context_about_user: context_about_user
+                field: to
+              experimental_in_reply_to_message_id: experimental_in_reply_to_message_id
+          state: "{}"
+        call_id: call_id
+        status:
+          approved: true
+          slack_message_ts: slack_message_ts
+          user_info: "{}"
+          reject_option_name: reject_option_name
+          responded_at: 2000-01-23T04:56:07.000+00:00
+          comment: comment
+          slack_context: "{}"
+          requested_at: 2000-01-23T04:56:07.000+00:00
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        call_id:
+          title: Call Id
+          type: string
+        spec:
+          $ref: '#/components/schemas/FunctionCallSpec-Output'
+        status:
+          $ref: '#/components/schemas/FunctionCallStatus'
+      required:
+      - call_id
+      - run_id
+      - spec
+      title: FunctionCall
+    FunctionCallSpec-Input:
+      properties:
+        fn:
+          title: Fn
+          type: string
+        kwargs:
+          title: Kwargs
+          type: object
+        channel:
+          $ref: '#/components/schemas/ContactChannel-Input'
+        reject_options:
+          items:
+            $ref: '#/components/schemas/ResponseOption'
+          nullable: true
+          type: array
+        state:
+          nullable: true
+          type: object
+      required:
+      - fn
+      - kwargs
+      title: FunctionCallSpec
+    FunctionCallSpec-Output:
+      example:
+        reject_options:
+        - name: name
+          interactive: false
+          description: description
+          prompt_fill: prompt_fill
+          title: title
+        - name: name
+          interactive: false
+          description: description
+          prompt_fill: prompt_fill
+          title: title
+        fn: fn
+        kwargs: "{}"
+        channel:
+          whatsapp:
+            context_about_user: context_about_user
+            phone_number: phone_number
+          slack:
+            thread_ts: thread_ts
+            context_about_channel_or_user: context_about_channel_or_user
+            channel_or_user_id: channel_or_user_id
+            allowed_responder_ids:
+            - allowed_responder_ids
+            - allowed_responder_ids
+            experimental_slack_blocks: true
+          sms:
+            context_about_user: context_about_user
+            phone_number: phone_number
+          email:
+            template: template
+            address: address
+            context_about_user: context_about_user
+            experimental_references_message_id: experimental_references_message_id
+            experimental_subject_line: experimental_subject_line
+            additional_recipients:
+            - address: address
+              context_about_user: context_about_user
+              field: to
+            - address: address
+              context_about_user: context_about_user
+              field: to
+            experimental_in_reply_to_message_id: experimental_in_reply_to_message_id
+        state: "{}"
+      properties:
+        fn:
+          title: Fn
+          type: string
+        kwargs:
+          title: Kwargs
+          type: object
+        channel:
+          $ref: '#/components/schemas/ContactChannel-Output'
+        reject_options:
+          items:
+            $ref: '#/components/schemas/ResponseOption'
+          nullable: true
+          type: array
+        state:
+          nullable: true
+          type: object
+      required:
+      - fn
+      - kwargs
+      title: FunctionCallSpec
+    FunctionCallStatus:
+      example:
+        approved: true
+        slack_message_ts: slack_message_ts
+        user_info: "{}"
+        reject_option_name: reject_option_name
+        responded_at: 2000-01-23T04:56:07.000+00:00
+        comment: comment
+        slack_context: "{}"
+        requested_at: 2000-01-23T04:56:07.000+00:00
+      properties:
+        requested_at:
+          format: date-time
+          nullable: true
+          type: string
+        responded_at:
+          format: date-time
+          nullable: true
+          type: string
+        approved:
+          nullable: true
+          type: boolean
+        comment:
+          nullable: true
+          type: string
+        user_info:
+          nullable: true
+          type: object
+        slack_context:
+          nullable: true
+          type: object
+        reject_option_name:
+          nullable: true
+          type: string
+        slack_message_ts:
+          nullable: true
+          type: string
+      title: FunctionCallStatus
+    HTTPValidationError:
+      example:
+        detail:
+        - msg: msg
+          loc:
+          - ValidationError_loc_inner
+          - ValidationError_loc_inner
+          type: type
+        - msg: msg
+          loc:
+          - ValidationError_loc_inner
+          - ValidationError_loc_inner
+          type: type
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+      title: HTTPValidationError
+    HumanContact-Input:
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        call_id:
+          title: Call Id
+          type: string
+        spec:
+          $ref: '#/components/schemas/HumanContactSpec-Input'
+        status:
+          $ref: '#/components/schemas/HumanContactStatus'
+      required:
+      - call_id
+      - run_id
+      - spec
+      title: HumanContact
+    HumanContact-Output:
+      example:
+        run_id: run_id
+        spec:
+          msg: msg
+          subject: subject
+          channel:
+            whatsapp:
+              context_about_user: context_about_user
+              phone_number: phone_number
+            slack:
+              thread_ts: thread_ts
+              context_about_channel_or_user: context_about_channel_or_user
+              channel_or_user_id: channel_or_user_id
+              allowed_responder_ids:
+              - allowed_responder_ids
+              - allowed_responder_ids
+              experimental_slack_blocks: true
+            sms:
+              context_about_user: context_about_user
+              phone_number: phone_number
+            email:
+              template: template
+              address: address
+              context_about_user: context_about_user
+              experimental_references_message_id: experimental_references_message_id
+              experimental_subject_line: experimental_subject_line
+              additional_recipients:
+              - address: address
+                context_about_user: context_about_user
+                field: to
+              - address: address
+                context_about_user: context_about_user
+                field: to
+              experimental_in_reply_to_message_id: experimental_in_reply_to_message_id
+          response_options:
+          - name: name
+            interactive: false
+            description: description
+            prompt_fill: prompt_fill
+            title: title
+          - name: name
+            interactive: false
+            description: description
+            prompt_fill: prompt_fill
+            title: title
+          state: "{}"
+        call_id: call_id
+        status:
+          slack_message_ts: slack_message_ts
+          response: response
+          responded_at: 2000-01-23T04:56:07.000+00:00
+          response_option_name: response_option_name
+          requested_at: 2000-01-23T04:56:07.000+00:00
+      properties:
+        run_id:
+          title: Run Id
+          type: string
+        call_id:
+          title: Call Id
+          type: string
+        spec:
+          $ref: '#/components/schemas/HumanContactSpec-Output'
+        status:
+          $ref: '#/components/schemas/HumanContactStatus'
+      required:
+      - call_id
+      - run_id
+      - spec
+      title: HumanContact
+    HumanContactSpec-Input:
+      properties:
+        msg:
+          title: Msg
+          type: string
+        subject:
+          nullable: true
+          type: string
+        channel:
+          $ref: '#/components/schemas/ContactChannel-Input'
+        response_options:
+          items:
+            $ref: '#/components/schemas/ResponseOption'
+          nullable: true
+          type: array
+        state:
+          nullable: true
+          type: object
+      required:
+      - msg
+      title: HumanContactSpec
+    HumanContactSpec-Output:
+      example:
+        msg: msg
+        subject: subject
+        channel:
+          whatsapp:
+            context_about_user: context_about_user
+            phone_number: phone_number
+          slack:
+            thread_ts: thread_ts
+            context_about_channel_or_user: context_about_channel_or_user
+            channel_or_user_id: channel_or_user_id
+            allowed_responder_ids:
+            - allowed_responder_ids
+            - allowed_responder_ids
+            experimental_slack_blocks: true
+          sms:
+            context_about_user: context_about_user
+            phone_number: phone_number
+          email:
+            template: template
+            address: address
+            context_about_user: context_about_user
+            experimental_references_message_id: experimental_references_message_id
+            experimental_subject_line: experimental_subject_line
+            additional_recipients:
+            - address: address
+              context_about_user: context_about_user
+              field: to
+            - address: address
+              context_about_user: context_about_user
+              field: to
+            experimental_in_reply_to_message_id: experimental_in_reply_to_message_id
+        response_options:
+        - name: name
+          interactive: false
+          description: description
+          prompt_fill: prompt_fill
+          title: title
+        - name: name
+          interactive: false
+          description: description
+          prompt_fill: prompt_fill
+          title: title
+        state: "{}"
+      properties:
+        msg:
+          title: Msg
+          type: string
+        subject:
+          nullable: true
+          type: string
+        channel:
+          $ref: '#/components/schemas/ContactChannel-Output'
+        response_options:
+          items:
+            $ref: '#/components/schemas/ResponseOption'
+          nullable: true
+          type: array
+        state:
+          nullable: true
+          type: object
+      required:
+      - msg
+      title: HumanContactSpec
+    HumanContactStatus:
+      example:
+        slack_message_ts: slack_message_ts
+        response: response
+        responded_at: 2000-01-23T04:56:07.000+00:00
+        response_option_name: response_option_name
+        requested_at: 2000-01-23T04:56:07.000+00:00
+      properties:
+        requested_at:
+          format: date-time
+          nullable: true
+          type: string
+        responded_at:
+          format: date-time
+          nullable: true
+          type: string
+        response:
+          nullable: true
+          type: string
+        response_option_name:
+          nullable: true
+          type: string
+        slack_message_ts:
+          nullable: true
+          type: string
+      title: HumanContactStatus
+    ResponseOption:
+      example:
+        name: name
+        interactive: false
+        description: description
+        prompt_fill: prompt_fill
+        title: title
+      properties:
+        name:
+          title: Name
+          type: string
+        title:
+          nullable: true
+          type: string
+        description:
+          nullable: true
+          type: string
+        prompt_fill:
+          nullable: true
+          type: string
+        interactive:
+          default: false
+          title: Interactive
+          type: boolean
+      required:
+      - name
+      title: ResponseOption
+    SMSContactChannel:
+      description: Route for contacting a user via SMS
+      example:
+        context_about_user: context_about_user
+        phone_number: phone_number
+      properties:
+        phone_number:
+          title: Phone Number
+          type: string
+        context_about_user:
+          nullable: true
+          type: string
+      required:
+      - phone_number
+      title: SMSContactChannel
+    SlackContactChannel-Input:
+      description: Route for contacting a user or channel via slack
+      properties:
+        channel_or_user_id:
+          title: Channel Or User Id
+          type: string
+        context_about_channel_or_user:
+          nullable: true
+          type: string
+        bot_token:
+          nullable: true
+          type: string
+        allowed_responder_ids:
+          items:
+            type: string
+          nullable: true
+          type: array
+        experimental_slack_blocks:
+          nullable: true
+          type: boolean
+        thread_ts:
+          nullable: true
+          type: string
+      required:
+      - channel_or_user_id
+      title: SlackContactChannel
+    SlackContactChannel-Output:
+      description: Route for contacting a user or channel via slack
+      example:
+        thread_ts: thread_ts
+        context_about_channel_or_user: context_about_channel_or_user
+        channel_or_user_id: channel_or_user_id
+        allowed_responder_ids:
+        - allowed_responder_ids
+        - allowed_responder_ids
+        experimental_slack_blocks: true
+      properties:
+        channel_or_user_id:
+          title: Channel Or User Id
+          type: string
+        context_about_channel_or_user:
+          nullable: true
+          type: string
+        allowed_responder_ids:
+          items:
+            type: string
+          nullable: true
+          type: array
+        experimental_slack_blocks:
+          nullable: true
+          type: boolean
+        thread_ts:
+          nullable: true
+          type: string
+      required:
+      - channel_or_user_id
+      title: SlackContactChannel
+    ValidationError:
+      example:
+        msg: msg
+        loc:
+        - ValidationError_loc_inner
+        - ValidationError_loc_inner
+        type: type
+      properties:
+        loc:
+          items:
+            $ref: '#/components/schemas/ValidationError_loc_inner'
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WhatsAppContactChannel:
+      description: Route for contacting a user via WhatsApp
+      example:
+        context_about_user: context_about_user
+        phone_number: phone_number
+      properties:
+        phone_number:
+          title: Phone Number
+          type: string
+        context_about_user:
+          nullable: true
+          type: string
+      required:
+      - phone_number
+      title: WhatsAppContactChannel
+    Field:
+      anyOf:
+      - enum:
+        - to
+        type: string
+      - enum:
+        - cc
+        type: string
+      - enum:
+        - bcc
+        type: string
+      nullable: true
+      title: Field
+    ValidationError_loc_inner:
+      anyOf:
+      - type: string
+      - type: integer

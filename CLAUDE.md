@@ -5,16 +5,16 @@
 The root-level Makefile provides convenient commands for managing the entire project without having to change directories. You can run all commands from the project root.
 
 ### Pattern-Matching Commands
-- `make kubechain-<command>`: Run any target from the kubechain Makefile (e.g., `make kubechain-fmt`)
-- `make example-<command>`: Run any target from the kubechain-example Makefile (e.g., `make example-kind-up`)
+- `make acp-<command>`: Run any target from the acp Makefile (e.g., `make acp-fmt`)
+- `make example-<command>`: Run any target from the acp-example Makefile (e.g., `make example-kind-up`)
 
 ### Cluster Management
 - `make cluster-up`: Create the Kind cluster
 - `make cluster-down`: Delete the Kind cluster
 
 ### Operator Management
-- `make build-operator`: Build the Kubechain operator binary
-- `make deploy-operator`: Deploy the Kubechain operator to the local Kind cluster
+- `make build-operator`: Build the ACP operator binary
+- `make deploy-operator`: Deploy the ACP operator to the local Kind cluster
 - `make undeploy-operator`: Undeploy the operator and remove CRDs
 
 ### Resource Management
@@ -24,7 +24,7 @@ The root-level Makefile provides convenient commands for managing the entire pro
 - `make watch-samples`: Watch status of sample resources with continuous updates
 
 ### UI and Observability
-- `make deploy-ui`: Deploy the Kubechain UI
+- `make deploy-ui`: Deploy the ACP UI
 - `make deploy-otel`: Deploy the observability stack
 - `make undeploy-otel`: Remove the observability stack
 - `make otel-access`: Display access instructions for monitoring stack
@@ -40,20 +40,20 @@ The root-level Makefile provides convenient commands for managing the entire pro
 ### Help
 - `make help`: Display all available commands with descriptions
 
-## Go (Kubechain) Commands
+## Go (ACP) Commands
 
-You can run these commands directly in the kubechain directory or use the pattern-matching syntax from the root:
+You can run these commands directly in the acp directory or use the pattern-matching syntax from the root:
 
-- Build: `cd kubechain && make build` or `make kubechain-build`
-- Format: `cd kubechain && make fmt` or `make kubechain-fmt`
-- Lint: `cd kubechain && make lint` or `make kubechain-lint`
-- Run tests: `cd kubechain && make test` or `make kubechain-test`
-- Run single test: `cd kubechain && go test -v ./internal/controller/llm -run TestLLMController`
-- Run e2e tests: `cd kubechain && make test-e2e` or `make kubechain-test-e2e`
+- Build: `cd acp && make build` or `make acp-build`
+- Format: `cd acp && make fmt` or `make acp-fmt`
+- Lint: `cd acp && make lint` or `make acp-lint`
+- Run tests: `cd acp && make test` or `make acp-test`
+- Run single test: `cd acp && go test -v ./internal/controller/llm -run TestLLMController`
+- Run e2e tests: `cd acp && make test-e2e` or `make acp-test-e2e`
 
 ## Makefiles Overview
 
-### Main Kubechain Makefile (/kubechain/Makefile)
+### Main ACP Makefile (/acp/Makefile)
 
 #### Development Commands
 - `make fmt`: Format Go code
@@ -84,16 +84,16 @@ You can run these commands directly in the kubechain directory or use the patter
 - `make show-samples`: Show status of sample resources
 - `make watch-samples`: Watch status of sample resources with continuous updates
 
-### Kubechain Example Makefile (/kubechain-example/Makefile)
+### ACP Example Makefile (/acp-example/Makefile)
 
 #### Cluster Management
 - `make kind-up`: Create Kind cluster
 - `make kind-down`: Delete Kind cluster
 
 #### Application Deployment
-- `make operator-build`: Build Kubechain operator Docker image
-- `make operator-deploy`: Deploy Kubechain operator to cluster
-- `make ui-deploy`: Deploy Kubechain UI
+- `make operator-build`: Build ACP operator Docker image
+- `make operator-deploy`: Deploy ACP operator to cluster
+- `make ui-deploy`: Deploy ACP UI
 
 #### Observability Stack
 - `make otel-stack`: Deploy full observability stack (Prometheus, OpenTelemetry, Grafana, Tempo, Loki)
@@ -110,11 +110,11 @@ Individual components can be managed separately:
 
 ## Documentation
 
-The project includes detailed documentation in the `/kubechain/docs/` directory:
+The project includes detailed documentation in the `/acp/docs/` directory:
 
-- [MCP Server Guide](/kubechain/docs/mcp-server.md) - Working with Model Control Protocol servers
-- [CRD Reference](/kubechain/docs/crd-reference.md) - Complete reference for all Custom Resource Definitions
-- [Kubebuilder Guide](/kubechain/docs/kubebuilder-guide.md) - How to develop with Kubebuilder in this project
+- [MCP Server Guide](/acp/docs/mcp-server.md) - Working with Model Control Protocol servers
+- [CRD Reference](/acp/docs/crd-reference.md) - Complete reference for all Custom Resource Definitions
+- [Kubebuilder Guide](/acp/docs/kubebuilder-guide.md) - How to develop with Kubebuilder in this project
 
 ## Typical Workflow
 
@@ -130,12 +130,12 @@ The project includes detailed documentation in the `/kubechain/docs/` directory:
 Alternatively, use: `make setup-all` to perform steps 1-4 in a single command.
 
 #### Using Directory Makefiles (Alternative)
-1. Create local Kubernetes cluster: `cd kubechain-example && make kind-up`
-2. Install CRDs: `cd kubechain && make install`
-3. Build and deploy the controller: `cd kubechain && make deploy-local-kind`
-4. Deploy observability stack: `cd kubechain-example && make otel-stack`
-5. Deploy sample resources: `cd kubechain && make deploy-samples`
-6. Watch resources: `cd kubechain && make watch-samples`
+1. Create local Kubernetes cluster: `cd acp-example && make kind-up`
+2. Install CRDs: `cd acp && make install`
+3. Build and deploy the controller: `cd acp && make deploy-local-kind`
+4. Deploy observability stack: `cd acp-example && make otel-stack`
+5. Deploy sample resources: `cd acp && make deploy-samples`
+6. Watch resources: `cd acp && make watch-samples`
 
 ### Clean Up
 
@@ -149,10 +149,10 @@ Alternatively, clean up components individually:
 4. Delete cluster: `make cluster-down`
 
 #### Using Directory Makefiles (Alternative)
-1. Remove sample resources: `cd kubechain && make undeploy-samples`
-2. Undeploy the controller: `cd kubechain && make undeploy`
-3. Remove observability stack: `cd kubechain-example && make otel-stack-down`
-4. Delete cluster: `cd kubechain-example && make kind-down`
+1. Remove sample resources: `cd acp && make undeploy-samples`
+2. Undeploy the controller: `cd acp && make undeploy`
+3. Remove observability stack: `cd acp-example && make otel-stack-down`
+4. Delete cluster: `cd acp-example && make kind-down`
 
 ## Code Style Guidelines
 ### Go
@@ -163,14 +163,14 @@ Alternatively, clean up components individually:
 - Document public functions with godoc
 
 ### Kubebuilder and CRD Development
-- All resources should be in the `kubechain.humanlayer.dev` API group
+- All resources should be in the `acp.humanlayer.dev` API group
 - Use proper kubebuilder annotations for validation and RBAC
 - Add RBAC annotations to all controllers to generate proper permissions
 - Run `make manifests` after modifying CRD types or controller annotations
 - Run `make generate` after adding new struct fields to generate DeepCopy methods
-- When creating new resources, use `kubebuilder create api --group kubechain --version acp --kind YourResource --namespaced true --resource true --controller true`
+- When creating new resources, use `kubebuilder create api --group acp --version v1alpha1 --kind YourResource --namespaced true --resource true --controller true`
 - Ensure the PROJECT file contains entries for all resources before running `make manifests`
-- Follow the detailed guidance in the [Kubebuilder Guide](/kubechain/docs/kubebuilder-guide.md)
+- Follow the detailed guidance in the [Kubebuilder Guide](/acp/docs/kubebuilder-guide.md)
 
 ### Kubernetes Resource Design
 
@@ -296,17 +296,17 @@ Example test fixture:
 ```go
 type TestResource struct {
     name     string
-    resource *kubechain.Resource
+    resource *acp.Resource
 }
 
-func (t *TestResource) Setup(ctx context.Context) *kubechain.Resource {
+func (t *TestResource) Setup(ctx context.Context) *acp.Resource {
     // Create the resource with default values
-    resource := &kubechain.Resource{
+    resource := &acp.Resource{
         ObjectMeta: metav1.ObjectMeta{
             Name:      t.name,
             Namespace: "default",
         },
-        Spec: kubechain.ResourceSpec{
+        Spec: acp.ResourceSpec{
             // Default values
         },
     }
@@ -315,7 +315,7 @@ func (t *TestResource) Setup(ctx context.Context) *kubechain.Resource {
     return resource
 }
 
-func (t *TestResource) SetupWithStatus(ctx context.Context, status kubechain.ResourceStatus) *kubechain.Resource {
+func (t *TestResource) SetupWithStatus(ctx context.Context, status acp.ResourceStatus) *acp.Resource {
     resource := t.Setup(ctx)
     resource.Status = status
     Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())

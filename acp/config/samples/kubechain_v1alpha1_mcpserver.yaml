@@ -1,0 +1,15 @@
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: MCPServer
+metadata:
+  name: fetch-server
+spec:
+  # Using stdio transport type
+  transport: "stdio"  
+  
+  # For the fetch MCP server
+  command: "uvx"
+  args: ["mcp-server-fetch"]
+  
+  # Alternatively, for pip installation:
+  # command: "python"
+  # args: ["-m", "mcp_server_fetch"]

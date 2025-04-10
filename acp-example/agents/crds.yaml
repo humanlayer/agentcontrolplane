@@ -1,0 +1,8 @@
+// kubechain CRDs placeholder
+// TODO: Add CRD definitions for:
+// - LLM
+// - Tool
+// - ToolSet
+// - Agent
+// - Task
+// - TaskRun

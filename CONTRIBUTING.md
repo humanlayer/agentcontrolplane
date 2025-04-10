@@ -8,7 +8,7 @@ you'll need to install kubebuilder, probably also kind
 ### tests
 
 ```
-make -C kubechain test
+make -C acp test
 ```
 
 ### pre-push hooks

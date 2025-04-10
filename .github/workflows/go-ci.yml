@@ -4,12 +4,12 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - "kubechain/**"
+      - "acp/**"
       - ".github/workflows/go-ci.yml"
   pull_request:
     branches: [ "main" ]
     paths:
-      - "kubechain/**"
+      - "acp/**"
       - ".github/workflows/go-ci.yml"
 
 jobs:
@@ -25,20 +25,20 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
-          cache-dependency-path: kubechain/go.sum
+          cache-dependency-path: acp/go.sum
 
-      - name: Cache kubechain tools
+      - name: Cache acp tools
         uses: actions/cache@v4
         with:
-          path: kubechain/bin
-          key: ${{ runner.os }}-kubechain-bin-${{ hashFiles('kubechain/Makefile') }}
+          path: acp/bin
+          key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
 
       - name: Install golangci-lint
-        working-directory: kubechain
+        working-directory: acp
         run: make golangci-lint
 
       - name: Check formatting
-        working-directory: kubechain
+        working-directory: acp
         run: |
           make fmt
           if [[ -n $(git diff) ]]; then
@@ -48,7 +48,7 @@ jobs:
           fi
 
       - name: Run linter
-        working-directory: kubechain
+        working-directory: acp
         run: make lint
 
   test:
@@ -63,23 +63,23 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
-          cache-dependency-path: kubechain/go.sum
+          cache-dependency-path: acp/go.sum
 
-      - name: Cache kubechain tools
+      - name: Cache acp tools
         uses: actions/cache@v4
         with:
-          path: kubechain/bin
-          key: ${{ runner.os }}-kubechain-bin-${{ hashFiles('kubechain/Makefile') }}
+          path: acp/bin
+          key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
 
       - name: Run tests
-        working-directory: kubechain
+        working-directory: acp
         run: make test
 
       - name: Upload test coverage
         uses: actions/upload-artifact@v4
         with:
           name: test-coverage
-          path: kubechain/cover.out
+          path: acp/cover.out
           retention-days: 7
 
   build:
@@ -94,23 +94,23 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
-          cache-dependency-path: kubechain/go.sum
+          cache-dependency-path: acp/go.sum
 
-      - name: Cache kubechain tools
+      - name: Cache acp tools
         uses: actions/cache@v4
         with:
-          path: kubechain/bin
-          key: ${{ runner.os }}-kubechain-bin-${{ hashFiles('kubechain/Makefile') }}
+          path: acp/bin
+          key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
 
       - name: Build
-        working-directory: kubechain
+        working-directory: acp
         run: make build
 
   # E2E tests are temporarily disabled due to configuration issues
   # 
   # Issues encountered:
-  # 1. The e2e test suite has a hardcoded image name "example.com/kubechain:v0.0.1" in e2e_suite_test.go
-  # 2. The test expects controller-manager pods to be created in the kubechain-system namespace
+  # 1. The e2e test suite has a hardcoded image name "example.com/acp:v0.0.1" in e2e_suite_test.go
+  # 2. The test expects controller-manager pods to be created in the acp-system namespace
   # 3. Attempts to fix:
   #    - Setting KIND_CLUSTER environment variable to match the KinD cluster name
   #    - Modifying the Makefile to check for the correct cluster name
@@ -135,34 +135,34 @@ jobs:
   #       with:
   #         go-version: '1.24'
   #         cache: true
-  #         cache-dependency-path: kubechain/go.sum
+  #         cache-dependency-path: acp/go.sum
   #
   #     - name: Setup KinD
   #       uses: helm/kind-action@v1.9.0
   #       with:
-  #         cluster_name: kubechain-example-cluster
-  #         config: kubechain-example/kind/kind-config.yaml
+  #         cluster_name: acp-example-cluster
+  #         config: acp-example/kind/kind-config.yaml
   #
   #     - name: Set timestamp
   #       id: timestamp
   #       run: echo "TIMESTAMP=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
   #
   #     - name: Fix test-e2e check for cluster
-  #       working-directory: kubechain
+  #       working-directory: acp
   #       run: |
-  #         # Temporarily modify the Makefile to check for kubechain-example-cluster instead of 'kind'
-  #         sed -i 's/@kind get clusters | grep -q '"'"'kind'"'"'/@kind get clusters | grep -q '"'"'kubechain-example-cluster'"'"'/' Makefile
+  #         # Temporarily modify the Makefile to check for acp-example-cluster instead of 'kind'
+  #         sed -i 's/@kind get clusters | grep -q '"'"'kind'"'"'/@kind get clusters | grep -q '"'"'acp-example-cluster'"'"'/' Makefile
   #
   #     - name: Build and load controller image
-  #       working-directory: kubechain
+  #       working-directory: acp
   #       env:
   #         IMG: controller:${{ env.TIMESTAMP }}
-  #       run: make docker-build && kind load docker-image controller:${{ env.TIMESTAMP }} --name kubechain-example-cluster
+  #       run: make docker-build && kind load docker-image controller:${{ env.TIMESTAMP }} --name acp-example-cluster
   #
   #     - name: Run e2e tests
-  #       working-directory: kubechain
+  #       working-directory: acp
   #       env:
-  #         KIND_CLUSTER: kubechain-example-cluster
+  #         KIND_CLUSTER: acp-example-cluster
   #         IMG: controller:${{ env.TIMESTAMP }}
   #       run: make test-e2e
 
@@ -179,5 +179,5 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
-        working-directory: kubechain
+        working-directory: acp
         run: make docker-build
