@@ -906,7 +906,7 @@ to request human approval and input across Slack, email, and more.
 
 **Note**: Directly approving tool calls with `kubectl` or a `acp` CLI is planned but not yet supported.
 
-**Note**: We recommend running through the above examples first prior exploring this section. Several Kubernetes resources created in that section will be assumed to exist. If you'd like to see a full running version of the Kubernetes configuration used in this section, check out [acp_v1alpha_contactchannel_with_approval.yaml](./config/samples/acp_acp_contactchannel_with_approval.yaml)
+**Note**: We recommend running through the above examples first prior exploring this section. Several Kubernetes resources created in that section will be assumed to exist. If you'd like to see a full running version of the Kubernetes configuration used in this section, check out [acp_v1alpha1_contactchannel_with_approval.yaml](./config/samples/acp_v1alpha1_contactchannel_with_approval.yaml)
 
 You'll need a HumanLayer API key to get started:
 
