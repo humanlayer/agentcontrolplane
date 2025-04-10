@@ -1109,6 +1109,11 @@ Events:
   Normal  AllToolCallsCompleted      7s                task-controller  All tool calls completed, ready to send tool results to LLM
   Normal  LLMFinalAnswer             6s                task-controller  LLM response received successfully
 ```
+### Open Telemetry support
+
+Use `acp-example` to spin up a cluster with an otel stack, to view Task execution traces
+
+<img width="754" alt="Screenshot 2025-04-10 at 10 19 33 AM" src="https://github.com/user-attachments/assets/b9a20a08-75dc-4153-98b9-d171d24d511d" />
 
 
 
