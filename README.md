@@ -1,22 +1,22 @@
 <div align="center">
 
-<h1>KubeChain</h1>
+<h1>ACP (Agent Control Plane)</h1>
 
 </div>
 
-KubeChain is a cloud-native orchestrator for AI Agents built on Kubernetes. It supports [long-lived outer-loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards) that can process asynchronous execution of both LLM inference and long-running tool calls. It's designed for simplicity and gives strong durability and reliability guarantees for agents that make asynchronous tool calls like contacting humans or delegating work to other agents.
+ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on Kubernetes. It supports [long-lived outer-loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards) that can process asynchronous execution of both LLM inference and long-running tool calls. It's designed for simplicity and gives strong durability and reliability guarantees for agents that make asynchronous tool calls like contacting humans or delegating work to other agents.
 
-:warning: **Note** - KubeChain is experimental and some known issues and race conditions. Use at your own risk.
+:warning: **Note** - ACP is experimental and some known issues and race conditions. Use at your own risk.
 
 <div align="center">
 
 <h3>
 
-[Discord](https://discord.gg/AK6bWGFY7d) | [Documentation](./kubechain/docs) | [Examples](./kubechain-example)
+[Discord](https://discord.gg/AK6bWGFY7d) | [Documentation](./docs) | [Examples](./acp-example) <!-- Updated Links -->
 
 </h3>
 
-[![GitHub Repo stars](https://img.shields.io/github/stars/humanlayer/kubechain)](https://github.com/humanlayer/kubechain)
+[![GitHub Repo stars](https://img.shields.io/github/stars/humanlayer/agentcontrolplane)](https://github.com/humanlayer/agentcontrolplane) <!-- Updated Badge Link -->
 [![License: Apache-2](https://img.shields.io/badge/License-Apache-green.svg)](https://opensource.org/licenses/Apache-2)
 
 </div>
@@ -29,10 +29,11 @@ KubeChain is a cloud-native orchestrator for AI Agents built on Kubernetes. It s
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Setting Up a Local Cluster](#setting-up-a-local-cluster)
-  - [Deploying KubeChain](#deploying-kubechain)
+  - [Deploying ACP](#deploying-acp) <!-- Updated Heading -->
   - [Creating an Agent and Running your first task](#creating-an-agent-and-running-your-first-task)
   - [Adding Tools with MCP](#adding-tools-with-mcp)
   - [Using other language models](#using-other-language-models)
+  - [Incorporating Human Approval](#incorporating-human-approval) <!-- Added missing TOC entry -->
   - [Cleaning Up](#cleaning-up)
 - [Design Principles](#design-principles)
 - [Contributing](#contributing)
@@ -47,19 +48,18 @@ KubeChain is a cloud-native orchestrator for AI Agents built on Kubernetes. It s
 - **Agent**: LLM + System Prompt + Tools
 - **Tools**: MCP Servers, Humans, Other Agents
 - **Task**: Agent + User Message + Current context window
-<!-- todo rename to ToolCall -->
 - **TaskRunToolCall**: A single tool call that occurred during a Task
 
 ## Getting Started
 
 ### Prerequisites
 
-To run KubeChain, you'll need:
+To run ACP, you'll need: <!-- Updated Name -->
 
 - **kubectl** - Command-line tool for Kubernetes `brew install kubectl`
 - **OpenAI API Key** - For LLM functionality https://platform.openai.com
 
-To run KubeChain locally on macos, you'll also need:
+To run ACP locally on macos, you'll also need: <!-- Updated Name -->
 
 - **kind** - For running local Kubernetes clusters `brew install kind` (other cluster options should work too)
 - **Docker** - For building and running container images `brew install --cask docker`
@@ -80,7 +80,7 @@ kubectl create secret generic openai \
   --namespace=default
 ```
 
-### Deploying KubeChain
+### Deploying ACP <!-- Updated Heading -->
 
 
 > [!TIP]
@@ -92,17 +92,17 @@ kubectl create secret generic openai \
 > kubectl get events --watch
 > ```
 
-Deploy the KubeChain operator to your cluster:
+Deploy the ACP operator to your cluster: <!-- Updated Name -->
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/smallchain/refs/heads/main/kubechain/config/release/latest.yaml
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest.yaml # Updated Path
 ```
 
 <details>
 <summary>Just the CRDs</summary>
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/smallchain/refs/heads/main/kubechain/config/release/latest-crds.yaml
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest-crd.yaml # Updated Path (assuming -crd suffix)
 ```
 
 </details>
@@ -111,12 +111,12 @@ kubectl apply -f https://raw.githubusercontent.com/humanlayer/smallchain/refs/he
 <summary>Install a specific version</summary>
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/humanlayer/smallchain/refs/heads/main/kubechain/config/release/v0.1.0.yaml
+kubectl apply -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/v0.1.0.yaml # Updated Path
 ```
 
 </details>
 
-This command will build the operator, create necessary CRDs, and deploy the KubeChain components to your cluster.
+This command will build the operator, create necessary CRDs, and deploy the ACP components to your cluster. <!-- Updated Name -->
 
 ### Creating Your First Agent and Running your first task
 
@@ -124,7 +124,7 @@ This command will build the operator, create necessary CRDs, and deploy the Kube
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1  
 kind: LLM
 metadata:
   name: gpt-4o
@@ -180,7 +180,7 @@ gpt-4o   openai     true    Ready    OpenAI API key validated successfully
 ```
 
 ```bash
-kubectl describe llm
+kubectl describe llm gpt-4o # Added resource name for clarity
 ```
 
 Output:
@@ -190,7 +190,7 @@ Name:         gpt-4o
 Namespace:    default
 Labels:       <none>
 Annotations:  <none>
-API Version:  kubechain.humanlayer.dev/v1alpha1
+API Version:  acp.humanlayer.dev/acp
 Kind:         LLM
 Metadata:
   Creation Timestamp:  2025-03-21T20:18:17Z
@@ -203,6 +203,8 @@ Spec:
       Key:   OPENAI_API_KEY
       Name:  openai
   Provider:  openai
+  Parameters: # Added missing parameters section for consistency with YAML
+    Model: gpt-4o
 Status:
   Ready:          true
   Status:         Ready
@@ -219,7 +221,7 @@ Events:
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: my-assistant
@@ -279,7 +281,7 @@ my-assistant   true    Ready    All dependencies validated successfully
 ```
 
 ```bash
-kubectl describe agent
+kubectl describe agent my-assistant # Added resource name for clarity
 ```
 
 Output:
@@ -289,7 +291,7 @@ Name:         my-assistant
 Namespace:    default
 Labels:       <none>
 Annotations:  <none>
-API Version:  kubechain.humanlayer.dev/v1alpha1
+API Version:  acp.humanlayer.dev/acp
 Kind:         Agent
 Metadata:
   Creation Timestamp:  2025-03-21T22:06:27Z
@@ -320,7 +322,7 @@ Create a Task to interact with your agent:
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: hello-world-1
@@ -374,7 +376,7 @@ hello-world-1   true    Ready    FinalAnswer   What is the capital of the moon? 
 You can describe the task to see the full context window
 
 ```bash
-kubectl describe task
+kubectl describe task hello-world-1 # Added resource name
 ```
 
 Output:
@@ -403,7 +405,7 @@ Events:
 
 ```
 
-</details>
+</details> <!-- Closing the describe details -->
 
 The Task object stores and manages the context window of a agent conversation loop.
 
@@ -431,7 +433,7 @@ graph RL
 
     subgraph Task
       AgentRef
-      Message
+      Message # Should this be UserMessage? Diagram doesn't match YAML. Keeping diagram as is for now.
       subgraph ContextWindow
         direction LR
         SystemMessage
@@ -444,7 +446,7 @@ graph RL
 To get just the output, run
 
 ```
-kubectl get task -o jsonpath='{.items[*].status.output}'
+kubectl get task hello-world-1 -o jsonpath='{.status.output}' # Added resource name
 ```
 
 and you'll see
@@ -455,7 +457,7 @@ and you'll see
 you can also describe the task to see the full context window in a slightly more readable format (but without the events)
 
 ```bash
-kubectl get task -o yaml
+kubectl get task hello-world-1 -o yaml # Added resource name
 ```
 
 <details>
@@ -464,12 +466,12 @@ kubectl get task -o yaml
 ```
 apiVersion: v1
 items:
-- apiVersion: kubechain.humanlayer.dev/v1alpha1
+- apiVersion: acp.humanlayer.dev/v1alpha1 
   kind: Task
   metadata:
     annotations:
       kubectl.kubernetes.io/last-applied-configuration: |
-        {"apiVersion":"kubechain.humanlayer.dev/v1alpha1","kind":"Task","metadata":{"annotations":{},"name":"hello-world-1","namespace":"default"},"spec":{"agentRef":{"name":"my-assistant"},"userMessage":"What is the capital of the moon?"}}
+        {"apiVersion: acp.humanlayer.dev/v1alpha1 ","kind":"Task","metadata":{"annotations":{},"name":"hello-world-1","namespace":"default"},"spec":{"agentRef":{"name":"my-assistant"},"userMessage":"What is the capital of the moon?"}}
     creationTimestamp: "2025-04-05T01:04:15Z"
     generation: 1
     name: hello-world-1
@@ -518,7 +520,7 @@ Agent's aren't that interesting without tools. Let's add a basic MCP server tool
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: MCPServer
 metadata:
   name: fetch
@@ -539,7 +541,7 @@ fetch    true    Ready
 ```
 
 ```bash
-kubectl describe mcpserver
+kubectl describe mcpserver fetch # Added resource name
 ```
 Output:
 
@@ -595,7 +597,7 @@ Then we can update our agent in-place to give it access to the fetch tool:
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: my-assistant
@@ -642,7 +644,7 @@ Let's make a new task that uses the fetch tool. In this case, we'll use https://
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: fetch-task
@@ -656,7 +658,7 @@ EOF
 You should see some events in the output of
 
 ```
-kubectl get events --field-selector "involvedObject.kind=Task" --sort-by='.lastTimestamp'
+kubectl get events --field-selector "involvedObject.kind=Task,involvedObject.name=fetch-task" --sort-by='.lastTimestamp' # Added name selector
 ```
 
 ```
@@ -818,7 +820,7 @@ That's it! Go add your favorite MCPs and start running durable agents in Kuberne
 
 ### Using other Language Models
 
-So far we've been using the `gpt-4o` model from OpenAI. KubeChain also supports using other language models from OpenAI, Anthropic, Vertex, and more.
+So far we've been using the `gpt-4o` model from OpenAI. ACP also supports using other language models from OpenAI, Anthropic, Vertex, and more. <!-- Updated Name -->
 
 
 Let's create a new LLM and Agent that uses the `claude-3-5-sonnet` model from Anthropic.
@@ -833,7 +835,7 @@ kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHRO
 
 ```
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: LLM
 metadata:
   name: claude-3-5-sonnet
@@ -863,7 +865,7 @@ claude-3-5-sonnet   anthropic   true    Ready
 
 ```
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: claude
@@ -877,7 +879,7 @@ EOF
 
 ```
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: claude-task
@@ -899,12 +901,12 @@ claude-task   true    Ready    FinalAnswer             I am Claude, an AI assist
 
 For certain classes of MCP tools, you may want to incorporate human approval into an agent's workflow.
 
-KubeChain supports this via [HumanLayer's](https://github.com/humanlayer/humanlayer) [contact channels](https://www.humanlayer.dev/docs/channels/introduction)
+ACP supports this via [HumanLayer's](https://github.com/humanlayer/humanlayer) [contact channels](https://www.humanlayer.dev/docs/channels/introduction)
 to request human approval and input across Slack, email, and more.
 
-**Note**: Directly approving tool calls with `kubectl` or a `kubechain` CLI is planned but not yet supported.
+**Note**: Directly approving tool calls with `kubectl` or a `acp` CLI is planned but not yet supported.
 
-**Note**: We recommend running through the above examples first prior exploring this section. Several Kubernetes resources created in that section will be assumed to exist. If you'd like to see a full running version of the Kubernetes configuration used in this section, check out [kubechain_v1alpha_contactchannel_with_approval.yaml](./config/samples/kubechain_v1alpha_contactchannel_with_approval.yaml)
+**Note**: We recommend running through the above examples first prior exploring this section. Several Kubernetes resources created in that section will be assumed to exist. If you'd like to see a full running version of the Kubernetes configuration used in this section, check out [acp_v1alpha1_contactchannel_with_approval.yaml](./config/samples/acp_v1alpha1_contactchannel_with_approval.yaml)
 
 You'll need a HumanLayer API key to get started:
 
@@ -916,10 +918,10 @@ Next, create a ContactChannel resource. In this example, we'll use an email cont
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: ContactChannel
 metadata:
-  name: approval-channel 
+  name: approval-channel
 spec:
   type: email # Replace with "slack" if using Slack
   apiKeyFrom:
@@ -928,7 +930,7 @@ spec:
       key: HUMANLAYER_API_KEY
   email:
     address: "approver@example.com" # Replace with actual target email address
-    subject: "Approval Request from Kubechain"
+    subject: "Approval Request from ACP" 
     contextAboutUser: "Primary approver for web fetch operations"
 EOF
 ```
@@ -937,7 +939,7 @@ Now, let's update our MCP server from the earlier example so that it references 
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: MCPServer
 metadata:
   name: fetch
@@ -945,10 +947,10 @@ spec:
   transport: "stdio"
   command: "uvx"
   args: ["mcp-server-fetch"]
-  # When an approvalContactChannel is specified, 
+  # When an approvalContactChannel is specified,
   # all tools on this MCP server will wait for human approval prior executing.
   approvalContactChannel:
-    name: approval-channel 
+    name: approval-channel
 EOF
 ```
 
@@ -956,7 +958,7 @@ Be sure you have an agent that references the above `MCPServer` by running `kube
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: agent-with-fetch
@@ -974,13 +976,13 @@ The fun part: Create a new task that uses the `fetch` tool to test the human app
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: kubechain.humanlayer.dev/v1alpha1
+apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: approved-fetch-task
 spec:
   agentRef:
-    name: agent-with-fetch 
+    name: agent-with-fetch
   userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
 EOF
 ```
@@ -992,7 +994,7 @@ kubectl get taskruntoolcall
 ```
 
 ```
-$ kubectl get taskruntoolcall                                                              
+$ kubectl get taskruntoolcall
 NAME                          PHASE     TASKRUN                 TOOL
 approved-fetch-task-1-tc-01   Pending   approved-fetch-task-1   fetch__fetch
 ```
@@ -1001,21 +1003,21 @@ and we run `describe` against the tool call to see that its waiting for human ap
 
 
 ```
-kubectl describe taskruntoolcall approved-fetch-task-1-tc-01  
+kubectl describe taskruntoolcall approved-fetch-task-1-tc-01
 ```
 
 ```
 Name:         approved-fetch-task-1-tc-01
 Namespace:    default
-Labels:       kubechain.humanlayer.dev/taskruntoolcall=approved-fetch-task-1
+Labels:       acp.humanlayer.dev/taskruntoolcall=approved-fetch-task-1
 Annotations:  <none>
-API Version:  kubechain.humanlayer.dev/v1alpha1
+API Version:  acp.humanlayer.dev/acp
 Kind:         TaskRunToolCall
 Metadata:
   Creation Timestamp:  2025-04-01T16:09:02Z
   Generation:          1
   Owner References:
-    API Version:     kubechain.humanlayer.dev/v1alpha1
+    API Version:     acp.humanlayer.dev/acp # Updated API Group
     Controller:      true
     Kind:            Task
     Name:            approved-fetch-task-1
@@ -1113,6 +1115,7 @@ kubectl delete task --all
 kubectl delete agent --all
 kubectl delete mcpserver --all
 kubectl delete llm --all
+kubectl delete contactchannel --all # Added ContactChannel cleanup
 ```
 
 Remove the OpenAI secret:
@@ -1126,7 +1129,7 @@ kubectl delete secret humanlayer
 Remove the operator, resources and custom resource definitions:
 
 ```
-kubectl delete -f https://raw.githubusercontent.com/humanlayer/smallchain/refs/heads/main/kubechain/config/release/latest.yaml
+kubectl delete -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest.yaml
 ```
 
 If you made a kind cluster, you can delete it with:
@@ -1137,13 +1140,13 @@ kind delete cluster
 
 ## Key Features
 
-- **Kubernetes-Native Architecture**: KubeChain is built as a Kubernetes operator, using Custom Resource Definitions (CRDs) to define and manage LLMs, Agents, Tools, and Tasks.
+- **Kubernetes-Native Architecture**: ACP is built as a Kubernetes operator, using Custom Resource Definitions (CRDs) to define and manage LLMs, Agents, Tools, and Tasks.
 
-- **Durable Agent Execution**: KubeChain implements something like async/await at the infrastructure layer, checkpointing a conversation chain whenever a tool call or agent delegation occurs, with the ability to resume from that checkpoint when the operation completes.
+- **Durable Agent Execution**: ACP implements something like async/await at the infrastructure layer, checkpointing a conversation chain whenever a tool call or agent delegation occurs, with the ability to resume from that checkpoint when the operation completes.
 
 - **Dynamic Workflow Planning**: Allows agents to reprioritize and replan their workflows mid-execution.
 
-- **Observable Control Loop Architecture**: KubeChain uses a simple, observable control loop architecture that allows for easy debugging and observability into agent execution.
+- **Observable Control Loop Architecture**: ACP uses a simple, observable control loop architecture that allows for easy debugging and observability into agent execution.
 
 - **Scalable**: Leverages Kubernetes for scalability and resilience. If you have k8s / etcd, you can run reliable distributed async agents.
 
@@ -1166,8 +1169,8 @@ kind delete cluster
 
 ## Contributing
 
-KubeChain is open-source and we welcome contributions in the form of issues, documentation, pull requests, and more. See [CONTRIBUTING.md](./CONTRIBUTING.md) for more details.
+ACP is open-source and we welcome contributions in the form of issues, documentation, pull requests, and more. See [CONTRIBUTING.md](./CONTRIBUTING.md) for more details.
 
 ## License
 
-KubeChain is licensed under the Apache 2 License.
+ACP is licensed under the Apache 2 License.

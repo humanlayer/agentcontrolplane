@@ -3,7 +3,7 @@
     "GO111MODULE": "on"
   },
   "go.useLanguageServer": true,
-  "go.workspaceFolder": "${workspaceFolder}/kubechain",
+  "go.workspaceFolder": "${workspaceFolder}/acp",
   "go.coverShowCounts": true,
   "gopls": {
     "formatting.gofumpt": true,

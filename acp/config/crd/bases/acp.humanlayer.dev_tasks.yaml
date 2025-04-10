@@ -1,0 +1,229 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.1
+  name: tasks.acp.humanlayer.dev
+spec:
+  group: acp.humanlayer.dev
+  names:
+    kind: Task
+    listKind: TaskList
+    plural: tasks
+    singular: task
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.statusDetail
+      name: Detail
+      priority: 1
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.userMsgPreview
+      name: Preview
+      type: string
+    - jsonPath: .status.output
+      name: Output
+      type: string
+    - jsonPath: .status.error
+      name: Error
+      priority: 1
+      type: string
+    - jsonPath: .status.startTime
+      name: Started
+      priority: 1
+      type: date
+    - jsonPath: .status.completionTime
+      name: Completed
+      priority: 1
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Task is the Schema for the tasks API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TaskSpec defines the desired state of Task
+            properties:
+              agentRef:
+                description: AgentRef references the agent that will execute this
+                  Task.
+                properties:
+                  name:
+                    description: Name of the referent
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              userMessage:
+                description: UserMessage is the message to send to the agent.
+                minLength: 1
+                type: string
+            required:
+            - agentRef
+            - userMessage
+            type: object
+          status:
+            description: TaskStatus defines the observed state of Task
+            properties:
+              completionTime:
+                description: CompletionTime is when the Task completed
+                format: date-time
+                type: string
+              contextWindow:
+                description: ContextWindow maintains the conversation history as a
+                  sequence of messages
+                items:
+                  description: Message represents a single message in the conversation
+                  properties:
+                    content:
+                      description: Content is the message content
+                      type: string
+                    name:
+                      description: Name is the name of the tool that was called
+                      type: string
+                    role:
+                      description: Role is the role of the message sender (system,
+                        user, assistant, tool)
+                      enum:
+                      - system
+                      - user
+                      - assistant
+                      - tool
+                      type: string
+                    toolCallId:
+                      description: ToolCallID is the unique identifier for this tool
+                        call
+                      type: string
+                    toolCalls:
+                      description: ToolCalls contains any tool calls requested by
+                        this message
+                      items:
+                        description: ToolCall represents a request to call a tool
+                        properties:
+                          function:
+                            description: Function contains the details of the function
+                              to call
+                            properties:
+                              arguments:
+                                description: Arguments contains the arguments to pass
+                                  to the function in JSON format
+                                type: string
+                              name:
+                                description: Name is the name of the function to call
+                                type: string
+                            required:
+                            - arguments
+                            - name
+                            type: object
+                          id:
+                            description: ID is the unique identifier for this tool
+                              call
+                            type: string
+                          type:
+                            description: Type indicates the type of tool call. Currently
+                              only "function" is supported.
+                            type: string
+                        required:
+                        - function
+                        - id
+                        - type
+                        type: object
+                      type: array
+                  required:
+                  - content
+                  - role
+                  type: object
+                type: array
+              error:
+                description: Error message if the task failed
+                type: string
+              messageCount:
+                description: MessageCount contains the number of messages in the context
+                  window
+                type: integer
+              output:
+                description: Output contains the result of the task execution
+                type: string
+              phase:
+                description: Phase indicates the current phase of the Task
+                enum:
+                - Initializing
+                - Pending
+                - ReadyForLLM
+                - SendContextWindowToLLM
+                - ToolCallsPending
+                - CheckingToolCalls
+                - FinalAnswer
+                - ErrorBackoff
+                - Failed
+                type: string
+              ready:
+                description: Ready indicates if the Task is ready to be executed
+                type: boolean
+              spanContext:
+                description: SpanContext contains OpenTelemetry span context information
+                properties:
+                  spanID:
+                    description: SpanID is the span ID
+                    type: string
+                  traceID:
+                    description: TraceID is the trace ID for the span
+                    type: string
+                type: object
+              startTime:
+                description: StartTime is when the Task started
+                format: date-time
+                type: string
+              status:
+                description: Status indicates the current status of the task
+                enum:
+                - Ready
+                - Error
+                - Pending
+                type: string
+              statusDetail:
+                description: StatusDetail provides additional details about the current
+                  status
+                type: string
+              toolCallRequestId:
+                description: ToolCallRequestID uniquely identifies a set of tool calls
+                  from a single LLM response
+                type: string
+              userMsgPreview:
+                description: UserMsgPreview stores the first 50 characters of the
+                  user's message
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

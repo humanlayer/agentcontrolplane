@@ -1,14 +1,14 @@
-# SmallChain Root Makefile
-# Orchestrates commands from kubechain and kubechain-example directories
+# ACP Root Makefile
+# Orchestrates commands from acp and acp-example directories
 
 # Define directories
-KUBECHAIN_DIR = kubechain
-EXAMPLE_DIR = kubechain-example
+ACP_DIR = acp
+EXAMPLE_DIR = acp-example
 
 .PHONY: help build test cluster-up cluster-down build-operator deploy-operator undeploy-operator \
         deploy-samples undeploy-samples deploy-ui deploy-otel undeploy-otel \
         test-operator test-e2e setup-all clean-all \
-        kubechain-% example-%
+        acp-% example-%
 
 ##@ General Commands
 
@@ -17,17 +17,17 @@ help: ## Display this help information
 
 ##@ Pattern Matching (Run child directory commands directly)
 
-kubechain-%: ## Run any kubechain Makefile target: make kubechain-<target>
-	$(MAKE) -C $(KUBECHAIN_DIR) $*
+acp-%: ## Run any acp Makefile target: make acp-<target>
+	$(MAKE) -C $(ACP_DIR) $*
 
-example-%: ## Run any kubechain-example Makefile target: make example-<target>
+example-%: ## Run any acp-example Makefile target: make example-<target>
 	$(MAKE) -C $(EXAMPLE_DIR) $*
 
 ##@ Composite Commands
 
-build: kubechain-build ## Build kubechain components
+build: acp-build ## Build acp components
 
-test: kubechain-test ## Run tests for kubechain components
+test: acp-test ## Run tests for acp components
 
 ##@ Cluster Management
 
@@ -39,33 +39,33 @@ cluster-down: ## Delete the Kind cluster
 
 ##@ Operator Management
 
-build-operator: ## Build the Kubechain operator binary
-	$(MAKE) -C $(KUBECHAIN_DIR) build
+build-operator: ## Build the ACP operator binary
+	$(MAKE) -C $(ACP_DIR) build
 
-deploy-operator: ## Deploy the Kubechain operator to the local Kind cluster
-	$(MAKE) -C $(KUBECHAIN_DIR) deploy-local-kind
+deploy-operator: ## Deploy the ACP operator to the local Kind cluster
+	$(MAKE) -C $(ACP_DIR) deploy-local-kind
 
 undeploy-operator: ## Undeploy the operator and remove CRDs
-	$(MAKE) -C $(KUBECHAIN_DIR) undeploy
-	$(MAKE) -C $(KUBECHAIN_DIR) uninstall
+	$(MAKE) -C $(ACP_DIR) undeploy
+	$(MAKE) -C $(ACP_DIR) uninstall
 
 ##@ Resource Management
 
 deploy-samples: ## Deploy sample resources to the cluster
-	$(MAKE) -C $(KUBECHAIN_DIR) deploy-samples
+	$(MAKE) -C $(ACP_DIR) deploy-samples
 
 undeploy-samples: ## Remove sample resources
-	$(MAKE) -C $(KUBECHAIN_DIR) undeploy-samples
+	$(MAKE) -C $(ACP_DIR) undeploy-samples
 
 show-samples: ## Show status of sample resources
-	$(MAKE) -C $(KUBECHAIN_DIR) show-samples
+	$(MAKE) -C $(ACP_DIR) show-samples
 
 watch-samples: ## Watch status of sample resources with continuous updates
-	$(MAKE) -C $(KUBECHAIN_DIR) watch-samples
+	$(MAKE) -C $(ACP_DIR) watch-samples
 
 ##@ UI and Observability
 
-deploy-ui: ## Deploy the Kubechain UI
+deploy-ui: ## Deploy the ACP UI
 	$(MAKE) -C $(EXAMPLE_DIR) ui-deploy
 
 deploy-otel: ## Deploy the observability stack (Prometheus, OpenTelemetry, Grafana, Tempo, Loki)
@@ -80,10 +80,10 @@ otel-access: ## Display access instructions for monitoring stack
 ##@ Testing
 
 test-operator: ## Run unit tests for the operator
-	$(MAKE) -C $(KUBECHAIN_DIR) test
+	$(MAKE) -C $(ACP_DIR) test
 
 test-e2e: ## Run end-to-end tests (requires a running cluster)
-	$(MAKE) -C $(KUBECHAIN_DIR) test-e2e
+	$(MAKE) -C $(ACP_DIR) test-e2e
 
 ##@ All-in-One Commands
 

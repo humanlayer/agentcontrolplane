@@ -1,0 +1,34 @@
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: ContactChannel
+metadata:
+  labels:
+    app.kubernetes.io/name: acp
+    app.kubernetes.io/managed-by: kustomize
+  name: slack-channel-sample
+spec:
+  type: slack
+  apiKeyFrom:
+    secretKeyRef:
+      name: humanlayer-api-key
+      key: api-key
+  slack:
+    channelOrUserID: "C01234ABCDE"  # Replace with actual Slack channel ID
+    contextAboutChannelOrUser: "A channel used for approving deployment requests"
+---
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: ContactChannel
+metadata:
+  labels:
+    app.kubernetes.io/name: acp
+    app.kubernetes.io/managed-by: kustomize
+  name: email-channel-sample
+spec:
+  type: email
+  apiKeyFrom:
+    secretKeyRef:
+      name: humanlayer-api-key
+      key: api-key
+  email:
+    address: "approvals@example.com"
+    contextAboutUser: "The approval team for production deployments"
+    subject: "Action Required: Deployment Approval"
