@@ -339,23 +339,6 @@ func (r *ToolCallReconciler) processMCPTool(ctx context.Context, tc *acp.ToolCal
 	return ctrl.Result{}, nil
 }
 
-// processDelegateToAgent handles agent delegation (not yet implemented)
-func (r *ToolCallReconciler) processDelegateToAgent(ctx context.Context, tc *acp.ToolCall) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	err := fmt.Errorf("delegation is not implemented yet; only direct execution is supported")
-	logger.Error(err, "Delegation not implemented")
-	tc.Status.Status = acp.ToolCallStatusTypeError
-	tc.Status.StatusDetail = err.Error()
-	tc.Status.Error = err.Error()
-	r.recorder.Event(tc, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-	if err := r.Status().Update(ctx, tc); err != nil {
-		logger.Error(err, "Failed to update status")
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{}, err
-}
-
 // handleUnsupportedToolType handles the fallback for unrecognized tool types
 func (r *ToolCallReconciler) handleUnsupportedToolType(ctx context.Context, tc *acp.ToolCall) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
