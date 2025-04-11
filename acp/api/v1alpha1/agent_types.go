@@ -4,6 +4,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// FreestyleConfig defines the configuration for freestyle execution
+type FreestyleConfig struct {
+	// FreestyleAPIKeyFrom references the secret containing the API key
+	// +kubebuilder:validation:Required
+	FreestyleAPIKeyFrom SecretKeyRef `json:"freestyleApiKeyFrom"`
+}
+
 // AgentSpec defines the desired state of Agent
 type AgentSpec struct {
 	// LLMRef references the LLM to use for this agent
@@ -22,6 +29,10 @@ type AgentSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	System string `json:"system"`
+
+	// Execute defines how the agent should execute code
+	// +optional
+	Execute *FreestyleConfig `json:"execute,omitempty"`
 }
 
 // LocalObjectReference contains enough information to locate the referenced resource in the same namespace
@@ -96,4 +107,8 @@ type AgentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Agent `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&Agent{}, &AgentList{})
 }
