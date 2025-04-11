@@ -90,10 +90,10 @@ spec:
                             pod's namespace
                           properties:
                             key:
-                              description: Key within the secret
+                              description: Key is the key in the secret
                               type: string
                             name:
-                              description: Name of the secret
+                              description: Name is the name of the secret
                               type: string
                           required:
                           - key

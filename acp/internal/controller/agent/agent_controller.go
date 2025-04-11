@@ -53,33 +53,6 @@ func (r *AgentReconciler) validateLLM(ctx context.Context, agent *acp.Agent) err
 	return nil
 }
 
-// validateTools checks if all referenced tools exist and are ready
-func (r *AgentReconciler) validateTools(ctx context.Context, agent *acp.Agent) ([]acp.ResolvedTool, error) {
-	validTools := make([]acp.ResolvedTool, 0, len(agent.Spec.Tools))
-
-	for _, toolRef := range agent.Spec.Tools {
-		tool := &acp.Tool{}
-		err := r.Get(ctx, client.ObjectKey{
-			Namespace: agent.Namespace,
-			Name:      toolRef.Name,
-		}, tool)
-		if err != nil {
-			return validTools, fmt.Errorf("failed to get Tool %q: %w", toolRef.Name, err)
-		}
-
-		if !tool.Status.Ready {
-			return validTools, fmt.Errorf("tool %q is not ready", toolRef.Name)
-		}
-
-		validTools = append(validTools, acp.ResolvedTool{
-			Kind: "Tool",
-			Name: toolRef.Name,
-		})
-	}
-
-	return validTools, nil
-}
-
 // validateMCPServers checks if all referenced MCP servers exist and are connected
 func (r *AgentReconciler) validateMCPServers(ctx context.Context, agent *acp.Agent) ([]acp.ResolvedMCPServer, error) {
 	if r.MCPManager == nil {
@@ -223,14 +196,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 	}
 
-	// Validate Tool references
-	validTools, err := r.validateTools(ctx, &agent)
-	if err != nil {
-		logger.Error(err, "Tool validation failed")
-		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
-	}
-
-	statusUpdate.Status.ValidTools = validTools
+	var err error
 
 	// Validate MCP server references, if any
 	if len(agent.Spec.MCPServers) > 0 && r.MCPManager != nil {

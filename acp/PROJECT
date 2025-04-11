@@ -23,15 +23,6 @@ resources:
   controller: true
   domain: humanlayer.dev
   group: acp
-  kind: Tool
-  path: github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1
-  version: acp
-- api:
-    crdVersion: v1
-    namespaced: true
-  controller: true
-  domain: humanlayer.dev
-  group: acp
   kind: Agent
   path: github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1
   version: acp

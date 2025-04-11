@@ -236,7 +236,7 @@ var _ = Describe("Environment Variable Handling", func() {
 				{
 					Name: "API_KEY",
 					ValueFrom: &acp.EnvVarSource{
-						SecretKeyRef: &acp.SecretKeySelector{
+						SecretKeyRef: &acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "api-key",
 						},
@@ -262,7 +262,7 @@ var _ = Describe("Environment Variable Handling", func() {
 				{
 					Name: "SECRET_VAR",
 					ValueFrom: &acp.EnvVarSource{
-						SecretKeyRef: &acp.SecretKeySelector{
+						SecretKeyRef: &acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "api-key",
 						},
@@ -285,7 +285,7 @@ var _ = Describe("Environment Variable Handling", func() {
 				{
 					Name: "MISSING_SECRET",
 					ValueFrom: &acp.EnvVarSource{
-						SecretKeyRef: &acp.SecretKeySelector{
+						SecretKeyRef: &acp.SecretKeyRef{
 							Name: "non-existent-secret",
 							Key:  "api-key",
 						},
@@ -307,7 +307,7 @@ var _ = Describe("Environment Variable Handling", func() {
 				{
 					Name: "MISSING_KEY",
 					ValueFrom: &acp.EnvVarSource{
-						SecretKeyRef: &acp.SecretKeySelector{
+						SecretKeyRef: &acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "non-existent-key",
 						},
@@ -332,7 +332,7 @@ var _ = Describe("Environment Variable Handling", func() {
 				{
 					Name: "API_KEY",
 					ValueFrom: &acp.EnvVarSource{
-						SecretKeyRef: &acp.SecretKeySelector{
+						SecretKeyRef: &acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "api-key",
 						},

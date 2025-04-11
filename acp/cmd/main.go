@@ -28,8 +28,7 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/controller/llm"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/controller/mcpserver"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/controller/task"
-	"github.com/humanlayer/agentcontrolplane/acp/internal/controller/taskruntoolcall"
-	"github.com/humanlayer/agentcontrolplane/acp/internal/controller/tool"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/controller/toolcall"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -235,14 +234,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&tool.ToolReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Tool")
-		os.Exit(1)
-	}
-
 	// Create a shared MCPManager that all controllers will use
 	mcpManagerInstance := mcpmanager.NewMCPServerManagerWithClient(mgr.GetClient())
 
@@ -265,11 +256,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&taskruntoolcall.ToolCallReconciler{
+	if err = (&toolcall.ToolCallReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		MCPManager: mcpManagerInstance,
-		Tracer:     tracerProvider.Tracer("taskruntoolcall"),
+		Tracer:     tracerProvider.Tracer("toolcall"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ToolCall")
 		os.Exit(1)

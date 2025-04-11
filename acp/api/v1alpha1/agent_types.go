@@ -10,10 +10,6 @@ type AgentSpec struct {
 	// +kubebuilder:validation:Required
 	LLMRef LocalObjectReference `json:"llmRef"`
 
-	// Tools is a list of tools this agent can use
-	// +optional
-	Tools []LocalObjectReference `json:"tools,omitempty"`
-
 	// MCPServers is a list of MCP servers this agent can use
 	// +optional
 	MCPServers []LocalObjectReference `json:"mcpServers,omitempty"`

@@ -39,7 +39,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ToolCall is the Schema for the toolcalls API
+        description: ToolCall is the Schema for the taskruntoolcalls API
         properties:
           apiVersion:
             description: |-
@@ -90,9 +90,6 @@ spec:
               toolType:
                 description: ToolType identifies the type of the tool (Standard, MCP,
                   HumanContact)
-                enum:
-                - MCP
-                - HumanContact
                 type: string
             required:
             - arguments

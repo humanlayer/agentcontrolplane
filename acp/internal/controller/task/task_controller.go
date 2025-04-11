@@ -458,7 +458,7 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 }
 
 // createToolCalls creates ToolCall objects for each tool call
-func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, toolCalls []acp.ToolCall, tools []llmclient.Tool) (ctrl.Result, error) {
+func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, toolCalls []acp.MessageToolCall, tools []llmclient.Tool) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if statusUpdate.Status.ToolCallRequestID == "" {

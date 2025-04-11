@@ -21,7 +21,6 @@ rules:
   - mcpservers
   - tasks
   - toolcalls
-  - tools
   verbs:
   - create
   - delete
@@ -39,7 +38,6 @@ rules:
   - mcpservers/status
   - tasks/status
   - toolcalls/status
-  - tools/status
   verbs:
   - get
   - patch
@@ -50,3 +48,11 @@ rules:
   - contactchannels/finalizers
   verbs:
   - update
+- apiGroups:
+  - acp.humanlayer.dev
+  resources:
+  - tools
+  verbs:
+  - get
+  - list
+  - watch

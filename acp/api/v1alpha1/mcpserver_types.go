@@ -57,10 +57,10 @@ type EnvVar struct {
 type EnvVarSource struct {
 	// SecretKeyRef selects a key of a secret in the pod's namespace
 	// +optional
-	SecretKeyRef *SecretKeySelector `json:"secretKeyRef,omitempty"`
+	SecretKeyRef *SecretKeyRef `json:"secretKeyRef,omitempty"`
 }
 
-// We're using the SecretKeySelector from tool_types.go
+// We're using the SecretKeyRef from tool_types.go
 
 // ResourceRequirements describes the compute resource requirements
 type ResourceRequirements struct {

@@ -27,7 +27,7 @@ type Message struct {
 
 	// ToolCalls contains any tool calls requested by this message
 	// +optional
-	ToolCalls []ToolCall `json:"toolCalls,omitempty"`
+	ToolCalls []MessageToolCall `json:"toolCalls,omitempty"`
 
 	// ToolCallID is the unique identifier for this tool call
 	// +optional
@@ -39,7 +39,7 @@ type Message struct {
 }
 
 // ToolCall represents a request to call a tool
-type ToolCall struct {
+type MessageToolCall struct {
 	// ID is the unique identifier for this tool call
 	ID string `json:"id"`
 

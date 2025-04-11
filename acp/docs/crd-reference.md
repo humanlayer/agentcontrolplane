@@ -31,9 +31,9 @@ The MCPServer CRD represents a Model Control Protocol server instance.
 
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
-| `secretKeyRef` | SecretKeySelector | Reference to a secret | No |
+| `secretKeyRef` | SecretKeyRef | Reference to a secret | No |
 
-#### SecretKeySelector
+#### SecretKeyRef
 
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
@@ -75,7 +75,7 @@ The LLM CRD represents a Large Language Model configuration.
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `provider` | string | LLM provider (one of: "openai", "anthropic", "mistral", "google", "vertex") | Yes |
-| `apiKeyFrom` | SecretKeySelector | Secret containing the API key | Yes |
+| `apiKeyFrom` | SecretKeyRef | Secret containing the API key | Yes |
 | `baseConfig` | object | Common configuration options across providers (model, temperature, etc.) | No |
 | `providerConfig` | object | Provider-specific configuration (openaiConfig, anthropicConfig, vertexConfig, etc.) | No |
 
