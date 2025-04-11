@@ -88,8 +88,7 @@ spec:
                 - name
                 type: object
               toolType:
-                description: ToolType identifies the type of the tool (Standard, MCP,
-                  HumanContact)
+                description: ToolType identifies the type of the tool (MCP, HumanContact)
                 type: string
             required:
             - arguments
