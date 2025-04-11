@@ -18,8 +18,8 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .spec.taskRunRef.name
-      name: TaskRun
+    - jsonPath: .spec.taskRef.name
+      name: Task
       type: string
     - jsonPath: .spec.toolRef.name
       name: Tool
@@ -39,7 +39,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ToolCall is the Schema for the taskruntoolcalls API
+        description: ToolCall is the Schema for the toolcalls API
         properties:
           apiVersion:
             description: |-

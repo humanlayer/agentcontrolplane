@@ -4,5 +4,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: controller
-  newTag: "202504102058"
+  newName: ghcr.io/humanlayer/agentcontrolplane
+  newTag: v0.5.0
