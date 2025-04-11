@@ -1196,7 +1196,7 @@ kind delete cluster
 | Task Execution History via Kubernetes Events | Alpha ✅ |
 | Better MCP Scheduling | Planned 🗺️ |
 | Delegation to Sub Agents | Planned 🗺️ |
-| Human approval for MCP Tools | ✅ |
+| Human approval for MCP Tools | Alpha ✅ |
 | Contact human as a tool | In Progress 🚧 |
 | Tiered approval (once, just for this task, or always) | Planned 🗺️ |
 | OpenTelemetry traces | In Progress 🚧 |
