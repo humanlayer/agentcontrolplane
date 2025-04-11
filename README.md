@@ -835,7 +835,7 @@ kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHRO
 
 #### Create an LLM
 
-```
+```bash
 cat <<EOF | kubectl apply -f -
 apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: LLM
@@ -854,7 +854,7 @@ EOF
 
 fetch the LLM to verify it was created:
 
-```
+```bash
 kubectl get llm claude-3-5-sonnet
 ```
 
@@ -865,7 +865,7 @@ claude-3-5-sonnet   anthropic   true    Ready
 
 #### Create an Agent and assign a task
 
-```
+```bash
 cat <<EOF | kubectl apply -f -
 apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
@@ -879,7 +879,7 @@ spec:
 EOF
 ```
 
-```
+```bash
 cat <<EOF | kubectl apply -f -
 apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
@@ -921,7 +921,11 @@ You'll need a HumanLayer API key to get started:
 kubectl create secret generic humanlayer --from-literal=HUMANLAYER_API_KEY=$HUMANLAYER_API_KEY
 ```
 
-Next, create a ContactChannel resource. In this example, we'll use an email contact channel (be sure to swap the `approver@example.com` address for a real target email address):
+Next, create a ContactChannel resource. In this example, we'll use an email contact channel - set an email you have access to so you can approve the agent's actions:
+
+```bash
+export MY_EMAIL=... # your email here
+```
 
 ```bash
 cat <<EOF | kubectl apply -f -
@@ -936,7 +940,7 @@ spec:
       name: humanlayer
       key: HUMANLAYER_API_KEY
   email:
-    address: "approver@example.com" # Replace with actual target email address
+    address: "$MY_EMAIL"
     subject: "Approval Request from ACP" 
     contextAboutUser: "Primary approver for web fetch operations"
 EOF
@@ -1002,53 +1006,9 @@ kubectl get toolcall
 
 ```
 $ kubectl get toolcall
-NAME                          PHASE     TASKRUN                 TOOL
-approved-fetch-task-1-tc-01   Pending   approved-fetch-task-1   fetch__fetch
-```
-
-and we run `describe` against the tool call to see that its waiting for human approval:
-
-
-```
-kubectl describe toolcall approved-fetch-task-1-tc-01
-```
-
-```
-Name:         approved-fetch-task-1-tc-01
-Namespace:    default
-Labels:       acp.humanlayer.dev/toolcall=approved-fetch-task-1
-Annotations:  <none>
-API Version:  acp.humanlayer.dev/acp
-Kind:         ToolCall
-Metadata:
-  Creation Timestamp:  2025-04-01T16:09:02Z
-  Generation:          1
-  Owner References:
-    API Version:     acp.humanlayer.dev/v1alpha1
-    Controller:      true
-    Kind:            Task
-    Name:            approved-fetch-task-1
-    UID:             52893dec-c5a5-424d-983f-13a89215b084
-  Resource Version:  91939
-  UID:               3f8c4eaf-0e46-44f6-9741-f32809747099
-Spec:
-  Arguments:  {"url":"https://swapi.dev/api/people/2"}
-  Task Run Ref:
-    Name:        approved-fetch-task-1
-  Tool Call Id:  call_7PCkM1y2v8wFOC2vKtDrweor
-  Tool Ref:
-    Name:  fetch__fetch
-Status:
-  External Call ID:  ec-3257d3e
-  Phase:             Pending
-  Start Time:        2025-04-01T16:09:02Z
-  Status:            AwaitingHumanApproval
-  Status Detail:     Waiting for human approval via contact channel approval-channel
-Events:
-  Type    Reason                 Age    From                        Message
-  ----    ------                 ----   ----                        -------
-  Normal  AwaitingHumanApproval  2m42s  toolcall-controller  Tool execution requires approval via contact channel approval-channel
-  Normal  HumanLayerRequestSent  2m41s  toolcall-controller  HumanLayer request sent
+NAME                                PHASE                   TASK                  TOOL
+approved-fetch-task-3f67fda-tc-01   AwaitingHumanApproval   approved-fetch-task   fetch__fetch
+fetch-task-bec0b19-tc-01            Succeeded               fetch-task            fetch__fetch
 ```
 
 Note as well, at this point our `task` has not completed. If we run `kubectl get task approved-fetch-task` no `OUTPUT` has yet been returned.
@@ -1057,15 +1017,7 @@ Go ahead and approve the email you should have received via HumanLayer requestin
 
 ```
 $ kubectl describe task approved-fetch-task
-Name:         approved-fetch-task
-Kind:         Task
-Metadata:
-  Creation Timestamp:  2025-04-01T16:16:13Z
-  UID:               58c9d760-a160-4386-9d8d-ae9da0286125
-Spec:
-  Task Ref:
-    Name:  approved-fetch-task
-Status:
+# ...snip...
   Context Window:
     Content:  You are a helpful assistant. Your job is to help the user with their tasks.
 
@@ -1089,16 +1041,7 @@ Contents of https://swapi.dev/api/people/2:
 Speaks in many languages,
 Droid with gentle heart.
     Role:  assistant
-  Output:  Golden C-3PO,
-Speaks in many languages,
-Droid with gentle heart.
-  Phase:  FinalAnswer
-  Ready:  true
-  Span Context:
-    Span ID:      3fd054c970f50fc1
-    Trace ID:     21e2b0e7457ae78cce4abaf1b1c02819
-  Status:         Ready
-  Status Detail:  LLM final response received
+ # ...snip...
 Events:
   Type    Reason                     Age               From                Message
   ----    ------                     ----              ----                -------
