@@ -361,6 +361,45 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *acp.Agent) []l
 	// Get tools from MCP manager
 	mcpTools := r.MCPManager.GetToolsForAgent(agent)
 
+	if agent.Spec.Execute != nil {
+		tools = append(tools, llmclient.Tool{
+			Type:        "function",
+			ACPToolType: acp.ToolTypeExecuteToolType,
+			Function: llmclient.ToolFunction{
+				Name: "execute",
+				Description: `
+				Execute a JavaScript/TypeScript script. 
+
+
+				The script must be in the format:
+				
+				export default () => {
+				        ... your code here ...
+						
+				        return output;
+			    }
+						
+				or for async functions:
+				
+				export default async () => {
+				        ... your code here ...
+						
+				        return output;
+			    }`,
+				Parameters: llmclient.ToolFunctionParameters{
+					Type: "object",
+					Properties: map[string]llmclient.ToolFunctionParameter{
+						"script": {
+							Type: "string",
+						},
+						// todo node modules and env vars
+					},
+					Required: []string{"script"},
+				},
+			},
+		})
+	}
+
 	// Convert MCP tools to LLM tools
 	for _, mcpTool := range mcpTools {
 		tools = append(tools, adapters.ConvertMCPToolsToLLMClientTools([]acp.MCPTool{mcpTool}, mcpTool.Name)...)

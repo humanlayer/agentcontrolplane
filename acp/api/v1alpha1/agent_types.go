@@ -6,9 +6,9 @@ import (
 
 // FreestyleConfig defines the configuration for freestyle execution
 type FreestyleConfig struct {
-	// FreestyleAPIKeyFrom references the secret containing the API key
+	// APIKeyFrom references the secret containing the API key
 	// +kubebuilder:validation:Required
-	FreestyleAPIKeyFrom SecretKeyRef `json:"freestyleApiKeyFrom"`
+	APIKeyFrom SecretKeyRef `json:"freestyleApiKeyFrom"`
 }
 
 // AgentSpec defines the desired state of Agent
