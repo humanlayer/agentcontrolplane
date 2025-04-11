@@ -19,8 +19,8 @@ rules:
   - contactchannels
   - llms
   - mcpservers
-  - toolcalls
   - tasks
+  - toolcalls
   - tools
   verbs:
   - create
@@ -37,8 +37,8 @@ rules:
   - contactchannels/status
   - llms/status
   - mcpservers/status
-  - toolcalls/status
   - tasks/status
+  - toolcalls/status
   - tools/status
   verbs:
   - get
