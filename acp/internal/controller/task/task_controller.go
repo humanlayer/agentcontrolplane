@@ -50,7 +50,6 @@ func (r *TaskReconciler) initializePhaseAndSpan(ctx context.Context, task *acp.T
 
 	// Create a new span for the Task
 	spanCtx, span := r.Tracer.Start(ctx, "Task")
-	defer span.End()
 
 	// Set initial phase
 	task.Status.Phase = acp.TaskPhaseInitializing
@@ -488,6 +487,35 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, st
 	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 }
 
+func (r *TaskReconciler) createReconcileSpan(ctx context.Context, task *acp.Task) (context.Context, trace.Span) {
+	if task.Status.SpanContext == nil {
+		return ctx, nil
+	}
+
+	traceID, err := trace.TraceIDFromHex(task.Status.SpanContext.TraceID)
+	if err != nil {
+		return ctx, nil
+	}
+	spanID, err := trace.SpanIDFromHex(task.Status.SpanContext.SpanID)
+	if err != nil {
+		return ctx, nil
+	}
+
+	spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID,
+		SpanID:  spanID,
+	})
+
+	ctx = trace.ContextWithSpanContext(ctx, spanCtx)
+	childCtx, span := r.Tracer.Start(ctx, "LLMRequest")
+
+	span.SetAttributes(
+		attribute.String("startPhase", string(task.Status.Phase)),
+	)
+
+	return childCtx, span
+}
+
 // Reconcile validates the task's agent reference and sends the prompt to the LLM.
 func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -505,6 +533,11 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// Initialize phase if not set
 	if statusUpdate.Status.Phase == "" {
 		return r.initializePhaseAndSpan(ctx, statusUpdate)
+	}
+
+	reconcileCtx, reconcileSpan := r.createReconcileSpan(ctx, &task)
+	if reconcileSpan != nil {
+		defer reconcileSpan.End()
 	}
 
 	// Skip reconciliation for terminal states
@@ -573,14 +606,14 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	r.recorder.Event(&task, corev1.EventTypeNormal, "SendingContextWindowToLLM", "Sending context window to LLM")
 
 	// Create child span for LLM call
-	childCtx, childSpan := r.createLLMRequestSpan(ctx, &task, len(task.Status.ContextWindow), len(tools))
-	if childSpan != nil {
-		defer childSpan.End()
+	llmCtx, llmSpan := r.createLLMRequestSpan(ctx, &task, len(task.Status.ContextWindow), len(tools))
+	if llmSpan != nil {
+		defer llmSpan.End()
 	}
 
 	logger.V(3).Info("Sending LLM request")
 	// Step 8: Send the prompt to the LLM
-	output, err := llmClient.SendRequest(childCtx, task.Status.ContextWindow, tools)
+	output, err := llmClient.SendRequest(llmCtx, task.Status.ContextWindow, tools)
 	if err != nil {
 		logger.Error(err, "LLM request failed")
 		statusUpdate.Status.Ready = false
@@ -602,9 +635,9 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 
 		// Record error in span
-		if childSpan != nil {
-			childSpan.RecordError(err)
-			childSpan.SetStatus(codes.Error, err.Error())
+		if llmSpan != nil {
+			llmSpan.RecordError(err)
+			llmSpan.SetStatus(codes.Error, err.Error())
 		}
 
 		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
@@ -615,10 +648,10 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// Mark span as successful and add attributes
-	if childSpan != nil {
-		childSpan.SetStatus(codes.Ok, "LLM request succeeded")
+	if llmSpan != nil {
+		llmSpan.SetStatus(codes.Ok, "LLM request succeeded")
 		// Add attributes based on the request and response
-		childSpan.SetAttributes(
+		llmSpan.SetAttributes(
 			attribute.String("llm.request.model", llm.Spec.Parameters.Model),
 			attribute.Int("llm.response.tool_calls.count", len(output.ToolCalls)),
 			attribute.Bool("llm.response.has_content", output.Content != ""),
@@ -658,6 +691,7 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		"name", task.Name,
 		"ready", statusUpdate.Status.Ready,
 		"phase", statusUpdate.Status.Phase)
+
 	return ctrl.Result{}, nil
 }
 

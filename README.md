@@ -447,8 +447,8 @@ graph RL
 
 To get just the output, run
 
-```
-kubectl get task -o jsonpath='{.status.output}' 
+```bash
+kubectl get task hello-world-1 -o jsonpath='{.status.output}' 
 ```
 
 and you'll see
@@ -1198,6 +1198,7 @@ kind delete cluster
 | OpenTelemetry traces | In Progress 🚧 |
 | OpenTelemetry logs | Planned 🗺️ |
 | OpenTelemetry metrics | Planned 🗺️ |
+| Include token counts in OpenTelemetry traces | Planned 🗺️ |
 | Trigger workflows from generic webhooks | Planned 🗺️ |
 | Trigger workflows from inbound slack messages | Planned 🗺️ |
 | Trigger workflows from inbound emails | Planned 🗺️ |
