@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/execute"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayer"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
@@ -695,13 +696,86 @@ func (r *ToolCallReconciler) dispatchToolExecution(ctx context.Context, tc *acp.
 	}
 
 	_, isAgent := isAgentTool(tc)
+
 	if isAgent {
 		return r.handleUnsupportedToolType(ctx, tc)
+	}
+
+	isExecuteTool := isExecuteTool(tc)
+
+	if isExecuteTool {
+		return r.handleExecuteTool(ctx, tc, args)
 	}
 
 	// todo handle human contact tool
 
 	return r.handleUnsupportedToolType(ctx, tc)
+}
+
+func isExecuteTool(tc *acp.ToolCall) bool {
+	return tc.Spec.ToolType == acp.ToolTypeExecuteToolType
+}
+
+func (r *ToolCallReconciler) handleExecuteTool(ctx context.Context, tc *acp.ToolCall, args map[string]interface{}) (ctrl.Result, error) {
+	// fetch the TC's parent Task
+	taskName := tc.Labels["acp.humanlayer.dev/task"]
+	var task acp.Task
+	if err := r.Get(ctx, client.ObjectKey{Namespace: tc.Namespace, Name: taskName}, &task); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	var agent acp.Agent
+	if err := r.Get(ctx, client.ObjectKey{Namespace: task.Namespace, Name: task.Spec.AgentRef.Name}, &agent); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// get the agents execute config
+	executeConfig := agent.Spec.Execute
+	if executeConfig == nil {
+		return ctrl.Result{}, fmt.Errorf("agent %s has no execute config", agent.Name)
+	}
+
+	// get the execute config's API key
+
+	secretName := executeConfig.APIKeyFrom.Name
+	secretKey := executeConfig.APIKeyFrom.Key
+
+	// fetch the API key from the secret
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: task.Namespace, Name: secretName}, secret); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	apiKey := secret.Data[secretKey]
+	if apiKey == nil {
+		return ctrl.Result{}, fmt.Errorf("secret %s does not have key %s", secretName, secretKey)
+	}
+
+	client := execute.NewFreestyleClient(string(apiKey))
+
+	// todo pass erorrs back to the model
+	resp, err := client.ExecuteScript(ctx, args["script"].(string), execute.FreestyleConfig{})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if resp.Error != "" {
+		return ctrl.Result{}, fmt.Errorf("tool execution failed: %s", resp.Error)
+	}
+
+	// set the result on the status
+	tc.Status.Result = fmt.Sprintf("%v", resp.Result)
+	tc.Status.Status = acp.ToolCallStatusTypeSucceeded
+	tc.Status.Phase = acp.ToolCallPhaseSucceeded
+
+	// update the status
+	if err := r.Status().Update(ctx, tc); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	r.recorder.Event(tc, corev1.EventTypeNormal, "ToolCallSucceeded", "Script executed successfully")
+
+	return ctrl.Result{}, nil
 }
 
 func isAgentTool(tc *acp.ToolCall) (string, bool) {

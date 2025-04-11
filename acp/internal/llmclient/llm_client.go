@@ -33,7 +33,7 @@ func (e *LLMRequestError) Unwrap() error {
 type Tool struct {
 	Type     string       `json:"type"`
 	Function ToolFunction `json:"function"`
-	// ACPToolType represents the ACP-specific type of tool (MCP, HumanContact)
+	// ACPToolType represents the ACP-specific type of tool (MCP, HumanContact, ExecuteTool)
 	// This field is not sent to the LLM API but is used internally for tool identification
 	ACPToolType acp.ToolType `json:"-"`
 }
@@ -52,9 +52,10 @@ type ToolFunctionParameter struct {
 
 // ToolFunctionParameters defines the schema for the function parameters
 type ToolFunctionParameters struct {
-	Type       string                           `json:"type"`
-	Properties map[string]ToolFunctionParameter `json:"properties"`
-	Required   []string                         `json:"required,omitempty"`
+	Type       string                            `json:"type"`
+	Properties map[string]ToolFunctionParameters `json:"properties"`
+	Items      *ToolFunctionParameters           `json:"items"`
+	Required   []string                          `json:"required,omitempty"`
 }
 
 // FromContactChannel creates a Tool from a ContactChannel resource

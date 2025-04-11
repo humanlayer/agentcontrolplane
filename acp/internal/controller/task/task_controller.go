@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -360,6 +361,98 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *acp.Agent) []l
 
 	// Get tools from MCP manager
 	mcpTools := r.MCPManager.GetToolsForAgent(agent)
+
+	if agent.Spec.Execute != nil {
+		allowedSecrets := make([]string, 0)
+		for _, secret := range agent.Spec.Execute.SecretSelectors {
+			if secret.Name != "" {
+				secret := &corev1.Secret{}
+				if err := r.Get(ctx, client.ObjectKey{Namespace: agent.Namespace, Name: secret.Name}, secret); err != nil {
+					logger.Error(err, "Failed to get secret", "name", secret.Name)
+					continue
+				}
+				// get the keys that look like env vars
+				for key := range secret.Data {
+					if match, _ := regexp.MatchString(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$`, key); match {
+						allowedSecrets = append(allowedSecrets, key)
+					}
+				}
+			} else if secret.MatchLabels != nil {
+				// use a label selector to get a SecretList that matches the labels
+				secretList := &corev1.SecretList{}
+				if err := r.List(ctx, secretList, client.InNamespace(agent.Namespace), client.MatchingLabels(secret.MatchLabels)); err != nil {
+					logger.Error(err, "Failed to list secrets", "labels", secret.MatchLabels)
+					continue
+				}
+				for _, secret := range secretList.Items {
+					// get the keys that look like env vars
+					for key := range secret.Data {
+						if match, _ := regexp.MatchString(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$`, key); match {
+							allowedSecrets = append(allowedSecrets, key)
+						}
+					}
+				}
+			}
+			}
+		}
+		tools = append(tools, llmclient.Tool{
+			Type:        "function",
+			ACPToolType: acp.ToolTypeExecuteToolType,
+			Function: llmclient.ToolFunction{
+				Name: "execute",
+				Description: `
+				Execute a JavaScript/TypeScript script. 
+
+
+				The script must be in the format:
+				
+				export default () => {
+				        ... your code here ...
+						
+				        return output;
+			    }
+						
+				or for async functions:
+				
+				export default async () => {
+				        ... your code here ...
+						
+				        return output;
+			    }`,
+				Parameters: llmclient.ToolFunctionParameters{
+					Type: "object",
+					Properties: map[string]llmclient.ToolFunctionParameters{
+						"script": {
+							Type: "string",
+						},
+						"secrets": {
+							Type: "array",
+							Items: &llmclient.ToolFunctionParameters{
+								Description: "The secrets to use in the script",
+								Type:        "string",
+								Enum:        []string{"secret1", "secret2"},
+							},
+						},
+						"npmPackages": {
+							Type: "array",
+							Items: &llmclient.ToolFunctionParameters{
+								Type: "object",
+								Properties: map[string]llmclient.ToolFunctionParameters{
+									"name": {
+										Type: "string",
+									},
+									"version": {
+										Type: "string",
+									},
+								},
+							},
+						},
+					},
+					Required: []string{"script"},
+				},
+			},
+		})
+	}
 
 	// Convert MCP tools to LLM tools
 	for _, mcpTool := range mcpTools {

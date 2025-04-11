@@ -17,8 +17,9 @@ const (
 type ToolType string
 
 const (
-	ToolTypeMCP          ToolType = "MCP"
-	ToolTypeHumanContact ToolType = "HumanContact"
+	ToolTypeMCP             ToolType = "MCP"
+	ToolTypeHumanContact    ToolType = "HumanContact"
+	ToolTypeExecuteToolType ToolType = "ExecuteScript"
 )
 
 // ToolCallSpec defines the desired state of ToolCall

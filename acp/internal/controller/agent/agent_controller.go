@@ -207,6 +207,22 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		statusUpdate.Status.ValidMCPServers = validMCPServers
 	}
 
+	if agent.Spec.Execute != nil {
+		secret := &corev1.Secret{}
+		err = r.Get(ctx, client.ObjectKey{
+			Namespace: agent.Namespace,
+			Name:      agent.Spec.Execute.APIKeyFrom.Name,
+		}, secret)
+		if err != nil {
+			return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
+		}
+
+		if _, ok := secret.Data[agent.Spec.Execute.APIKeyFrom.Key]; !ok {
+			return r.setStatusError(ctx, &agent, fmt.Errorf("API key secret %q does not have key %q", agent.Spec.Execute.APIKeyFrom.Name, agent.Spec.Execute.APIKeyFrom.Key), statusUpdate, "ValidationFailed")
+		}
+		logger.Info("Freestyle API key secret validated")
+	}
+
 	// Validate HumanContactChannel references, if any
 	if len(agent.Spec.HumanContactChannels) > 0 {
 		validHumanContactChannels, err = r.validateHumanContactChannels(ctx, &agent)

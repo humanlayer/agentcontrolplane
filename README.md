@@ -4,7 +4,25 @@
 
 </div>
 
-ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on Kubernetes. It supports [long-lived outer-loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards) that can process asynchronous execution of both LLM inference and long-running tool calls. It's designed for simplicity and gives strong durability and reliability guarantees for agents that make asynchronous tool calls like contacting humans or delegating work to other agents.
+## Introduction
+
+Agent Control Plane (ACP) is a cloud-native orchestrator for AI Agents built on Kubernetes. It's designed to help you build production-grade AI systems that are reliable, scalable, and maintainable.
+
+After building and deploying AI agents in production environments, we've learned that the most successful implementations are those that combine well-engineered software with strategic LLM integration. ACP embodies these lessons by providing:
+
+- **Durable Execution**: Built-in support for long-running, asynchronous operations with automatic checkpointing and recovery
+- **Human-in-the-Loop**: Seamless integration with human approval workflows and input channels
+- **Observability**: Comprehensive tracing and monitoring of agent execution
+- **Scalability**: Kubernetes-native architecture for reliable distributed agent execution
+- **Flexibility**: Support for multiple LLM providers and tool integration patterns
+
+ACP is particularly useful when you need to:
+- Build agents that incorporate long-running tool calls reliably
+- Incorporate human approval into your agent workflows
+- Scale agent execution across a distributed system
+- Maintain clear visibility into agent behavior and execution state
+
+Whether you're building a new AI-powered application or enhancing an existing system, ACP provides the infrastructure needed to deploy production-ready AI agents.
 
 :warning: **Note** - ACP is in alpha. Use at your own risk.
 
@@ -1109,6 +1127,7 @@ Events:
   Normal  AllToolCallsCompleted      7s                task-controller  All tool calls completed, ready to send tool results to LLM
   Normal  LLMFinalAnswer             6s                task-controller  LLM response received successfully
 ```
+
 ### Open Telemetry support
 
 You can use the `acp-example` folder to spin up a cluster with an otel stack, to view Task execution traces in grafana + tempo
@@ -1217,3 +1236,56 @@ ACP is open-source and we welcome contributions in the form of issues, documenta
 ## License
 
 ACP is licensed under the Apache 2 License.
+
+
+
+
+
+Writing
+
+
+
+Howdy HN - I'm Dex from HumanLayer (YC F24), and I've been building AI agents for a while. After trying every framework out there and talking to many founders building with AI, I've noticed something interesting: most "AI Agents" that make it to production aren't actually that agentic. The best ones are mostly just well-engineered software with LLMs sprinkled in at key points.
+So I set out to document what I've learned about building production-grade AI systems. Today I'm excited to share "12 Factor Agents"
+
+https://github.com/humanlayer/12-factor-agents
+
+It's a set of principles for building LLM-powered software that's reliable enough to put in the hands of production customers.
+
+I've seen many SaaS builders try to pivot towards AI by building greenfield new projects on agent frameworks, only to find that they couldn't get things past the 70-80% reliability bar with out-of-the-box tools. The ones that did succeed tended to take small, modular concepts from agent building, and incorporate them into their existing product, rather than starting from scratch.
+
+In the spirit of Heroku's 12 Factor Apps (https://12factor.net/), these principles focus on the engineering practices that make LLM applications more reliable, scalable, and maintainable. Even as models get exponentially more powerful, these core techniques will remain valuable.
+
+Some highlights:
+
+- Factor 1: Natural Language to Tool Calls
+
+- Factor 2: Own your prompts
+
+- Factor 3: Own your context window
+
+- Factor 4: Tools are just structured outputs
+
+- Factor 5: Unify execution and business state
+
+- Factor 6: Launch/Pause/Resume with simple APIs
+
+- Factor 7: Contact humans with tool calls
+
+- Factor 8: Own your control flow
+
+- Factor 9: Compact errors into context
+
+- Factor 10: Small, focused agents
+
+- Factor 11: Meet users where they are
+
+- Factor 12: Make your agent a stateless reducer
+
+The full guide goes into detail on each principle with examples and patterns to follow. I've seen these practices work well in production systems handling real user traffic.
+
+I'm sharing this as a starting point - the field is moving quickly and I expect these principles to evolve. I welcome your feedback and contributions to help figure out what "production grade" means for AI systems.
+
+Check out the full guide at https://github.com/humanlayer/12-factor-agents
+
+Special thanks to (github users) @iantbutler01, @tnm, @hellovai, @stantonk, @balanceiskey, @AdjectiveAllison, @pfbyjy, @a-churchill, as well as the SF MLOps community for early feedback on this guide.

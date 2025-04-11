@@ -50,6 +50,26 @@ spec:
           spec:
             description: AgentSpec defines the desired state of Agent
             properties:
+              execute:
+                description: Execute defines how the agent should execute code
+                properties:
+                  freestyleApiKeyFrom:
+                    description: APIKeyFrom references the secret containing the API
+                      key
+                    properties:
+                      key:
+                        description: Key is the key in the secret
+                        type: string
+                      name:
+                        description: Name is the name of the secret
+                        type: string
+                    required:
+                    - key
+                    - name
+                    type: object
+                required:
+                - freestyleApiKeyFrom
+                type: object
               humanContactChannels:
                 description: HumanContactChannels is a list of ContactChannel resources
                   that can be used for human interactions

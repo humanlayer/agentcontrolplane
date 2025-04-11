@@ -4,6 +4,90 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ExecuteConfig defines the configuration for freestyle execution
+type ExecuteConfig struct {
+	// APIKeyFrom references the secret containing the API key
+	// +kubebuilder:validation:Required
+
+	// +optional
+	FreestyleConfig *FreestyleConfig `json:"freestyle,omitempty"`
+	// E2BConfig       *E2BConfig       `json:"e2b,omitempty"`
+	// +optional
+	SecretSelectors []SecretSelector `json:"secretSelectors,omitempty"`
+	// optional - restrict the npm packages that can be used
+	// by default, all packages are allowed
+	// +optional
+	AllowedNPMPackages []string `json:"allowedNPMPackages,omitempty"`
+}
+
+/**
+
+  execute:
+	secretSelectors:
+	  # todo is this an AND or an OR?
+	  - name: code-execution-secret
+	  - matchLabels:
+		  environment: development
+    freestyle:
+      apiKeyFrom:
+        name: freestyle-api-key
+        key: apiKey
+
+*/
+
+/**
+
+tool description:
+   name: code-execution
+   description: This tool is used to execute code
+   parameters:
+     type: object
+     properties:
+       code:
+         type: string
+         description: The code to execute
+	   npmPackages:
+	   	 type: array
+		 items:
+		   type: object
+		   // todo can we do dynamic k:v or has to be array?
+		   properties:
+		     name:
+		       type: string
+		       description: The name of the npm package
+		     version:
+		       type: string
+		       description: The version of the npm package
+	   secrets:
+	     type: array
+		 items:
+		   type: string
+		   description: array of secrets to pass in as env vars, e.g. RESEND_API_KEY
+
+*/
+
+type SecretSelector struct {
+	// Name of the secret
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// MatchLabels is a map of labels that the secret must have
+	// +optional
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+}
+
+type FreestyleConfig struct {
+	// APIKeyFrom references the secret containing the API key
+	// +kubebuilder:validation:Required
+	APIKeyFrom SecretKeyRef `json:"apiKeyFrom"`
+}
+
+type E2BConfig struct {
+	// APIKeyFrom references the secret containing the API key
+	// +kubebuilder:validation:Required
+	APIKeyFrom SecretKeyRef `json:"apiKeyFrom"`
+}
+
 // AgentSpec defines the desired state of Agent
 type AgentSpec struct {
 	// LLMRef references the LLM to use for this agent
@@ -22,6 +106,10 @@ type AgentSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	System string `json:"system"`
+
+	// Execute defines how the agent should execute code
+	// +optional
+	Execute *ExecuteConfig `json:"execute,omitempty"`
 }
 
 // LocalObjectReference contains enough information to locate the referenced resource in the same namespace
@@ -96,4 +184,8 @@ type AgentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Agent `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&Agent{}, &AgentList{})
 }
