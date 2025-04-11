@@ -116,14 +116,14 @@ const (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
-// +kubebuilder:printcolumn:name="TaskRun",type="string",JSONPath=".spec.taskRunRef.name"
+// +kubebuilder:printcolumn:name="Task",type="string",JSONPath=".spec.taskRef.name"
 // +kubebuilder:printcolumn:name="Tool",type="string",JSONPath=".spec.toolRef.name"
 // +kubebuilder:printcolumn:name="Started",type="date",JSONPath=".status.startTime",priority=1
 // +kubebuilder:printcolumn:name="Completed",type="date",JSONPath=".status.completionTime",priority=1
 // +kubebuilder:printcolumn:name="Error",type="string",JSONPath=".status.error",priority=1
 // +kubebuilder:resource:scope=Namespaced
 
-// ToolCall is the Schema for the taskruntoolcalls API
+// ToolCall is the Schema for the toolcalls API
 type ToolCall struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

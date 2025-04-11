@@ -203,7 +203,7 @@ deploy-samples: kustomize ## Deploy samples to the K8s cluster specified in ~/.k
 
 .PHONY: show-samples
 show-samples:
-	$(KUBECTL) get llm,agent,tool,task,task,toolcall  -o wide; 
+	$(KUBECTL) get llm,agent,tool,task,toolcall  -o wide; 
 	$(KUBECTL) get task -o yaml
 
 .PHONY: watch-samples

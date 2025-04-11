@@ -19,7 +19,6 @@ var _ = Describe("Agent Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-agent"
 		const llmName = "test-llm"
-		const toolName = "test-tool"
 		const humanContactChannelName = "test-humancontactchannel"
 
 		ctx := context.Background()
