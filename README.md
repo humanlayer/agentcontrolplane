@@ -1111,10 +1111,15 @@ Events:
 ```
 ### Open Telemetry support
 
-Use `acp-example` to spin up a cluster with an otel stack, to view Task execution traces in grafana + tempo
+You can use the `acp-example` folder to spin up a cluster with an otel stack, to view Task execution traces in grafana + tempo
 
-<img width="792" alt="Screenshot 2025-04-10 at 8 07 19 PM" src="https://github.com/user-attachments/assets/419e64cf-bc1f-4ee7-89ff-27b93012522e" />
+<img width="786" alt="Screenshot 2025-04-10 at 9 06 20 PM" src="https://github.com/user-attachments/assets/369c79db-49d1-4a70-98a7-89dc64416fb2" />
 
+the command to spin up the stack is
+
+```
+make -C acp-example otel-stack
+```
 
 ### Cleaning Up
 
