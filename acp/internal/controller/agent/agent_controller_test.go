@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 	"github.com/humanlayer/agentcontrolplane/acp/test/utils"
 )
 
@@ -135,10 +136,6 @@ var _ = Describe("Agent Controller", func() {
 			Expect(updatedAgent.Status.Ready).To(BeTrue())
 			Expect(updatedAgent.Status.Status).To(Equal("Ready"))
 			Expect(updatedAgent.Status.StatusDetail).To(Equal("All dependencies validated successfully"))
-			Expect(updatedAgent.Status.ValidTools).To(ContainElement(acp.ResolvedTool{
-				Kind: "Tool",
-				Name: toolName,
-			}))
 			Expect(updatedAgent.Status.ValidHumanContactChannels).To(ContainElement(acp.ResolvedContactChannel{
 				Name: humanContactChannelName,
 				Type: "email",
@@ -185,13 +182,14 @@ var _ = Describe("Agent Controller", func() {
 			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationFailed")
 		})
 
-		It("should fail validation with non-existent Tool", func() {
-			By("creating the test agent with invalid Tool")
+		It("should fail validation with non-existent MCP server", func() {
+			By("creating the test agent with invalid MCP server")
 			testAgent := &utils.TestScopedAgent{
 				Name:                 resourceName,
 				SystemPrompt:         "Test agent",
 				LLM:                  llmName,
 				HumanContactChannels: []string{humanContactChannelName},
+				MCPServers:           []string{"nonexistent-mcp-server"},
 			}
 			testAgent.Setup(k8sClient)
 			defer testAgent.Teardown()
@@ -199,16 +197,17 @@ var _ = Describe("Agent Controller", func() {
 			By("reconciling the agent")
 			eventRecorder := record.NewFakeRecorder(10)
 			reconciler := &AgentReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				recorder: eventRecorder,
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				recorder:   eventRecorder,
+				MCPManager: &mcpmanager.MCPServerManager{},
 			}
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring(`"nonexistent-tool" not found`))
+			Expect(err.Error()).To(ContainSubstring(`"nonexistent-mcp-server" not found`))
 
 			By("checking the agent status")
 			updatedAgent := &acp.Agent{}
@@ -216,7 +215,7 @@ var _ = Describe("Agent Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedAgent.Status.Ready).To(BeFalse())
 			Expect(updatedAgent.Status.Status).To(Equal("Error"))
-			Expect(updatedAgent.Status.StatusDetail).To(ContainSubstring(`"nonexistent-tool" not found`))
+			Expect(updatedAgent.Status.StatusDetail).To(ContainSubstring(`"nonexistent-mcp-server" not found`))
 
 			By("checking that a failure event was created")
 			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationFailed")

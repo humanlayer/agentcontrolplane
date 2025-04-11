@@ -17,6 +17,7 @@ type TestScopedAgent struct {
 	SystemPrompt         string
 	LLM                  string
 	HumanContactChannels []string
+	MCPServers           []string
 	client               client.Client
 }
 
@@ -37,6 +38,13 @@ func (t *TestScopedAgent) Setup(k8sClient client.Client) {
 				refs := make([]acp.LocalObjectReference, len(t.HumanContactChannels))
 				for i, channel := range t.HumanContactChannels {
 					refs[i] = acp.LocalObjectReference{Name: channel}
+				}
+				return refs
+			}(),
+			MCPServers: func() []acp.LocalObjectReference {
+				refs := make([]acp.LocalObjectReference, len(t.MCPServers))
+				for i, server := range t.MCPServers {
+					refs[i] = acp.LocalObjectReference{Name: server}
 				}
 				return refs
 			}(),

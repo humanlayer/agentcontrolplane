@@ -8,11 +8,14 @@ import (
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.opentelemetry.io/otel/trace/noop"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 )
+
+var fakeSpanContext = &acp.SpanContext{TraceID: "0123456789abcdef", SpanID: "fedcba9876543210"}
 
 var testContactChannel = &TestContactChannel{
 	name:        "test-contact-channel",
@@ -117,8 +120,8 @@ func (t *TestSecret) Teardown(ctx context.Context) {
 	_ = k8sClient.Delete(ctx, t.secret)
 }
 
-// TestTaskRunToolCall represents a test TaskRunToolCall resource
-type TestTaskRunToolCall struct {
+// TestToolCall represents a test ToolCall resource
+type TestToolCall struct {
 	name      string
 	toolName  string
 	arguments string
@@ -126,7 +129,7 @@ type TestTaskRunToolCall struct {
 	toolCall  *acp.ToolCall
 }
 
-func (t *TestTaskRunToolCall) SetupWithStatus(ctx context.Context, status acp.ToolCallStatus) *acp.ToolCall {
+func (t *TestToolCall) SetupWithStatus(ctx context.Context, status acp.ToolCallStatus) *acp.ToolCall {
 	toolCall := t.Setup(ctx)
 	toolCall.Status = status
 	Expect(k8sClient.Status().Update(ctx, toolCall)).To(Succeed())
@@ -134,7 +137,7 @@ func (t *TestTaskRunToolCall) SetupWithStatus(ctx context.Context, status acp.To
 	return toolCall
 }
 
-func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.ToolCall {
+func (t *TestToolCall) Setup(ctx context.Context) *acp.ToolCall {
 	By("creating the toolcall")
 	toolCall := &acp.ToolCall{
 		ObjectMeta: metav1.ObjectMeta{
@@ -160,7 +163,7 @@ func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.ToolCall {
 	return toolCall
 }
 
-func (t *TestTaskRunToolCall) Teardown(ctx context.Context) {
+func (t *TestToolCall) Teardown(ctx context.Context) {
 	By("deleting the taskruntoolcall")
 	_ = k8sClient.Delete(ctx, t.toolCall)
 }
@@ -243,6 +246,7 @@ func reconciler() (*ToolCallReconciler, *record.FakeRecorder) {
 		Client:   k8sClient,
 		Scheme:   k8sClient.Scheme(),
 		recorder: recorder,
+		Tracer:   noop.NewTracerProvider().Tracer("test"),
 	}
 
 	// Set the MCPManager field directly using type assertion
@@ -290,7 +294,7 @@ func setupTestApprovalResources(ctx context.Context, config *SetupTestApprovalCo
 	})
 
 	name := "test-mcp-with-approval-trtc"
-	args := `{"a": 2, "b": 3}`
+	args := `{"url": "https://swapi.dev/api/people/1"}`
 	if config != nil {
 		if config.ToolCallName != "" {
 			name = config.ToolCallName
@@ -302,26 +306,28 @@ func setupTestApprovalResources(ctx context.Context, config *SetupTestApprovalCo
 
 	toolCall := &TestToolCall{
 		name:      name,
-		toolName:  name,
+		toolName:  testMCPServer.name + "__fetch",
 		arguments: args,
 		toolType:  acp.ToolTypeMCP,
 	}
 
-	status := acp.TaskRunToolCallStatus{
-		Phase:        acp.TaskRunToolCallPhasePending,
-		Status:       acp.TaskRunToolCallStatusTypeReady,
+	status := acp.ToolCallStatus{
+		Phase:        acp.ToolCallPhasePending,
+		Status:       acp.ToolCallStatusTypeReady,
 		StatusDetail: "Setup complete",
 		StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+		SpanContext:  fakeSpanContext,
 	}
 
-	if config != nil && config.TaskRunToolCallStatus != nil {
-		status = *config.TaskRunToolCallStatus
+	if config != nil && config.ToolCallStatus != nil {
+		config.ToolCallStatus.SpanContext = fakeSpanContext
+		status = *config.ToolCallStatus
 	}
 
-	trtc := taskRunToolCall.SetupWithStatus(ctx, status)
+	tc := toolCall.SetupWithStatus(ctx, status)
 
-	return trtc, func() {
-		testMCPTool.Teardown(ctx)
+	return tc, func() {
+		toolCall.Teardown(ctx)
 		testMCPServer.Teardown(ctx)
 		testContactChannel.Teardown(ctx)
 		testSecret.Teardown(ctx)

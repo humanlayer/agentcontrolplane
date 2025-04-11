@@ -62,6 +62,7 @@ var _ = BeforeSuite(func() {
 		},
 		ErrorIfCRDPathMissing: true,
 		UseExistingCluster:    nil,
+		BinaryAssetsDirectory: filepath.Join("..", "..", "..", "bin", "k8s", "1.32.0-darwin-arm64"),
 	}
 
 	var err error

@@ -148,24 +148,6 @@ spec:
                   - name
                   type: object
                 type: array
-              validTools:
-                description: ValidTools is the list of tools that were successfully
-                  validated
-                items:
-                  properties:
-                    kind:
-                      enum:
-                      - Tool
-                      - ToolSet
-                      type: string
-                    name:
-                      description: Name of the tool
-                      type: string
-                  required:
-                  - kind
-                  - name
-                  type: object
-                type: array
             type: object
         type: object
     served: true

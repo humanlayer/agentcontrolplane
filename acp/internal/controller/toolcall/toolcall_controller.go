@@ -757,6 +757,7 @@ func (r *ToolCallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Create the ToolCall root span if it doesn't exist yet
+	// TODO(dex) this should be an initializing phase...for now fine just requeue
 	if tc.Status.SpanContext == nil {
 		// 1. Fetch parent task name from label
 		parentTaskName := tc.Labels["acp.humanlayer.dev/task"]

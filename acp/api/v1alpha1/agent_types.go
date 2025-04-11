@@ -44,10 +44,6 @@ type AgentStatus struct {
 	// StatusDetail provides additional details about the current status
 	StatusDetail string `json:"statusDetail,omitempty"`
 
-	// ValidTools is the list of tools that were successfully validated
-	// +optional
-	ValidTools []ResolvedTool `json:"validTools,omitempty"`
-
 	// ValidMCPServers is the list of MCP servers that were successfully validated
 	// +optional
 	ValidMCPServers []ResolvedMCPServer `json:"validMCPServers,omitempty"`
@@ -55,16 +51,6 @@ type AgentStatus struct {
 	// ValidHumanContactChannels is the list of human contact channels that were successfully validated
 	// +optional
 	ValidHumanContactChannels []ResolvedContactChannel `json:"validHumanContactChannels,omitempty"`
-}
-
-type ResolvedTool struct {
-	// +kubebuilder:validation:Enum=Tool;ToolSet
-	// +kubebuilder:validation:Required
-	Kind string `json:"kind"`
-
-	// Name of the tool
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
 }
 
 type ResolvedMCPServer struct {
