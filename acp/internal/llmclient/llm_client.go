@@ -52,9 +52,10 @@ type ToolFunctionParameter struct {
 
 // ToolFunctionParameters defines the schema for the function parameters
 type ToolFunctionParameters struct {
-	Type       string                           `json:"type"`
-	Properties map[string]ToolFunctionParameter `json:"properties"`
-	Required   []string                         `json:"required,omitempty"`
+	Type       string                            `json:"type"`
+	Properties map[string]ToolFunctionParameters `json:"properties"`
+	Items      *ToolFunctionParameters           `json:"items"`
+	Required   []string                          `json:"required,omitempty"`
 }
 
 // FromContactChannel creates a Tool from a ContactChannel resource

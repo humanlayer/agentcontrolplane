@@ -736,6 +736,7 @@ func (r *ToolCallReconciler) handleExecuteTool(ctx context.Context, tc *acp.Tool
 	}
 
 	// get the execute config's API key
+
 	secretName := executeConfig.APIKeyFrom.Name
 	secretKey := executeConfig.APIKeyFrom.Key
 

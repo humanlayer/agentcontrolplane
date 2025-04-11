@@ -6,7 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -91,4 +96,50 @@ func (c *FreestyleClient) ExecuteScript(ctx context.Context, script string, conf
 	}
 
 	return &freestyleResp, nil
+}
+
+// SecretSelector represents a selector for Kubernetes secrets
+type SecretSelector struct {
+	Name        string            `json:"name,omitempty"`
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+}
+
+// CollectAvailableExecuteSecrets collects all available secrets that match the given selectors
+// and returns a list of environment variable names that can be used in script execution
+func CollectAvailableExecuteSecrets(ctx context.Context, r client.Client, namespace string, secretSelectors []SecretSelector) ([]string, error) {
+	logger := log.FromContext(ctx)
+	allowedSecrets := make([]string, 0)
+
+	for _, selector := range secretSelectors {
+		if selector.Name != "" {
+			secret := &corev1.Secret{}
+			if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: selector.Name}, secret); err != nil {
+				logger.Error(err, "Failed to get secret", "name", selector.Name)
+				continue
+			}
+			// get the keys that look like env vars
+			for key := range secret.Data {
+				if match, _ := regexp.MatchString(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$`, key); match {
+					allowedSecrets = append(allowedSecrets, key)
+				}
+			}
+		} else if selector.MatchLabels != nil {
+			// use a label selector to get a SecretList that matches the labels
+			secretList := &corev1.SecretList{}
+			if err := r.List(ctx, secretList, client.InNamespace(namespace), client.MatchingLabels(selector.MatchLabels)); err != nil {
+				logger.Error(err, "Failed to list secrets", "labels", selector.MatchLabels)
+				continue
+			}
+			for _, secret := range secretList.Items {
+				// get the keys that look like env vars
+				for key := range secret.Data {
+					if match, _ := regexp.MatchString(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$`, key); match {
+						allowedSecrets = append(allowedSecrets, key)
+					}
+				}
+			}
+		}
+	}
+
+	return allowedSecrets, nil
 }
