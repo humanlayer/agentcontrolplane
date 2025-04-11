@@ -1178,6 +1178,32 @@ kind delete cluster
 
 - **Extensibility**: Because agents are YAML, it's easy to build and share agents, tools, and tasks.
 
+## Roadmap
+
+
+| Feature | Status |
+|---------|--------|
+| Async, Durable task execution | Alpha ✅ |
+| OpenAI Support | Alpha ✅ |
+| Anthropic Support | Alpha ✅ |
+| Vertex AI Support | Alpha ✅ |
+| Mistral AI Support | Alpha ✅ |
+| MCP stdio Support | Alpha ✅ |
+| Task Execution History via Kubernetes Events | Alpha ✅ |
+| Better MCP Scheduling | Planned 🗺️ |
+| Delegation to Sub Agents | Planned 🗺️ |
+| Human approval for MCP Tools | ✅ |
+| Contact human as a tool | In Progress 🚧 |
+| Tiered approval (once, just for this task, or always) | Planned 🗺️ |
+| OpenTelemetry traces | In Progress 🚧 |
+| OpenTelemetry logs | Planned 🗺️ |
+| OpenTelemetry metrics | Planned 🗺️ |
+| Trigger workflows from generic webhooks | Planned 🗺️ |
+| Trigger workflows from inbound slack messages | Planned 🗺️ |
+| Trigger workflows from inbound emails | Planned 🗺️ |
+| ACP UI for managing agents, tasks, tools, etc | Planned 🗺️ |
+| ACP CLI for managing objects and task runs | Planned 🗺️ |
+
 
 ## Contributing
 
