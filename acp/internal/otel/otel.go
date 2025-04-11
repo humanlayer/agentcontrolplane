@@ -2,6 +2,7 @@ package otel
 
 import (
 	"context"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
@@ -14,8 +15,12 @@ import (
 
 // InitTracer initializes the OpenTelemetry tracer provider with an OTLP HTTP exporter.
 func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "otel-collector-opentelemetry-collector:4318"
+	}
 	exporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint("otel-collector-opentelemetry-collector:4318"),
+		otlptracehttp.WithEndpoint(endpoint),
 		otlptracehttp.WithInsecure(),
 	)
 	if err != nil {
@@ -34,8 +39,12 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 
 // InitMeter initializes the OpenTelemetry meter provider with an OTLP HTTP exporter.
 func InitMeter(ctx context.Context) (*sdkmetric.MeterProvider, error) {
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "otel-collector-opentelemetry-collector:4318"
+	}
 	exporter, err := otlpmetrichttp.New(ctx,
-		otlpmetrichttp.WithEndpoint("otel-collector-opentelemetry-collector:4318"),
+		otlpmetrichttp.WithEndpoint(endpoint),
 		otlpmetrichttp.WithInsecure(),
 	)
 	if err != nil {

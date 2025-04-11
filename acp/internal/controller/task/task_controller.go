@@ -489,34 +489,34 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, st
 	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 }
 
-func (r *TaskReconciler) createReconcileSpan(ctx context.Context, task *acp.Task) (context.Context, trace.Span) {
-	if task.Status.SpanContext == nil {
-		return ctx, nil
-	}
+// func (r *TaskReconciler) createReconcileSpan(ctx context.Context, task *acp.Task) (context.Context, trace.Span) {
+// 	if task.Status.SpanContext == nil {
+// 		return ctx, nil
+// 	}
 
-	traceID, err := trace.TraceIDFromHex(task.Status.SpanContext.TraceID)
-	if err != nil {
-		return ctx, nil
-	}
-	spanID, err := trace.SpanIDFromHex(task.Status.SpanContext.SpanID)
-	if err != nil {
-		return ctx, nil
-	}
+// 	traceID, err := trace.TraceIDFromHex(task.Status.SpanContext.TraceID)
+// 	if err != nil {
+// 		return ctx, nil
+// 	}
+// 	spanID, err := trace.SpanIDFromHex(task.Status.SpanContext.SpanID)
+// 	if err != nil {
+// 		return ctx, nil
+// 	}
 
-	spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID: traceID,
-		SpanID:  spanID,
-	})
+// 	spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
+// 		TraceID: traceID,
+// 		SpanID:  spanID,
+// 	})
 
-	ctx = trace.ContextWithSpanContext(ctx, spanCtx)
-	childCtx, span := r.Tracer.Start(ctx, "LLMRequest")
+// 	ctx = trace.ContextWithSpanContext(ctx, spanCtx)
+// 	childCtx, span := r.Tracer.Start(ctx, "LLMRequest")
 
-	span.SetAttributes(
-		attribute.String("startPhase", string(task.Status.Phase)),
-	)
+// 	span.SetAttributes(
+// 		attribute.String("startPhase", string(task.Status.Phase)),
+// 	)
 
-	return childCtx, span
-}
+// 	return childCtx, span
+// }
 
 // Reconcile validates the task's agent reference and sends the prompt to the LLM.
 func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

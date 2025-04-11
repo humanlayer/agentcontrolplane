@@ -9,7 +9,8 @@
       "program": "${workspaceFolder}/acp/cmd/main.go",
       "args": [],
       "env": {
-        "KUBECONFIG": "${env:HOME}/.kube/config"
+        "KUBECONFIG": "${env:HOME}/.kube/config",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "localhost:4318"
       }
     }
   ]
