@@ -12,7 +12,7 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
 
 <h3>
 
-[Discord](https://discord.gg/AK6bWGFY7d) | [Documentation](./docs) | [Examples](./acp-example) 
+[Discord](https://humanlayer.dev/discord) | [Documentation](./docs) | [Examples](./acp-example) 
 
 </h3>
 

@@ -402,7 +402,7 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 		toolCallRequestId := uuid.New().String()[:7] // Using first 7 characters for brevity
 		logger.Info("Generated toolCallRequestId for tool calls", "id", toolCallRequestId)
 
-		// tool call branch: create TaskToolCall objects for each tool call returned by the LLM.
+		// tool call branch: create TaskRunToolCall objects for each tool call returned by the LLM.
 		statusUpdate.Status.Output = ""
 		statusUpdate.Status.Phase = acp.TaskPhaseToolCallsPending
 		statusUpdate.Status.ToolCallRequestID = toolCallRequestId
@@ -614,9 +614,15 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
-	// Mark span as successful if we reach here
+	// Mark span as successful and add attributes
 	if childSpan != nil {
 		childSpan.SetStatus(codes.Ok, "LLM request succeeded")
+		// Add attributes based on the request and response
+		childSpan.SetAttributes(
+			attribute.String("llm.request.model", llm.Spec.Parameters.Model),
+			attribute.Int("llm.response.tool_calls.count", len(output.ToolCalls)),
+			attribute.Bool("llm.response.has_content", output.Content != ""),
+		)
 	}
 
 	logger.V(3).Info("Processing LLM response")
