@@ -4,17 +4,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type TaskRunToolCallStatusType string
+type ToolCallStatusType string
 
 const (
-	TaskRunToolCallStatusTypeReady     TaskRunToolCallStatusType = "Ready"
-	TaskRunToolCallStatusTypeError     TaskRunToolCallStatusType = "Error"
-	TaskRunToolCallStatusTypePending   TaskRunToolCallStatusType = "Pending"
-	TaskRunToolCallStatusTypeSucceeded TaskRunToolCallStatusType = "Succeeded"
+	ToolCallStatusTypeReady     ToolCallStatusType = "Ready"
+	ToolCallStatusTypeError     ToolCallStatusType = "Error"
+	ToolCallStatusTypePending   ToolCallStatusType = "Pending"
+	ToolCallStatusTypeSucceeded ToolCallStatusType = "Succeeded"
 )
 
-// TaskRunToolCallSpec defines the desired state of TaskRunToolCall
-type TaskRunToolCallSpec struct {
+// ToolCallSpec defines the desired state of ToolCall
+type ToolCallSpec struct {
 	// ToolCallID is the unique identifier for this tool call
 	ToolCallID string `json:"toolCallId"`
 
@@ -35,11 +35,11 @@ type TaskRunToolCallSpec struct {
 	Arguments string `json:"arguments"`
 }
 
-// TaskRunToolCallStatus defines the observed state of TaskRunToolCall
-type TaskRunToolCallStatus struct {
+// ToolCallStatus defines the observed state of ToolCall
+type ToolCallStatus struct {
 	// Phase indicates the current phase of the tool call
 	// +optional
-	Phase TaskRunToolCallPhase `json:"phase,omitempty"`
+	Phase ToolCallPhase `json:"phase,omitempty"`
 
 	// Ready indicates if the tool call is ready to be executed
 	// +optional
@@ -47,7 +47,7 @@ type TaskRunToolCallStatus struct {
 
 	// Status indicates the current status of the tool call
 	// +kubebuilder:validation:Enum=Ready;Error;Pending;Succeeded
-	Status TaskRunToolCallStatusType `json:"status,omitempty"`
+	Status ToolCallStatusType `json:"status,omitempty"`
 
 	// StatusDetail provides additional details about the current status
 	// +optional
@@ -77,31 +77,31 @@ type TaskRunToolCallStatus struct {
 	SpanContext *SpanContext `json:"spanContext,omitempty"`
 }
 
-// TaskRunToolCallPhase represents the phase of a TaskRunToolCall
+// ToolCallPhase represents the phase of a ToolCall
 // +kubebuilder:validation:Enum=Pending;Running;Succeeded;Failed;AwaitingHumanInput;AwaitingSubAgent;AwaitingHumanApproval;ReadyToExecuteApprovedTool;ErrorRequestingHumanApproval;ToolCallRejected
-type TaskRunToolCallPhase string
+type ToolCallPhase string
 
 const (
-	// TaskRunToolCallPhasePending indicates the tool call is pending execution
-	TaskRunToolCallPhasePending TaskRunToolCallPhase = "Pending"
-	// TaskRunToolCallPhaseRunning indicates the tool call is currently executing
-	TaskRunToolCallPhaseRunning TaskRunToolCallPhase = "Running"
-	// TaskRunToolCallPhaseSucceeded indicates the tool call completed successfully
-	TaskRunToolCallPhaseSucceeded TaskRunToolCallPhase = "Succeeded"
-	// TaskRunToolCallPhaseFailed indicates the tool call failed
-	TaskRunToolCallPhaseFailed TaskRunToolCallPhase = "Failed"
-	// TaskRunToolCallPhaseAwaitingHumanInput indicates the tool call is waiting for human input
-	TaskRunToolCallPhaseAwaitingHumanInput TaskRunToolCallPhase = "AwaitingHumanInput"
-	// TaskRunToolCallPhaseAwaitingSubAgent indicates the tool call is waiting for a sub-agent to complete
-	TaskRunToolCallPhaseAwaitingSubAgent TaskRunToolCallPhase = "AwaitingSubAgent"
-	// TaskRunToolCallPhaseAwaitingHumanApproval indicates the tool call is waiting for human approval
-	TaskRunToolCallPhaseAwaitingHumanApproval TaskRunToolCallPhase = "AwaitingHumanApproval"
-	// TaskRunToolCallPhaseReadyToExecuteApprovedTool indicates the tool call is ready to execute after receiving approval
-	TaskRunToolCallPhaseReadyToExecuteApprovedTool TaskRunToolCallPhase = "ReadyToExecuteApprovedTool"
-	// TaskRunToolCallPhaseErrorRequestingHumanApproval indicates there was an error requesting human approval
-	TaskRunToolCallPhaseErrorRequestingHumanApproval TaskRunToolCallPhase = "ErrorRequestingHumanApproval"
-	// TaskRunToolCallPhaseToolCallRejected indicates the tool call was rejected by human approval
-	TaskRunToolCallPhaseToolCallRejected TaskRunToolCallPhase = "ToolCallRejected"
+	// ToolCallPhasePending indicates the tool call is pending execution
+	ToolCallPhasePending ToolCallPhase = "Pending"
+	// ToolCallPhaseRunning indicates the tool call is currently executing
+	ToolCallPhaseRunning ToolCallPhase = "Running"
+	// ToolCallPhaseSucceeded indicates the tool call completed successfully
+	ToolCallPhaseSucceeded ToolCallPhase = "Succeeded"
+	// ToolCallPhaseFailed indicates the tool call failed
+	ToolCallPhaseFailed ToolCallPhase = "Failed"
+	// ToolCallPhaseAwaitingHumanInput indicates the tool call is waiting for human input
+	ToolCallPhaseAwaitingHumanInput ToolCallPhase = "AwaitingHumanInput"
+	// ToolCallPhaseAwaitingSubAgent indicates the tool call is waiting for a sub-agent to complete
+	ToolCallPhaseAwaitingSubAgent ToolCallPhase = "AwaitingSubAgent"
+	// ToolCallPhaseAwaitingHumanApproval indicates the tool call is waiting for human approval
+	ToolCallPhaseAwaitingHumanApproval ToolCallPhase = "AwaitingHumanApproval"
+	// ToolCallPhaseReadyToExecuteApprovedTool indicates the tool call is ready to execute after receiving approval
+	ToolCallPhaseReadyToExecuteApprovedTool ToolCallPhase = "ReadyToExecuteApprovedTool"
+	// ToolCallPhaseErrorRequestingHumanApproval indicates there was an error requesting human approval
+	ToolCallPhaseErrorRequestingHumanApproval ToolCallPhase = "ErrorRequestingHumanApproval"
+	// ToolCallPhaseToolCallRejected indicates the tool call was rejected by human approval
+	ToolCallPhaseToolCallRejected ToolCallPhase = "ToolCallRejected"
 )
 
 // +kubebuilder:object:root=true
@@ -114,24 +114,24 @@ const (
 // +kubebuilder:printcolumn:name="Error",type="string",JSONPath=".status.error",priority=1
 // +kubebuilder:resource:scope=Namespaced
 
-// TaskRunToolCall is the Schema for the taskruntoolcalls API
-type TaskRunToolCall struct {
+// ToolCall is the Schema for the toolcalls API
+type ToolCall struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   TaskRunToolCallSpec   `json:"spec,omitempty"`
-	Status TaskRunToolCallStatus `json:"status,omitempty"`
+	Spec   ToolCallSpec   `json:"spec,omitempty"`
+	Status ToolCallStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// TaskRunToolCallList contains a list of TaskRunToolCall
-type TaskRunToolCallList struct {
+// ToolCallList contains a list of ToolCall
+type ToolCallList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []TaskRunToolCall `json:"items"`
+	Items           []ToolCall `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&TaskRunToolCall{}, &TaskRunToolCallList{})
+	SchemeBuilder.Register(&ToolCall{}, &ToolCallList{})
 }

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package taskruntoolcall
+package toolcall
 
 import (
 	"context"
@@ -91,7 +91,7 @@ var _ = BeforeSuite(func() {
 			"tools.acp.humanlayer.dev",
 			"agents.acp.humanlayer.dev",
 			"tasks.acp.humanlayer.dev",
-			"taskruntoolcalls.acp.humanlayer.dev",
+			"toolcalls.acp.humanlayer.dev",
 			"mcpservers.acp.humanlayer.dev",
 			"contactchannels.acp.humanlayer.dev",
 		}
@@ -125,7 +125,7 @@ var _ = BeforeSuite(func() {
 			&acp.ToolList{},
 			&acp.AgentList{},
 			&acp.TaskList{},
-			&acp.TaskRunToolCallList{},
+			&acp.ToolCallList{},
 			&acp.MCPServerList{},
 			&acp.ContactChannelList{},
 		}

@@ -198,14 +198,14 @@ var testTask = &TestTask{
 	userMessage: "what is the capital of the moon?",
 }
 
-type TestTaskRunToolCall struct {
+type TestToolCall struct {
 	name            string
-	taskRunToolCall *acp.TaskRunToolCall
+	taskRunToolCall *acp.ToolCall
 }
 
-func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.TaskRunToolCall {
-	By("creating the taskruntoolcall")
-	taskRunToolCall := &acp.TaskRunToolCall{
+func (t *TestToolCall) Setup(ctx context.Context) *acp.ToolCall {
+	By("creating the toolcall")
+	taskRunToolCall := &acp.ToolCall{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      t.name,
 			Namespace: "default",
@@ -214,7 +214,7 @@ func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.TaskRunToolCall {
 				"acp.humanlayer.dev/toolcallrequest": "test123",
 			},
 		},
-		Spec: acp.TaskRunToolCallSpec{
+		Spec: acp.ToolCallSpec{
 			TaskRef: acp.LocalObjectReference{
 				Name: testTask.name,
 			},
@@ -231,7 +231,7 @@ func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.TaskRunToolCall {
 	return taskRunToolCall
 }
 
-func (t *TestTaskRunToolCall) SetupWithStatus(ctx context.Context, status acp.TaskRunToolCallStatus) *acp.TaskRunToolCall {
+func (t *TestToolCall) SetupWithStatus(ctx context.Context, status acp.ToolCallStatus) *acp.ToolCall {
 	taskRunToolCall := t.Setup(ctx)
 	taskRunToolCall.Status = status
 	Expect(k8sClient.Status().Update(ctx, taskRunToolCall)).To(Succeed())
@@ -239,17 +239,17 @@ func (t *TestTaskRunToolCall) SetupWithStatus(ctx context.Context, status acp.Ta
 	return taskRunToolCall
 }
 
-func (t *TestTaskRunToolCall) Teardown(ctx context.Context) {
-	By("deleting the taskruntoolcall")
+func (t *TestToolCall) Teardown(ctx context.Context) {
+	By("deleting the toolcall")
 	Expect(k8sClient.Delete(ctx, t.taskRunToolCall)).To(Succeed())
 }
 
-var testTaskRunToolCall = &TestTaskRunToolCall{
-	name: "test-taskrun-toolcall",
+var testToolCall = &TestToolCall{
+	name: "test-toolcall",
 }
 
-var testTaskRunToolCallTwo = &TestTaskRunToolCall{
-	name: "test-taskrun-toolcall-two",
+var testToolCallTwo = &TestToolCall{
+	name: "test-toolcall-two",
 }
 
 // nolint:golint,unparam

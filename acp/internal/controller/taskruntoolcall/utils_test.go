@@ -1,4 +1,4 @@
-package taskruntoolcall
+package toolcall
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayer"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -102,23 +103,23 @@ func createTestMCPTool(mcpServerName, toolName string) *acp.Tool {
 	}
 }
 
-func createTestTaskRunToolCall(name, toolName string, toolType acp.ToolType, args map[string]interface{}) *acp.TaskRunToolCall {
+func createTestToolCall(name, toolName string, toolType acp.ToolType, args map[string]interface{}) *acp.ToolCall {
 	argsBytes, _ := json.Marshal(args)
-	return &acp.TaskRunToolCall{
+	return &acp.ToolCall{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: testNamespace,
 		},
-		Spec: acp.TaskRunToolCallSpec{
+		Spec: acp.ToolCallSpec{
 			ToolRef: corev1.LocalObjectReference{
 				Name: toolName,
 			},
 			ToolType:  toolType,
 			Arguments: string(argsBytes),
 		},
-		Status: acp.TaskRunToolCallStatus{
-			Phase:  acp.TaskRunToolCallPhasePending,
-			Status: acp.TaskRunToolCallStatusTypePending,
+		Status: acp.ToolCallStatus{
+			Phase:  acp.ToolCallPhasePending,
+			Status: acp.ToolCallStatusTypePending,
 		},
 	}
 }
@@ -212,36 +213,42 @@ type MockMCPManager struct {
 func (m *MockMCPManager) ConnectServer(ctx context.Context, mcpServer *acp.MCPServer) error {
 	return nil
 }
+
 func (m *MockMCPManager) DisconnectServer(ctx context.Context, serverName string) error {
 	return nil
 }
+
 func (m *MockMCPManager) GetTools(ctx context.Context, serverName string) ([]acp.MCPTool, error) {
 	return nil, nil
 }
+
 func (m *MockMCPManager) GetToolsForAgent(ctx context.Context, agent *acp.Agent) ([]acp.MCPTool, error) {
 	return nil, nil
 }
+
 func (m *MockMCPManager) CallTool(ctx context.Context, serverName, toolName string, args map[string]interface{}) (string, error) {
 	if m.CallToolFunc != nil {
 		return m.CallToolFunc(ctx, serverName, toolName, args)
 	}
 	return fmt.Sprintf("mock result for %s on %s", toolName, serverName), nil
 }
+
 func (m *MockMCPManager) FindServerForTool(ctx context.Context, toolName string) (string, error) {
 	return "", nil
 }
+
 func (m *MockMCPManager) Close() {
 }
 
-func reconciler(k8sClient client.Client, mcpMgr mcpmanager.MCPManagerInterface, hlFactory humanlayer.HumanLayerClientFactory) *TaskRunToolCallReconciler {
-	tracer := otel.GetTracerProvider().Tracer("test-taskruntoolcall-reconciler")
+func reconciler(k8sClient client.Client, mcpMgr mcpmanager.MCPManagerInterface, hlFactory humanlayer.HumanLayerClientFactory) *ToolCallReconciler {
+	tracer := otel.GetTracerProvider().Tracer("test-toolcall-reconciler")
 	if tracer == nil {
-		tracer = noop.NewTracerProvider().Tracer("test-taskruntoolcall-reconciler-noop")
+		tracer = noop.NewTracerProvider().Tracer("test-toolcall-reconciler-noop")
 	}
 
 	recorder := record.NewFakeRecorder(10)
 
-	return &TaskRunToolCallReconciler{
+	return &ToolCallReconciler{
 		Client:          k8sClient,
 		Scheme:          k8sClient.Scheme(),
 		recorder:        recorder,

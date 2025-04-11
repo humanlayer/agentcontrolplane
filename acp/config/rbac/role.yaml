@@ -19,7 +19,7 @@ rules:
   - contactchannels
   - llms
   - mcpservers
-  - taskruntoolcalls
+  - toolcalls
   - tasks
   - tools
   verbs:
@@ -37,7 +37,7 @@ rules:
   - contactchannels/status
   - llms/status
   - mcpservers/status
-  - taskruntoolcalls/status
+  - toolcalls/status
   - tasks/status
   - tools/status
   verbs:

@@ -1,4 +1,4 @@
-package taskruntoolcall
+package toolcall
 
 import (
 	"context" // Added context import
@@ -8,6 +8,7 @@ import (
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayer"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi" // Added import
+
 	// "github.com/humanlayer/agentcontrolplane/acp/test/utils" // Commented out unused import
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -17,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var _ = Describe("TaskRunToolCall Controller", func() {
+var _ = Describe("ToolCall Controller", func() {
 	Context("'':'' -> Pending:Pending", func() {
 		It("moves to Pending:Pending", func() {
 			// Create the test tool resource
@@ -28,20 +29,20 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			// Setup the tool with ready status using the updated function
 			setupTestAddTool(ctx, k8sClient, addTool, true) // Pass client, tool, and ready=true
 
-			// Create the TaskRunToolCall that uses this tool
-			trtcForAddTool := createTestTaskRunToolCall("trtc-init", addTool.Name, acp.ToolType(""),
+			// Create the ToolCall that uses this tool
+			tcForAddTool := createTestToolCall("tc-init", addTool.Name, acp.ToolType(""),
 				map[string]interface{}{"a": 1, "b": 2})
-			Setup(ctx, k8sClient, trtcForAddTool)
-			defer Teardown(ctx, k8sClient, trtcForAddTool)
+			Setup(ctx, k8sClient, tcForAddTool)
+			defer Teardown(ctx, k8sClient, tcForAddTool)
 
-			By("reconciling the taskruntoolcall")
+			By("reconciling the toolcall")
 			// Create a reconciler instance for this test
 			testReconciler := reconciler(k8sClient, &MockMCPManager{}, SetupTestApprovalConfig(true, "", nil)) // Use test helper
 
 			result, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcForAddTool.Name,
-					Namespace: trtcForAddTool.Namespace,
+					Name:      tcForAddTool.Name,
+					Namespace: tcForAddTool.Namespace,
 				},
 			})
 
@@ -50,19 +51,19 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			Expect(result.Requeue).To(BeFalse())
 			Expect(result.RequeueAfter).To(BeZero()) // Explicitly check RequeueAfter is zero
 
-			By("checking the taskruntoolcall status was initialized")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall status was initialized")
+			updatedTC := &acp.ToolCall{}
 			// Use Eventually to wait for the status update
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcForAddTool.Name,
-					Namespace: trtcForAddTool.Namespace,
-				}, updatedTRTC)
+					Name:      tcForAddTool.Name,
+					Namespace: tcForAddTool.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhasePending))
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypePending))
-				g.Expect(updatedTRTC.Status.StatusDetail).To(Equal("Initializing"))
-				g.Expect(updatedTRTC.Status.StartTime).NotTo(BeNil())
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhasePending))
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypePending))
+				g.Expect(updatedTC.Status.StatusDetail).To(Equal("Initializing"))
+				g.Expect(updatedTC.Status.StartTime).NotTo(BeNil())
 			}, timeout, interval).Should(Succeed())
 		})
 	})
@@ -75,27 +76,27 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			defer Teardown(ctx, k8sClient, addTool)
 			setupTestAddTool(ctx, k8sClient, addTool, true) // Ensure tool is ready
 
-			// Create TaskRunToolCall with Pending:Pending status
-			trtcForAddTool := createTestTaskRunToolCall("trtc-ready", addTool.Name, acp.ToolType(""),
+			// Create ToolCall with Pending:Pending status
+			tcForAddTool := createTestToolCall("tc-ready", addTool.Name, acp.ToolType(""),
 				map[string]interface{}{"a": 1, "b": 2})
-			SetupWithStatus(ctx, k8sClient, trtcForAddTool, func(obj client.Object) {
-				trtc := obj.(*acp.TaskRunToolCall)
-				trtc.Status = acp.TaskRunToolCallStatus{
-					Phase:        acp.TaskRunToolCallPhasePending,
-					Status:       acp.TaskRunToolCallStatusTypePending,
+			SetupWithStatus(ctx, k8sClient, tcForAddTool, func(obj client.Object) {
+				tc := obj.(*acp.ToolCall)
+				tc.Status = acp.ToolCallStatus{
+					Phase:        acp.ToolCallPhasePending,
+					Status:       acp.ToolCallStatusTypePending,
 					StatusDetail: "Initializing",
 					StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				}
 			})
-			defer Teardown(ctx, k8sClient, trtcForAddTool)
+			defer Teardown(ctx, k8sClient, tcForAddTool)
 
-			By("reconciling the taskruntoolcall")
+			By("reconciling the toolcall")
 			testReconciler := reconciler(k8sClient, &MockMCPManager{}, SetupTestApprovalConfig(true, "", nil))
 
 			result, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcForAddTool.Name,
-					Namespace: trtcForAddTool.Namespace,
+					Name:      tcForAddTool.Name,
+					Namespace: tcForAddTool.Namespace,
 				},
 			})
 
@@ -103,17 +104,17 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			Expect(result.Requeue).To(BeFalse()) // No requeue expected after setup completion
 			Expect(result.RequeueAfter).To(BeZero())
 
-			By("checking the taskruntoolcall status has changed to Ready:Pending")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall status has changed to Ready:Pending")
+			updatedTC := &acp.ToolCall{}
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcForAddTool.Name,
-					Namespace: trtcForAddTool.Namespace,
-				}, updatedTRTC)
+					Name:      tcForAddTool.Name,
+					Namespace: tcForAddTool.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhasePending))     // Phase remains Pending
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeReady)) // Status becomes Ready
-				g.Expect(updatedTRTC.Status.StatusDetail).To(Equal("Setup complete"))
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhasePending))     // Phase remains Pending
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady)) // Status becomes Ready
+				g.Expect(updatedTC.Status.StatusDetail).To(Equal("Setup complete"))
 			}, timeout, interval).Should(Succeed())
 		})
 	})
@@ -126,28 +127,28 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			defer Teardown(ctx, k8sClient, addTool)
 			setupTestAddTool(ctx, k8sClient, addTool, true)
 
-			// Create TaskRunToolCall with Ready:Pending status but invalid arguments
-			trtcForInvalidArgs := createTestTaskRunToolCall("trtc-invalid-args", addTool.Name, acp.ToolType(""),
+			// Create ToolCall with Ready:Pending status but invalid arguments
+			tcForInvalidArgs := createTestToolCall("tc-invalid-args", addTool.Name, acp.ToolType(""),
 				nil) // Create first
-			trtcForInvalidArgs.Spec.Arguments = "invalid json" // Set invalid args
-			SetupWithStatus(ctx, k8sClient, trtcForInvalidArgs, func(obj client.Object) {
-				trtc := obj.(*acp.TaskRunToolCall)
-				trtc.Status = acp.TaskRunToolCallStatus{
-					Phase:        acp.TaskRunToolCallPhasePending,    // Start in Pending phase
-					Status:       acp.TaskRunToolCallStatusTypeReady, // But Ready status
+			tcForInvalidArgs.Spec.Arguments = "invalid json" // Set invalid args
+			SetupWithStatus(ctx, k8sClient, tcForInvalidArgs, func(obj client.Object) {
+				tc := obj.(*acp.ToolCall)
+				tc.Status = acp.ToolCallStatus{
+					Phase:        acp.ToolCallPhasePending,    // Start in Pending phase
+					Status:       acp.ToolCallStatusTypeReady, // But Ready status
 					StatusDetail: "Setup complete",
 					StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				}
 			})
-			defer Teardown(ctx, k8sClient, trtcForInvalidArgs)
+			defer Teardown(ctx, k8sClient, tcForInvalidArgs)
 
-			By("reconciling the taskruntoolcall with invalid arguments")
+			By("reconciling the toolcall with invalid arguments")
 			testReconciler := reconciler(k8sClient, &MockMCPManager{}, SetupTestApprovalConfig(true, "", nil))
 
 			_, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcForInvalidArgs.Name,
-					Namespace: trtcForInvalidArgs.Namespace,
+					Name:      tcForInvalidArgs.Name,
+					Namespace: tcForInvalidArgs.Namespace,
 				},
 			})
 
@@ -155,18 +156,18 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("invalid character")) // Check for JSON parse error
 
-			By("checking the taskruntoolcall status is set to Error")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall status is set to Error")
+			updatedTC := &acp.ToolCall{}
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcForInvalidArgs.Name,
-					Namespace: trtcForInvalidArgs.Namespace,
-				}, updatedTRTC)
+					Name:      tcForInvalidArgs.Name,
+					Namespace: tcForInvalidArgs.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeError))
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseFailed)) // Should move to Failed phase
-				g.Expect(updatedTRTC.Status.StatusDetail).To(Equal(DetailInvalidArgsJSON))
-				g.Expect(updatedTRTC.Status.Error).NotTo(BeEmpty())
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeError))
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseFailed)) // Should move to Failed phase
+				g.Expect(updatedTC.Status.StatusDetail).To(Equal(DetailInvalidArgsJSON))
+				g.Expect(updatedTC.Status.Error).NotTo(BeEmpty())
 			}, timeout, interval).Should(Succeed())
 
 			// By("checking that error events were emitted")
@@ -190,20 +191,20 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			setupTestAddTool(ctx, k8sClient, mcpTool, true) // Use setupTestAddTool for consistency
 			defer Teardown(ctx, k8sClient, mcpTool)
 
-			// Create TaskRunToolCall with MCP tool reference
-			trtcMCP := createTestTaskRunToolCall("trtc-mcp-no-approval", mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"a": 2, "b": 3})
-			SetupWithStatus(ctx, k8sClient, trtcMCP, func(obj client.Object) {
-				trtc := obj.(*acp.TaskRunToolCall)
-				trtc.Status = acp.TaskRunToolCallStatus{
-					Phase:        acp.TaskRunToolCallPhasePending,
-					Status:       acp.TaskRunToolCallStatusTypeReady, // Start as Ready:Pending
+			// Create ToolCall with MCP tool reference
+			tcMCP := createTestToolCall("tc-mcp-no-approval", mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"a": 2, "b": 3})
+			SetupWithStatus(ctx, k8sClient, tcMCP, func(obj client.Object) {
+				tc := obj.(*acp.ToolCall)
+				tc.Status = acp.ToolCallStatus{
+					Phase:        acp.ToolCallPhasePending,
+					Status:       acp.ToolCallStatusTypeReady, // Start as Ready:Pending
 					StatusDetail: "Setup complete",
 					StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				}
 			})
-			defer Teardown(ctx, k8sClient, trtcMCP)
+			defer Teardown(ctx, k8sClient, tcMCP)
 
-			By("reconciling the taskruntoolcall that uses MCP tool without approval")
+			By("reconciling the toolcall that uses MCP tool without approval")
 			mockMCPMgr := &MockMCPManager{
 				CallToolFunc: func(ctx context.Context, serverName, toolName string, args map[string]interface{}) (string, error) {
 					Expect(serverName).To(Equal(mcpServerNoApproval.Name))
@@ -217,24 +218,24 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 
 			_, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcMCP.Name,
-					Namespace: trtcMCP.Namespace,
+					Name:      tcMCP.Name,
+					Namespace: tcMCP.Namespace,
 				},
 			})
 
 			Expect(err).NotTo(HaveOccurred())
 
-			By("checking the taskruntoolcall status is set to Succeeded")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall status is set to Succeeded")
+			updatedTC := &acp.ToolCall{}
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcMCP.Name,
-					Namespace: trtcMCP.Namespace,
-				}, updatedTRTC)
+					Name:      tcMCP.Name,
+					Namespace: tcMCP.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseSucceeded))
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeSucceeded))
-				g.Expect(updatedTRTC.Status.Result).To(Equal("5")) // From our mock implementation
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseSucceeded))
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeSucceeded))
+				g.Expect(updatedTC.Status.Result).To(Equal("5")) // From our mock implementation
 			}, timeout, interval).Should(Succeed())
 
 			// By("checking that appropriate events were emitted")
@@ -255,45 +256,45 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			setupTestAddTool(ctx, k8sClient, mcpTool, true)
 			defer Teardown(ctx, k8sClient, mcpTool)
 
-			trtcApproval := createTestTaskRunToolCall("trtc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"action": "deploy"})
-			SetupWithStatus(ctx, k8sClient, trtcApproval, func(obj client.Object) {
-				trtc := obj.(*acp.TaskRunToolCall)
-				trtc.Status = acp.TaskRunToolCallStatus{
-					Phase:        acp.TaskRunToolCallPhasePending,
-					Status:       acp.TaskRunToolCallStatusTypeReady,
+			tcApproval := createTestToolCall("tc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"action": "deploy"})
+			SetupWithStatus(ctx, k8sClient, tcApproval, func(obj client.Object) {
+				tc := obj.(*acp.ToolCall)
+				tc.Status = acp.ToolCallStatus{
+					Phase:        acp.ToolCallPhasePending,
+					Status:       acp.ToolCallStatusTypeReady,
 					StatusDetail: "Setup complete",
 					StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				}
 			})
-			defer Teardown(ctx, k8sClient, trtcApproval)
+			defer Teardown(ctx, k8sClient, tcApproval)
 
-			By("reconciling the taskruntoolcall that uses MCP tool with approval")
+			By("reconciling the toolcall that uses MCP tool with approval")
 			var generatedCallID string
 			mockHLFactory := SetupTestApprovalConfig(true, "", &generatedCallID) // Setup mock HL client
 			testReconciler := reconciler(k8sClient, &MockMCPManager{}, mockHLFactory)
 
 			result, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcApproval.Name,
-					Namespace: trtcApproval.Namespace,
+					Name:      tcApproval.Name,
+					Namespace: tcApproval.Namespace,
 				},
 			})
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(Equal(5 * time.Second)) // Should requeue after requesting approval
 
-			By("checking the taskruntoolcall has AwaitingHumanApproval phase and Ready status")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall has AwaitingHumanApproval phase and Ready status")
+			updatedTC := &acp.ToolCall{}
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcApproval.Name,
-					Namespace: trtcApproval.Namespace,
-				}, updatedTRTC)
+					Name:      tcApproval.Name,
+					Namespace: tcApproval.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseAwaitingHumanApproval))
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeReady)) // Status remains Ready
-				g.Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Waiting for human approval via contact channel"))
-				g.Expect(updatedTRTC.Status.ExternalCallID).To(Equal(generatedCallID)) // Check CallID was stored
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanApproval))
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady)) // Status remains Ready
+				g.Expect(updatedTC.Status.StatusDetail).To(ContainSubstring("Waiting for human approval via contact channel"))
+				g.Expect(updatedTC.Status.ExternalCallID).To(Equal(generatedCallID)) // Check CallID was stored
 			}, timeout, interval).Should(Succeed())
 
 			// By("checking that appropriate events were emitted")
@@ -305,12 +306,12 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 	// Context("Ready:Pending -> Ready:AwaitingHumanApproval (MCP Tool, Email Contact Channel)", func() {
 	// 	It("transitions to Ready:AwaitingHumanApproval when MCPServer has email approval channel", func() {
 	// 		// Set up resources with email contact channel
-	// 		trtc, teardown := setupTestApprovalResources(ctx, &SetupTestApprovalConfig{
+	// 		tc, teardown := setupTestApprovalResources(ctx, &SetupTestApprovalConfig{
 	// 			ContactChannelType: "email",
 	// 		})
 	// 		defer teardown()
 
-	// 		By("reconciling the taskruntoolcall that uses MCP tool with email approval")
+	// 		By("reconciling the toolcall that uses MCP tool with email approval")
 	// 		reconciler, recorder := reconciler()
 
 	// 		reconciler.MCPManager = &MockMCPManager{
@@ -325,29 +326,29 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 
 	// 		result, err := reconciler.Reconcile(ctx, reconcile.Request{
 	// 			NamespacedName: types.NamespacedName{
-	// 				Name:      trtc.Name,
-	// 				Namespace: trtc.Namespace,
+	// 				Name:      tc.Name,
+	// 				Namespace: tc.Namespace,
 	// 			},
 	// 		})
 
 	// 		Expect(err).NotTo(HaveOccurred())
 	// 		Expect(result.RequeueAfter).To(Equal(5 * time.Second)) // Should requeue after 5 seconds
 
-	// 		By("checking the taskruntoolcall has AwaitingHumanApproval phase and Ready status")
-	// 		updatedTRTC := &acp.TaskRunToolCall{}
+	// 		By("checking the toolcall has AwaitingHumanApproval phase and Ready status")
+	// 		updatedTC := &acp.ToolCall{}
 	// 		err = k8sClient.Get(ctx, types.NamespacedName{
-	// 			Name:      trtc.Name,
-	// 			Namespace: trtc.Namespace,
-	// 		}, updatedTRTC)
+	// 			Name:      tc.Name,
+	// 			Namespace: tc.Namespace,
+	// 		}, updatedTC)
 
 	// 		Expect(err).NotTo(HaveOccurred())
-	// 		Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseAwaitingHumanApproval))
-	// 		Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeReady))
-	// 		Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Waiting for human approval via contact channel"))
+	// 		Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanApproval))
+	// 		Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
+	// 		Expect(updatedTC.Status.StatusDetail).To(ContainSubstring("Waiting for human approval via contact channel"))
 
 	// 		By("checking that appropriate events were emitted")
 	// 		utils.ExpectRecorder(recorder).ToEmitEventContaining("AwaitingHumanApproval")
-	// 		Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseAwaitingHumanApproval))
+	// 		Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanApproval))
 
 	// 		By("verifying the contact channel type is email")
 	// 		var contactChannel acp.ContactChannel
@@ -373,20 +374,20 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			defer Teardown(ctx, k8sClient, mcpTool)
 
 			initialCallID := "call-id-for-approval"
-			trtcApproval := createTestTaskRunToolCall("trtc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"action": "proceed"})
-			SetupWithStatus(ctx, k8sClient, trtcApproval, func(obj client.Object) {
-				trtc := obj.(*acp.TaskRunToolCall)
-				trtc.Status = acp.TaskRunToolCallStatus{
+			tcApproval := createTestToolCall("tc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"action": "proceed"})
+			SetupWithStatus(ctx, k8sClient, tcApproval, func(obj client.Object) {
+				tc := obj.(*acp.ToolCall)
+				tc.Status = acp.ToolCallStatus{
 					ExternalCallID: initialCallID, // Set the call ID from the initial request
-					Phase:          acp.TaskRunToolCallPhaseAwaitingHumanApproval,
-					Status:         acp.TaskRunToolCallStatusTypeReady,
+					Phase:          acp.ToolCallPhaseAwaitingHumanApproval,
+					Status:         acp.ToolCallStatusTypeReady,
 					StatusDetail:   "Waiting for human approval via contact channel",
 					StartTime:      &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				}
 			})
-			defer Teardown(ctx, k8sClient, trtcApproval)
+			defer Teardown(ctx, k8sClient, tcApproval)
 
-			By("reconciling the trtc against an approval-granting HumanLayer client")
+			By("reconciling the tc against an approval-granting HumanLayer client")
 			mockHLFactory := SetupTestApprovalConfig(true, "Looks good!", nil) // Should approve
 			testReconciler := reconciler(k8sClient, &MockMCPManager{}, mockHLFactory)
 
@@ -398,8 +399,8 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 
 			result, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcApproval.Name,
-					Namespace: trtcApproval.Namespace,
+					Name:      tcApproval.Name,
+					Namespace: tcApproval.Namespace,
 				},
 			})
 
@@ -407,17 +408,17 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			Expect(result.Requeue).To(BeFalse()) // Should not requeue after successful status check
 			Expect(result.RequeueAfter).To(BeZero())
 
-			By("checking the taskruntoolcall status is set to ReadyToExecuteApprovedTool")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall status is set to ReadyToExecuteApprovedTool")
+			updatedTC := &acp.ToolCall{}
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcApproval.Name,
-					Namespace: trtcApproval.Namespace,
-				}, updatedTRTC)
+					Name:      tcApproval.Name,
+					Namespace: tcApproval.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseReadyToExecuteApprovedTool))
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeReady)) // Status remains Ready
-				g.Expect(updatedTRTC.Status.StatusDetail).To(Equal("Human approval received"))
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseReadyToExecuteApprovedTool))
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady)) // Status remains Ready
+				g.Expect(updatedTC.Status.StatusDetail).To(Equal("Human approval received"))
 			}, timeout, interval).Should(Succeed())
 		})
 	})
@@ -436,45 +437,45 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 
 			initialCallID := "call-id-for-rejection"
 			rejectionComment := "Nope, not allowed."
-			trtcRejection := createTestTaskRunToolCall("trtc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"action": "dangerous-op"})
-			SetupWithStatus(ctx, k8sClient, trtcRejection, func(obj client.Object) {
-				trtc := obj.(*acp.TaskRunToolCall)
-				trtc.Status = acp.TaskRunToolCallStatus{
+			tcRejection := createTestToolCall("tc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"action": "dangerous-op"})
+			SetupWithStatus(ctx, k8sClient, tcRejection, func(obj client.Object) {
+				tc := obj.(*acp.ToolCall)
+				tc.Status = acp.ToolCallStatus{
 					ExternalCallID: initialCallID,
-					Phase:          acp.TaskRunToolCallPhaseAwaitingHumanApproval,
-					Status:         acp.TaskRunToolCallStatusTypeReady,
+					Phase:          acp.ToolCallPhaseAwaitingHumanApproval,
+					Status:         acp.ToolCallStatusTypeReady,
 					StatusDetail:   "Waiting for human approval",
 					StartTime:      &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				}
 			})
-			defer Teardown(ctx, k8sClient, trtcRejection)
+			defer Teardown(ctx, k8sClient, tcRejection)
 
-			By("reconciling the trtc against an approval-rejecting HumanLayer client")
+			By("reconciling the tc against an approval-rejecting HumanLayer client")
 			mockHLFactory := SetupTestApprovalConfig(false, rejectionComment, nil) // Should reject
 			testReconciler := reconciler(k8sClient, &MockMCPManager{}, mockHLFactory)
 
 			result, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcRejection.Name,
-					Namespace: trtcRejection.Namespace,
+					Name:      tcRejection.Name,
+					Namespace: tcRejection.Namespace,
 				},
 			})
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse()) // Terminal state
 
-			By("checking the taskruntoolcall has ToolCallRejected phase and Succeeded status")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall has ToolCallRejected phase and Succeeded status")
+			updatedTC := &acp.ToolCall{}
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcRejection.Name,
-					Namespace: trtcRejection.Namespace,
-				}, updatedTRTC)
+					Name:      tcRejection.Name,
+					Namespace: tcRejection.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseToolCallRejected))
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeSucceeded)) // Status is Succeeded (rejection processed)
-				g.Expect(updatedTRTC.Status.StatusDetail).To(Equal("Tool execution rejected by human"))
-				g.Expect(updatedTRTC.Status.Result).To(ContainSubstring(rejectionComment)) // Result contains comment
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseToolCallRejected))
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeSucceeded)) // Status is Succeeded (rejection processed)
+				g.Expect(updatedTC.Status.StatusDetail).To(Equal("Tool execution rejected by human"))
+				g.Expect(updatedTC.Status.Result).To(ContainSubstring(rejectionComment)) // Result contains comment
 			}, timeout, interval).Should(Succeed())
 		})
 	})
@@ -491,20 +492,20 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			setupTestAddTool(ctx, k8sClient, mcpTool, true)
 			defer Teardown(ctx, k8sClient, mcpTool)
 
-			trtcExec := createTestTaskRunToolCall("trtc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"a": 10, "b": 5})
-			SetupWithStatus(ctx, k8sClient, trtcExec, func(obj client.Object) {
-				trtc := obj.(*acp.TaskRunToolCall)
-				trtc.Status = acp.TaskRunToolCallStatus{
+			tcExec := createTestToolCall("tc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"a": 10, "b": 5})
+			SetupWithStatus(ctx, k8sClient, tcExec, func(obj client.Object) {
+				tc := obj.(*acp.ToolCall)
+				tc.Status = acp.ToolCallStatus{
 					ExternalCallID: "call-id-approved-for-exec",
-					Phase:          acp.TaskRunToolCallPhaseReadyToExecuteApprovedTool, // Start in this phase
-					Status:         acp.TaskRunToolCallStatusTypeReady,
+					Phase:          acp.ToolCallPhaseReadyToExecuteApprovedTool, // Start in this phase
+					Status:         acp.ToolCallStatusTypeReady,
 					StatusDetail:   "Human approval received",
 					StartTime:      &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				}
 			})
-			defer Teardown(ctx, k8sClient, trtcExec)
+			defer Teardown(ctx, k8sClient, tcExec)
 
-			By("reconciling the trtc ready for approved execution")
+			By("reconciling the tc ready for approved execution")
 			mockMCPMgr := &MockMCPManager{
 				CallToolFunc: func(ctx context.Context, serverName, toolName string, args map[string]interface{}) (string, error) {
 					Expect(serverName).To(Equal(mcpServer.Name))
@@ -519,25 +520,25 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 
 			result, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcExec.Name,
-					Namespace: trtcExec.Namespace,
+					Name:      tcExec.Name,
+					Namespace: tcExec.Namespace,
 				},
 			})
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.Requeue).To(BeFalse()) // Terminal state
 
-			By("checking the taskruntoolcall status is set to Succeeded:Succeeded")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall status is set to Succeeded:Succeeded")
+			updatedTC := &acp.ToolCall{}
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcExec.Name,
-					Namespace: trtcExec.Namespace,
-				}, updatedTRTC)
+					Name:      tcExec.Name,
+					Namespace: tcExec.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseSucceeded))
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeSucceeded))
-				g.Expect(updatedTRTC.Status.Result).To(Equal("15")) // Check result from mock MCP call
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseSucceeded))
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeSucceeded))
+				g.Expect(updatedTC.Status.Result).To(Equal("15")) // Check result from mock MCP call
 			}, timeout, interval).Should(Succeed())
 		})
 	})
@@ -554,19 +555,19 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			setupTestAddTool(ctx, k8sClient, mcpTool, true)
 			defer Teardown(ctx, k8sClient, mcpTool)
 
-			trtcHLFail := createTestTaskRunToolCall("trtc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"action": "risky"})
-			SetupWithStatus(ctx, k8sClient, trtcHLFail, func(obj client.Object) {
-				trtc := obj.(*acp.TaskRunToolCall)
-				trtc.Status = acp.TaskRunToolCallStatus{
-					Phase:        acp.TaskRunToolCallPhasePending,
-					Status:       acp.TaskRunToolCallStatusTypeReady,
+			tcHLFail := createTestToolCall("tc-"+baseName, mcpTool.Name, acp.ToolTypeMCP, map[string]interface{}{"action": "risky"})
+			SetupWithStatus(ctx, k8sClient, tcHLFail, func(obj client.Object) {
+				tc := obj.(*acp.ToolCall)
+				tc.Status = acp.ToolCallStatus{
+					Phase:        acp.ToolCallPhasePending,
+					Status:       acp.ToolCallStatusTypeReady,
 					StatusDetail: "Setup complete",
 					StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
 				}
 			})
-			defer Teardown(ctx, k8sClient, trtcHLFail)
+			defer Teardown(ctx, k8sClient, tcHLFail)
 
-			By("reconciling the taskruntoolcall against a failing HumanLayer client")
+			By("reconciling the toolcall against a failing HumanLayer client")
 			errorMsg := "HumanLayer API unavailable"
 			mockHLClient := &humanlayer.MockHumanLayerClientWrapper{
 				RequestApprovalFunc: func(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
@@ -580,26 +581,26 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 
 			result, err := testReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      trtcHLFail.Name,
-					Namespace: trtcHLFail.Namespace,
+					Name:      tcHLFail.Name,
+					Namespace: tcHLFail.Namespace,
 				},
 			})
 
 			Expect(err).NotTo(HaveOccurred()) // The reconcile loop itself shouldn't error, status is updated
 			Expect(result.Requeue).To(BeFalse())
 
-			By("checking the taskruntoolcall has ErrorRequestingHumanApproval phase and Error status")
-			updatedTRTC := &acp.TaskRunToolCall{}
+			By("checking the toolcall has ErrorRequestingHumanApproval phase and Error status")
+			updatedTC := &acp.ToolCall{}
 			Eventually(func(g Gomega) {
 				errGet := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      trtcHLFail.Name,
-					Namespace: trtcHLFail.Namespace,
-				}, updatedTRTC)
+					Name:      tcHLFail.Name,
+					Namespace: tcHLFail.Namespace,
+				}, updatedTC)
 				g.Expect(errGet).NotTo(HaveOccurred())
-				g.Expect(updatedTRTC.Status.Phase).To(Equal(acp.TaskRunToolCallPhaseErrorRequestingHumanApproval))
-				g.Expect(updatedTRTC.Status.Status).To(Equal(acp.TaskRunToolCallStatusTypeError))
-				g.Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("HumanLayer request failed"))
-				g.Expect(updatedTRTC.Status.Error).To(ContainSubstring(errorMsg))
+				g.Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseErrorRequestingHumanApproval))
+				g.Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeError))
+				g.Expect(updatedTC.Status.StatusDetail).To(ContainSubstring("HumanLayer request failed"))
+				g.Expect(updatedTC.Status.Error).To(ContainSubstring(errorMsg))
 			}, timeout, interval).Should(Succeed())
 		})
 	})

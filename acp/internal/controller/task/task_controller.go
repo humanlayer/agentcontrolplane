@@ -29,7 +29,7 @@ import (
 
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=tasks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=tasks/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=taskruntoolcalls,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=toolcalls,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=agents,verbs=get;list;watch
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=llms,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -215,7 +215,7 @@ func (r *TaskReconciler) processToolCalls(ctx context.Context, task *acp.Task) (
 	logger := log.FromContext(ctx)
 
 	// List all tool calls for this Task
-	toolCalls := &acp.TaskRunToolCallList{}
+	toolCalls := &acp.ToolCallList{}
 	if err := r.List(ctx, toolCalls, client.InNamespace(task.Namespace), client.MatchingLabels{
 		"acp.humanlayer.dev/task":            task.Name,
 		"acp.humanlayer.dev/toolcallrequest": task.Status.ToolCallRequestID,
@@ -227,9 +227,9 @@ func (r *TaskReconciler) processToolCalls(ctx context.Context, task *acp.Task) (
 	// Check if all tool calls are completed
 	allCompleted := true
 	for _, tc := range toolCalls.Items {
-		if tc.Status.Status != acp.TaskRunToolCallStatusTypeSucceeded &&
+		if tc.Status.Status != acp.ToolCallStatusTypeSucceeded &&
 			// todo separate between send-to-model failures and tool-is-retrying failures
-			tc.Status.Status != acp.TaskRunToolCallStatusTypeError {
+			tc.Status.Status != acp.ToolCallStatusTypeError {
 			allCompleted = false
 			break
 		}
@@ -432,7 +432,7 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 		toolCallRequestId := uuid.New().String()[:7] // Using first 7 characters for brevity
 		logger.Info("Generated toolCallRequestId for tool calls", "id", toolCallRequestId)
 
-		// tool call branch: create TaskRunToolCall objects for each tool call returned by the LLM.
+		// tool call branch: create ToolCall objects for each tool call returned by the LLM.
 		statusUpdate.Status.Output = ""
 		statusUpdate.Status.Phase = acp.TaskPhaseToolCallsPending
 		statusUpdate.Status.ToolCallRequestID = toolCallRequestId
@@ -457,7 +457,7 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 	return ctrl.Result{}, nil
 }
 
-// createToolCalls creates TaskRunToolCall objects for each tool call
+// createToolCalls creates ToolCall objects for each tool call
 func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, toolCalls []acp.ToolCall, tools []llmclient.Tool) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -473,12 +473,12 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, st
 		toolTypeMap[tool.Function.Name] = tool.ACPToolType
 	}
 
-	// For each tool call, create a new TaskRunToolCall with a unique name using the ToolCallRequestID
+	// For each tool call, create a new ToolCall with a unique name using the ToolCallRequestID
 	for i, tc := range toolCalls {
 		newName := fmt.Sprintf("%s-%s-tc-%02d", statusUpdate.Name, statusUpdate.Status.ToolCallRequestID, i+1)
 		toolType := toolTypeMap[tc.Function.Name]
 
-		newTRTC := &acp.TaskRunToolCall{
+		newTC := &acp.ToolCall{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      newName,
 				Namespace: statusUpdate.Namespace,
@@ -496,7 +496,7 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, st
 					},
 				},
 			},
-			Spec: acp.TaskRunToolCallSpec{
+			Spec: acp.ToolCallSpec{
 				ToolCallID: tc.ID,
 				TaskRef: acp.LocalObjectReference{
 					Name: statusUpdate.Name,
@@ -508,12 +508,12 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, st
 				Arguments: tc.Function.Arguments,
 			},
 		}
-		if err := r.Client.Create(ctx, newTRTC); err != nil {
-			logger.Error(err, "Failed to create TaskRunToolCall", "name", newName)
+		if err := r.Client.Create(ctx, newTC); err != nil {
+			logger.Error(err, "Failed to create ToolCall", "name", newName)
 			return ctrl.Result{}, err
 		}
-		logger.Info("Created TaskRunToolCall", "name", newName, "requestId", statusUpdate.Status.ToolCallRequestID, "toolType", toolType)
-		r.recorder.Event(task, corev1.EventTypeNormal, "ToolCallCreated", "Created TaskRunToolCall "+newName)
+		logger.Info("Created ToolCall", "name", newName, "requestId", statusUpdate.Status.ToolCallRequestID, "toolType", toolType)
+		r.recorder.Event(task, corev1.EventTypeNormal, "ToolCallCreated", "Created ToolCall "+newName)
 	}
 	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 }

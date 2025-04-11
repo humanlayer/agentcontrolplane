@@ -50,7 +50,7 @@ resources:
   controller: true
   domain: humanlayer.dev
   group: acp
-  kind: TaskRunToolCall
+  kind: ToolCall
   path: github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1
   version: acp
 - api:

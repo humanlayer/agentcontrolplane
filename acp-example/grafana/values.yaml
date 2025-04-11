@@ -158,7 +158,7 @@ dashboards:
                     "type": "prometheus",
                     "uid": "prometheus"
                   },
-                  "expr": "rate(taskrun_reconcile_count[5m])",
+                  "expr": "rate(task_reconcile_count[5m])",
                   "legendFormat": "Reconciles/sec",
                   "refId": "A"
                 },
@@ -167,7 +167,7 @@ dashboards:
                     "type": "prometheus",
                     "uid": "prometheus"
                   },
-                  "expr": "rate(taskrun_phase_transition[5m])",
+                  "expr": "rate(task_phase_transition[5m])",
                   "legendFormat": "Phase Transitions/sec",
                   "refId": "B"
                 },
@@ -176,7 +176,7 @@ dashboards:
                     "type": "prometheus",
                     "uid": "prometheus"
                   },
-                  "expr": "rate(taskrun_error_count[5m])",
+                  "expr": "rate(task_error_count[5m])",
                   "legendFormat": "Errors/sec",
                   "refId": "C"
                 },
@@ -185,7 +185,7 @@ dashboards:
                     "type": "prometheus",
                     "uid": "prometheus"
                   },
-                  "expr": "histogram_quantile(0.95, sum(rate(taskrun_reconcile_duration_bucket[5m])) by (le))",
+                  "expr": "histogram_quantile(0.95, sum(rate(task_reconcile_duration_bucket[5m])) by (le))",
                   "legendFormat": "p95 Reconcile Duration",
                   "refId": "D"
                 }
@@ -237,7 +237,7 @@ dashboards:
                     "type": "prometheus",
                     "uid": "prometheus"
                   },
-                  "expr": "sum(taskrun_phase_transition) by (to_phase)",
+                  "expr": "sum(task_phase_transition) by (to_phase)",
                   "legendFormat": "{{to_phase}}",
                   "refId": "A"
                 }

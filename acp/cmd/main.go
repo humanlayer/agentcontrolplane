@@ -265,13 +265,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&taskruntoolcall.TaskRunToolCallReconciler{
+	if err = (&taskruntoolcall.ToolCallReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		MCPManager: mcpManagerInstance,
 		Tracer:     tracerProvider.Tracer("taskruntoolcall"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "TaskRunToolCall")
+		setupLog.Error(err, "unable to create controller", "controller", "ToolCall")
 		os.Exit(1)
 	}
 

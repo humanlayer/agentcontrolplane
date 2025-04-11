@@ -442,7 +442,7 @@ var _ = Describe("Task Controller", func() {
 			ExpectRecorder(recorder).ToEmitEventContaining("SendingContextWindowToLLM", "ToolCallsPending")
 
 			By("ensuring the tool call was created")
-			toolCalls := &acp.TaskRunToolCallList{}
+			toolCalls := &acp.ToolCallList{}
 			Expect(k8sClient.List(ctx, toolCalls, client.InNamespace("default"), client.MatchingLabels{
 				"acp.humanlayer.dev/task": testTask.name,
 			})).To(Succeed())
@@ -475,10 +475,10 @@ var _ = Describe("Task Controller", func() {
 			})
 			defer testTask.Teardown(ctx)
 
-			testTaskRunToolCall.SetupWithStatus(ctx, acp.TaskRunToolCallStatus{
-				Phase: acp.TaskRunToolCallPhasePending, // Tool call is still pending
+			testToolCall.SetupWithStatus(ctx, acp.ToolCallStatus{
+				Phase: acp.ToolCallPhasePending, // Tool call is still pending
 			})
-			defer testTaskRunToolCall.Teardown(ctx)
+			defer testToolCall.Teardown(ctx)
 
 			By("reconciling the task")
 			reconciler, _ := reconciler()
@@ -522,14 +522,14 @@ var _ = Describe("Task Controller", func() {
 						Role: "assistant",
 						ToolCalls: []acp.ToolCall{
 							{
-								ID: "1", // Corresponds to testTaskRunToolCall
+								ID: "1", // Corresponds to testToolCall
 								Function: acp.ToolCallFunction{
 									Name:      "fetch__fetch",
 									Arguments: `{"url": "https://api.example.com/data"}`,
 								},
 							},
 							{
-								ID: "2", // Corresponds to testTaskRunToolCallTwo
+								ID: "2", // Corresponds to testToolCallTwo
 								Function: acp.ToolCallFunction{
 									Name:      "human_contact",
 									Arguments: `{"message": "needs help"}`,
@@ -542,32 +542,32 @@ var _ = Describe("Task Controller", func() {
 			defer testTask.Teardown(ctx)
 
 			// Setup first tool call object with correct ToolCallID in Spec
-			trtc1 := testTaskRunToolCall.Setup(ctx)            // Use Setup first
-			trtc1.Spec.ToolCallID = "1"                        // Set the Spec field
-			Expect(k8sClient.Update(ctx, trtc1)).To(Succeed()) // Update the object
+			tc1 := testToolCall.Setup(ctx)                   // Use Setup first
+			tc1.Spec.ToolCallID = "1"                        // Set the Spec field
+			Expect(k8sClient.Update(ctx, tc1)).To(Succeed()) // Update the object
 			// Now apply the status
-			trtc1.Status = acp.TaskRunToolCallStatus{
-				Status: acp.TaskRunToolCallStatusTypeSucceeded,
-				Phase:  acp.TaskRunToolCallPhaseSucceeded,
+			tc1.Status = acp.ToolCallStatus{
+				Status: acp.ToolCallStatusTypeSucceeded,
+				Phase:  acp.ToolCallPhaseSucceeded,
 				Result: `{"data": "test-data"}`,
 				// NO ToolCallID or ExternalCallID here
 			}
-			Expect(k8sClient.Status().Update(ctx, trtc1)).To(Succeed()) // Update status
-			defer testTaskRunToolCall.Teardown(ctx)                     // Ensure teardown uses the correct object
+			Expect(k8sClient.Status().Update(ctx, tc1)).To(Succeed()) // Update status
+			defer testToolCall.Teardown(ctx)                          // Ensure teardown uses the correct object
 
 			// Setup second tool call object with correct ToolCallID in Spec
-			trtc2 := testTaskRunToolCallTwo.Setup(ctx)         // Use Setup first
-			trtc2.Spec.ToolCallID = "2"                        // Set the Spec field
-			Expect(k8sClient.Update(ctx, trtc2)).To(Succeed()) // Update the object
+			tc2 := testToolCallTwo.Setup(ctx)                // Use Setup first
+			tc2.Spec.ToolCallID = "2"                        // Set the Spec field
+			Expect(k8sClient.Update(ctx, tc2)).To(Succeed()) // Update the object
 			// Now apply the status
-			trtc2.Status = acp.TaskRunToolCallStatus{
-				Status: acp.TaskRunToolCallStatusTypeSucceeded, // Or maybe Error if rejection is error? Let's assume Succeeded for now.
-				Phase:  acp.TaskRunToolCallPhaseToolCallRejected,
+			tc2.Status = acp.ToolCallStatus{
+				Status: acp.ToolCallStatusTypeSucceeded, // Or maybe Error if rejection is error? Let's assume Succeeded for now.
+				Phase:  acp.ToolCallPhaseToolCallRejected,
 				Result: `human contact channel rejected this tool call with the following response: "I'm out here just testing things okay, try again later."`,
 				// NO ToolCallID or ExternalCallID here
 			}
-			Expect(k8sClient.Status().Update(ctx, trtc2)).To(Succeed()) // Update status
-			defer testTaskRunToolCallTwo.Teardown(ctx)                  // Ensure teardown uses the correct object
+			Expect(k8sClient.Status().Update(ctx, tc2)).To(Succeed()) // Update status
+			defer testToolCallTwo.Teardown(ctx)                       // Ensure teardown uses the correct object
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
@@ -595,7 +595,7 @@ var _ = Describe("Task Controller", func() {
 			for _, msg := range task.Status.ContextWindow {
 				if msg.Role == "tool" {
 					// The ToolCallID in the message should match the ID from the original assistant message's ToolCalls array.
-					// The ToolCallID in the TaskRunToolCall Spec should also match this.
+					// The ToolCallID in the ToolCall Spec should also match this.
 					if msg.Content == `{"data": "test-data"}` {
 						// We assume this corresponds to the original ToolCall with ID "1"
 						Expect(msg.ToolCallID).To(Equal("1")) // Check if the reconciler correctly added the ID back
