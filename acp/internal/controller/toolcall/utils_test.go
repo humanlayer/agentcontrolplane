@@ -1,4 +1,4 @@
-package taskruntoolcall
+package toolcall
 
 import (
 	"context"
@@ -14,12 +14,6 @@ import (
 	"k8s.io/client-go/tools/record"
 )
 
-// Test tool instances for different types
-var addTool = &TestTool{
-	name:     "add",
-	toolType: "function",
-}
-
 var testContactChannel = &TestContactChannel{
 	name:        "test-contact-channel",
 	channelType: acp.ContactChannelTypeSlack,
@@ -32,27 +26,8 @@ var testMCPServer = &TestMCPServer{
 	approvalContactChannel: testContactChannel.name,
 }
 
-var testMCPTool = &TestMCPTool{
-	name:        "test-mcp-server-test-tool",
-	mcpServer:   testMCPServer.name,
-	mcpToolName: "test-tool",
-}
-
-var trtcForAddTool = &TestTaskRunToolCall{
-	name:      "test-taskruntoolcall",
-	toolName:  addTool.name,
-	arguments: `{"a": 2, "b": 3}`,
-}
-
 var testSecret = &TestSecret{
 	name: "test-secret",
-}
-
-// TestTool represents a test Tool resource
-type TestTool struct {
-	name     string
-	toolType string
-	tool     *acp.Tool
 }
 
 // TestSecret represents a test secret for storing API keys
@@ -144,29 +119,29 @@ func (t *TestSecret) Teardown(ctx context.Context) {
 
 // TestTaskRunToolCall represents a test TaskRunToolCall resource
 type TestTaskRunToolCall struct {
-	name            string
-	toolName        string
-	arguments       string
-	toolType        acp.ToolType
-	taskRunToolCall *acp.TaskRunToolCall
+	name      string
+	toolName  string
+	arguments string
+	toolType  acp.ToolType
+	toolCall  *acp.ToolCall
 }
 
-func (t *TestTaskRunToolCall) SetupWithStatus(ctx context.Context, status acp.TaskRunToolCallStatus) *acp.TaskRunToolCall {
-	taskRunToolCall := t.Setup(ctx)
-	taskRunToolCall.Status = status
-	Expect(k8sClient.Status().Update(ctx, taskRunToolCall)).To(Succeed())
-	t.taskRunToolCall = taskRunToolCall
-	return taskRunToolCall
+func (t *TestTaskRunToolCall) SetupWithStatus(ctx context.Context, status acp.ToolCallStatus) *acp.ToolCall {
+	toolCall := t.Setup(ctx)
+	toolCall.Status = status
+	Expect(k8sClient.Status().Update(ctx, toolCall)).To(Succeed())
+	t.toolCall = toolCall
+	return toolCall
 }
 
-func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.TaskRunToolCall {
-	By("creating the taskruntoolcall")
-	taskRunToolCall := &acp.TaskRunToolCall{
+func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.ToolCall {
+	By("creating the toolcall")
+	toolCall := &acp.ToolCall{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      t.name,
 			Namespace: "default",
 		},
-		Spec: acp.TaskRunToolCallSpec{
+		Spec: acp.ToolCallSpec{
 			TaskRef: acp.LocalObjectReference{
 				Name: "parent-task",
 			},
@@ -177,68 +152,17 @@ func (t *TestTaskRunToolCall) Setup(ctx context.Context) *acp.TaskRunToolCall {
 			Arguments: t.arguments,
 		},
 	}
-	_ = k8sClient.Delete(ctx, taskRunToolCall) // Delete if exists
-	err := k8sClient.Create(ctx, taskRunToolCall)
+	_ = k8sClient.Delete(ctx, toolCall) // Delete if exists
+	err := k8sClient.Create(ctx, toolCall)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.name, Namespace: "default"}, taskRunToolCall)).To(Succeed())
-	t.taskRunToolCall = taskRunToolCall
-	return taskRunToolCall
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.name, Namespace: "default"}, toolCall)).To(Succeed())
+	t.toolCall = toolCall
+	return toolCall
 }
 
 func (t *TestTaskRunToolCall) Teardown(ctx context.Context) {
 	By("deleting the taskruntoolcall")
-	_ = k8sClient.Delete(ctx, t.taskRunToolCall)
-}
-
-func (t *TestTool) SetupWithStatus(ctx context.Context, status acp.ToolStatus) *acp.Tool {
-	tool := t.Setup(ctx)
-	tool.Status = status
-	Expect(k8sClient.Status().Update(ctx, tool)).To(Succeed())
-	t.tool = tool
-	return tool
-}
-
-func (t *TestTool) Setup(ctx context.Context) *acp.Tool {
-	By("creating the tool")
-	tool := &acp.Tool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      t.name,
-			Namespace: "default",
-		},
-		Spec: acp.ToolSpec{
-			ToolType:    t.toolType,
-			Name:        t.name,
-			Description: "Test tool for " + t.toolType,
-			Execute: acp.ToolExecute{
-				Builtin: &acp.BuiltinToolSpec{
-					Name: t.name,
-				},
-			},
-		},
-	}
-	_ = k8sClient.Delete(ctx, tool) // Delete if exists
-	err := k8sClient.Create(ctx, tool)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.name, Namespace: "default"}, tool)).To(Succeed())
-	t.tool = tool
-	return tool
-}
-
-func (t *TestTool) Teardown(ctx context.Context) {
-	By("deleting the tool")
-	_ = k8sClient.Delete(ctx, t.tool)
-}
-
-// setupTestAddTools sets up all the tools needed for testing
-func setupTestAddTool(ctx context.Context) func() {
-	addTool.SetupWithStatus(ctx, acp.ToolStatus{
-		Ready:  true,
-		Status: "Ready",
-	})
-
-	return func() {
-		addTool.Teardown(ctx)
-	}
+	_ = k8sClient.Delete(ctx, t.toolCall)
 }
 
 // TestMCPServer represents a test MCPServer resource
@@ -310,60 +234,12 @@ func (m *MockMCPManager) CallTool(ctx context.Context, serverName, toolName stri
 	return "5", nil // Default result
 }
 
-// TestMCPTool represents a test Tool resource for MCP
-type TestMCPTool struct {
-	name        string
-	mcpServer   string
-	mcpToolName string
-	tool        *acp.Tool
-}
-
-func (t *TestMCPTool) Setup(ctx context.Context) *acp.Tool {
-	By("creating the MCP tool")
-	toolName := t.mcpServer + "__" + t.mcpToolName
-	tool := &acp.Tool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      t.name,
-			Namespace: "default",
-		},
-		Spec: acp.ToolSpec{
-			ToolType:    "function",
-			Name:        toolName,
-			Description: "Test MCP tool",
-			Execute: acp.ToolExecute{
-				Builtin: &acp.BuiltinToolSpec{
-					Name: "add",
-				},
-			},
-		},
-	}
-	_ = k8sClient.Delete(ctx, tool) // Delete if exists
-	err := k8sClient.Create(ctx, tool)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.name, Namespace: "default"}, tool)).To(Succeed())
-	t.tool = tool
-	return tool
-}
-
-func (t *TestMCPTool) SetupWithStatus(ctx context.Context, status acp.ToolStatus) *acp.Tool {
-	tool := t.Setup(ctx)
-	tool.Status = status
-	Expect(k8sClient.Status().Update(ctx, tool)).To(Succeed())
-	t.tool = tool
-	return tool
-}
-
-func (t *TestMCPTool) Teardown(ctx context.Context) {
-	By("deleting the MCP tool")
-	_ = k8sClient.Delete(ctx, t.tool)
-}
-
 // reconciler creates a new reconciler for testing
-func reconciler() (*TaskRunToolCallReconciler, *record.FakeRecorder) {
+func reconciler() (*ToolCallReconciler, *record.FakeRecorder) {
 	By("creating a test reconciler")
 	recorder := record.NewFakeRecorder(10)
 
-	reconciler := &TaskRunToolCallReconciler{
+	reconciler := &ToolCallReconciler{
 		Client:   k8sClient,
 		Scheme:   k8sClient.Scheme(),
 		recorder: recorder,
@@ -379,14 +255,14 @@ func reconciler() (*TaskRunToolCallReconciler, *record.FakeRecorder) {
 
 // SetupTestApprovalConfig contains optional configuration for setupTestApprovalResources
 type SetupTestApprovalConfig struct {
-	TaskRunToolCallStatus *acp.TaskRunToolCallStatus
-	TaskRunToolCallName   string
-	TaskRunToolCallArgs   string
-	ContactChannelType    acp.ContactChannelType
+	ToolCallStatus     *acp.ToolCallStatus
+	ToolCallName       string
+	ToolCallArgs       string
+	ContactChannelType acp.ContactChannelType
 }
 
 // setupTestApprovalResources sets up all resources needed for testing approval
-func setupTestApprovalResources(ctx context.Context, config *SetupTestApprovalConfig) (*acp.TaskRunToolCall, func()) {
+func setupTestApprovalResources(ctx context.Context, config *SetupTestApprovalConfig) (*acp.ToolCall, func()) {
 	By("creating the secret")
 	testSecret.Setup(ctx)
 	By("creating the contact channel")
@@ -412,26 +288,21 @@ func setupTestApprovalResources(ctx context.Context, config *SetupTestApprovalCo
 		Connected: true,
 		Status:    "Ready",
 	})
-	By("creating the MCP tool")
-	mcpTool := testMCPTool.SetupWithStatus(ctx, acp.ToolStatus{
-		Ready:  true,
-		Status: "Ready",
-	})
 
 	name := "test-mcp-with-approval-trtc"
 	args := `{"a": 2, "b": 3}`
 	if config != nil {
-		if config.TaskRunToolCallName != "" {
-			name = config.TaskRunToolCallName
+		if config.ToolCallName != "" {
+			name = config.ToolCallName
 		}
-		if config.TaskRunToolCallArgs != "" {
-			args = config.TaskRunToolCallArgs
+		if config.ToolCallArgs != "" {
+			args = config.ToolCallArgs
 		}
 	}
 
-	taskRunToolCall := &TestTaskRunToolCall{
+	toolCall := &TestToolCall{
 		name:      name,
-		toolName:  mcpTool.Spec.Name,
+		toolName:  name,
 		arguments: args,
 		toolType:  acp.ToolTypeMCP,
 	}
