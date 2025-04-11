@@ -12,7 +12,7 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
 
 <h3>
 
-[Discord](https://discord.gg/AK6bWGFY7d) | [Documentation](./docs) | [Examples](./acp-example) 
+[Discord](https://humanlayer.dev/discord) | [Documentation](./docs) | [Examples](./acp-example) 
 
 </h3>
 
@@ -447,8 +447,8 @@ graph RL
 
 To get just the output, run
 
-```
-kubectl get task -o jsonpath='{.status.output}' 
+```bash
+kubectl get task hello-world-1 -o jsonpath='{.status.output}' 
 ```
 
 and you'll see
@@ -666,13 +666,13 @@ kubectl get events --field-selector "involvedObject.kind=Task" --sort-by='.lastT
 ```
 91s         Normal    ValidationSucceeded         task/fetch-task   Task validation succeeded
 82s         Normal    ToolCallsPending            task/fetch-task   LLM response received, tool calls pending
-82s         Normal    ToolCallCreated             task/fetch-task   Created TaskRunToolCall fetch-task-2fe18aa-tc-01
+82s         Normal    ToolCallCreated             task/fetch-task   Created ToolCall fetch-task-2fe18aa-tc-01
 77s         Normal    AllToolCallsCompleted       task/fetch-task   All tool calls completed
 62s         Normal    SendingContextWindowToLLM   task/fetch-task   Sending context window to LLM
 57s         Normal    LLMFinalAnswer              task/fetch-task   LLM response received successfully
 ```
 
-You can also explore the TaskRunToolCall events
+You can also explore the ToolCall events
 
 
 ```
@@ -812,7 +812,7 @@ Events:
   ----    ------                     ----                 ----                -------
   Normal  ValidationSucceeded        114s                 task-controller  Task validated successfully
   Normal  ToolCallsPending           114s                 task-controller  LLM response received, tool calls pending
-  Normal  ToolCallCreated            114s                 task-controller  Created TaskRunToolCall fetch-task-1-toolcall-01
+  Normal  ToolCallCreated            114s                 task-controller  Created ToolCall fetch-task-1-toolcall-01
   Normal  SendingContextWindowToLLM  109s (x2 over 114s)  task-controller  Sending context window to LLM
   Normal  AllToolCallsCompleted      109s                 task-controller  All tool calls completed, ready to send tool results to LLM
   Normal  LLMFinalAnswer             105s                 task-controller  LLM response received successfully
@@ -997,11 +997,11 @@ EOF
 Once this hits the tool call, we can check out the tool calls to see the human approval workflow in action:
 
 ```
-kubectl get taskruntoolcall
+kubectl get toolcall
 ```
 
 ```
-$ kubectl get taskruntoolcall
+$ kubectl get toolcall
 NAME                          PHASE     TASKRUN                 TOOL
 approved-fetch-task-1-tc-01   Pending   approved-fetch-task-1   fetch__fetch
 ```
@@ -1010,16 +1010,16 @@ and we run `describe` against the tool call to see that its waiting for human ap
 
 
 ```
-kubectl describe taskruntoolcall approved-fetch-task-1-tc-01
+kubectl describe toolcall approved-fetch-task-1-tc-01
 ```
 
 ```
 Name:         approved-fetch-task-1-tc-01
 Namespace:    default
-Labels:       acp.humanlayer.dev/taskruntoolcall=approved-fetch-task-1
+Labels:       acp.humanlayer.dev/toolcall=approved-fetch-task-1
 Annotations:  <none>
 API Version:  acp.humanlayer.dev/acp
-Kind:         TaskRunToolCall
+Kind:         ToolCall
 Metadata:
   Creation Timestamp:  2025-04-01T16:09:02Z
   Generation:          1
@@ -1047,13 +1047,13 @@ Status:
 Events:
   Type    Reason                 Age    From                        Message
   ----    ------                 ----   ----                        -------
-  Normal  AwaitingHumanApproval  2m42s  taskruntoolcall-controller  Tool execution requires approval via contact channel approval-channel
-  Normal  HumanLayerRequestSent  2m41s  taskruntoolcall-controller  HumanLayer request sent
+  Normal  AwaitingHumanApproval  2m42s  toolcall-controller  Tool execution requires approval via contact channel approval-channel
+  Normal  HumanLayerRequestSent  2m41s  toolcall-controller  HumanLayer request sent
 ```
 
 Note as well, at this point our `task` has not completed. If we run `kubectl get task approved-fetch-task` no `OUTPUT` has yet been returned.
 
-Go ahead and approve the email you should have received via HumanLayer requesting approval to run our `fetch` tool. After a few seconds, running `kubectl get taskruntoolcall approved-fetch-task-1-tc-01` should show our tool has been called. Additionally, if we run `kubectl describe task approved-fetch-task`, we should see the following (truncated a bit for brevity):
+Go ahead and approve the email you should have received via HumanLayer requesting approval to run our `fetch` tool. After a few seconds, running `kubectl get toolcall approved-fetch-task-1-tc-01` should show our tool has been called. Additionally, if we run `kubectl describe task approved-fetch-task`, we should see the following (truncated a bit for brevity):
 
 ```
 $ kubectl describe task approved-fetch-task
@@ -1104,7 +1104,7 @@ Events:
   ----    ------                     ----              ----                -------
   Normal  ValidationSucceeded        48s               task-controller  Task validated successfully
   Normal  ToolCallsPending           47s               task-controller  LLM response received, tool calls pending
-  Normal  ToolCallCreated            47s               task-controller  Created TaskRunToolCall approved-fetch-task-1-tc-01
+  Normal  ToolCallCreated            47s               task-controller  Created ToolCall approved-fetch-task-1-tc-01
   Normal  SendingContextWindowToLLM  7s (x2 over 48s)  task-controller  Sending context window to LLM
   Normal  AllToolCallsCompleted      7s                task-controller  All tool calls completed, ready to send tool results to LLM
   Normal  LLMFinalAnswer             6s                task-controller  LLM response received successfully
@@ -1126,7 +1126,7 @@ make -C acp-example otel-stack
 Remove our agent, task and related resources:
 
 ```
-kubectl delete taskruntoolcall --all
+kubectl delete toolcall --all
 kubectl delete task --all
 kubectl delete agent --all
 kubectl delete mcpserver --all
@@ -1181,6 +1181,33 @@ kind delete cluster
 - **Durability**: Resilient to failures as a distributed system.
 
 - **Extensibility**: Because agents are YAML, it's easy to build and share agents, tools, and tasks.
+
+## Roadmap
+
+
+| Feature | Status |
+|---------|--------|
+| Async, Durable task execution | Alpha ✅ |
+| OpenAI Support | Alpha ✅ |
+| Anthropic Support | Alpha ✅ |
+| Vertex AI Support | Alpha ✅ |
+| Mistral AI Support | Alpha ✅ |
+| MCP stdio Support | Alpha ✅ |
+| Task Execution History via Kubernetes Events | Alpha ✅ |
+| Better MCP Scheduling | Planned 🗺️ |
+| Delegation to Sub Agents | Planned 🗺️ |
+| Human approval for MCP Tools | ✅ |
+| Contact human as a tool | In Progress 🚧 |
+| Tiered approval (once, just for this task, or always) | Planned 🗺️ |
+| OpenTelemetry traces | In Progress 🚧 |
+| OpenTelemetry logs | Planned 🗺️ |
+| OpenTelemetry metrics | Planned 🗺️ |
+| Include token counts in OpenTelemetry traces | Planned 🗺️ |
+| Trigger workflows from generic webhooks | Planned 🗺️ |
+| Trigger workflows from inbound slack messages | Planned 🗺️ |
+| Trigger workflows from inbound emails | Planned 🗺️ |
+| ACP UI for managing agents, tasks, tools, etc | Planned 🗺️ |
+| ACP CLI for managing objects and task runs | Planned 🗺️ |
 
 
 ## Contributing

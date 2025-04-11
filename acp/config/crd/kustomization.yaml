@@ -6,7 +6,7 @@ resources:
 - bases/acp.humanlayer.dev_tools.yaml
 - bases/acp.humanlayer.dev_agents.yaml
 - bases/acp.humanlayer.dev_tasks.yaml
-- bases/acp.humanlayer.dev_taskruntoolcalls.yaml
+- bases/acp.humanlayer.dev_toolcalls.yaml
 - bases/acp.humanlayer.dev_mcpservers.yaml
 - bases/acp.humanlayer.dev_contactchannels.yaml
 # +kubebuilder:scaffold:crdkustomizeresource

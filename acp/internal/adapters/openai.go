@@ -5,10 +5,10 @@ import (
 )
 
 // CastOpenAIToolCallsToACP converts OpenAI tool calls to TaskRun tool calls
-func CastOpenAIToolCallsToACP(openaiToolCalls []acp.ToolCall) []acp.ToolCall {
-	toolCalls := make([]acp.ToolCall, 0, len(openaiToolCalls))
+func CastOpenAIToolCallsToACP(openaiToolCalls []acp.MessageToolCall) []acp.MessageToolCall {
+	toolCalls := make([]acp.MessageToolCall, 0, len(openaiToolCalls))
 	for _, tc := range openaiToolCalls {
-		toolCall := acp.ToolCall{
+		toolCall := acp.MessageToolCall{
 			ID: tc.ID,
 			Function: acp.ToolCallFunction{
 				Name:      tc.Function.Name,

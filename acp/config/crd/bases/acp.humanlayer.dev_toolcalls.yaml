@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: taskruntoolcalls.acp.humanlayer.dev
+  name: toolcalls.acp.humanlayer.dev
 spec:
   group: acp.humanlayer.dev
   names:
-    kind: TaskRunToolCall
-    listKind: TaskRunToolCallList
-    plural: taskruntoolcalls
-    singular: taskruntoolcall
+    kind: ToolCall
+    listKind: ToolCallList
+    plural: toolcalls
+    singular: toolcall
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -39,7 +39,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: TaskRunToolCall is the Schema for the taskruntoolcalls API
+        description: ToolCall is the Schema for the taskruntoolcalls API
         properties:
           apiVersion:
             description: |-
@@ -59,7 +59,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: TaskRunToolCallSpec defines the desired state of TaskRunToolCall
+            description: ToolCallSpec defines the desired state of ToolCall
             properties:
               arguments:
                 description: Arguments contains the arguments for the tool call
@@ -88,11 +88,7 @@ spec:
                 - name
                 type: object
               toolType:
-                description: ToolType identifies the type of the tool (Standard, MCP,
-                  HumanContact)
-                enum:
-                - MCP
-                - HumanContact
+                description: ToolType identifies the type of the tool (MCP, HumanContact)
                 type: string
             required:
             - arguments
@@ -101,7 +97,7 @@ spec:
             - toolRef
             type: object
           status:
-            description: TaskRunToolCallStatus defines the observed state of TaskRunToolCall
+            description: ToolCallStatus defines the observed state of ToolCall
             properties:
               completionTime:
                 description: CompletionTime is when the tool call completed

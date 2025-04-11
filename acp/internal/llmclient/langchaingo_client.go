@@ -2,7 +2,6 @@ package llmclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/tmc/langchaingo/llms"
@@ -220,7 +219,7 @@ func convertFromLangchainResponse(response *llms.ContentResponse) *acp.Message {
 	}
 
 	// Extract all tool calls across all choices (provider-agnostic)
-	var toolCalls []acp.ToolCall
+	var toolCalls []acp.MessageToolCall
 	var contentText string
 	var hasContent bool
 
@@ -242,7 +241,7 @@ func convertFromLangchainResponse(response *llms.ContentResponse) *acp.Message {
 				"toolCallCount", len(choice.ToolCalls))
 
 			for _, tc := range choice.ToolCalls {
-				toolCalls = append(toolCalls, acp.ToolCall{
+				toolCalls = append(toolCalls, acp.MessageToolCall{
 					ID:   tc.ID,
 					Type: tc.Type,
 					Function: acp.ToolCallFunction{
@@ -285,33 +284,4 @@ func truncateString(s string, maxLength int) string {
 		return s
 	}
 	return s[:maxLength] + "..."
-}
-
-// FromACPTool converts an ACP Tool to the LLM client Tool format
-func FromACPTool(tool acp.Tool) *Tool {
-	// Create a new Tool with function type
-	clientTool := &Tool{
-		Type: "function",
-		Function: ToolFunction{
-			Name:        tool.Spec.Name,
-			Description: tool.Spec.Description,
-		},
-	}
-
-	// Parse the parameters if they exist
-	if tool.Spec.Parameters.Raw != nil {
-		var params ToolFunctionParameters
-		if err := json.Unmarshal(tool.Spec.Parameters.Raw, &params); err != nil {
-			return nil
-		}
-		clientTool.Function.Parameters = params
-	} else {
-		// Default to a simple object schema if none provided
-		clientTool.Function.Parameters = ToolFunctionParameters{
-			Type:       "object",
-			Properties: map[string]ToolFunctionParameter{},
-		}
-	}
-
-	return clientTool
 }

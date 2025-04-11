@@ -423,7 +423,7 @@ When designing controllers, distinguish between Status and Phase:
    ```go
    // Good: Only update Phase when transitioning to a new workflow stage
    // while preserving current Status (health)
-   trtc.Status.Phase = acp.TaskRunToolCallPhaseAwaitingHumanApproval
+   trtc.Status.Phase = acp.ToolCallAwaitingHumanApproval
    trtc.Status.StatusDetail = "Waiting for human approval"
    
    // Avoid: Don't modify Status when the change is just about workflow progress
@@ -433,11 +433,11 @@ When designing controllers, distinguish between Status and Phase:
 2. **Change Status Only When Health State Changes**: Status should change only when the health or readiness of the resource changes:
    ```go
    // When a resource encounters an error
-   trtc.Status.Status = acp.TaskRunToolCallStatusTypeError
+   trtc.Status.Status = acp.ToolCallTypeError
    trtc.Status.Error = err.Error()
    
    // When a resource becomes ready
-   trtc.Status.Status = acp.TaskRunToolCallStatusTypeReady
+   trtc.Status.Status = acp.ToolCallTypeReady
    ```
 
 3. **Use Error Status with Descriptive Phase Values**: When handling errors, set Status to Error and use Phase to describe the specific error scenario:
@@ -453,7 +453,7 @@ When designing controllers, distinguish between Status and Phase:
 
 4. **Early Return for Terminal States**: For resources that have workflow-based lifecycles with terminal states, add an early check in the Reconcile function to avoid unnecessary processing:
    ```go
-   // For workflow-based resources like TaskRunToolCall that reach terminal states
+   // For workflow-based resources like ToolCall that reach terminal states
    if resource.Status.Status == MyResourceStatusTypeError || 
       resource.Status.Phase == MyResourcePhaseSucceeded || 
       resource.Status.Phase == MyResourcePhaseFailed {

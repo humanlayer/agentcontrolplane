@@ -23,7 +23,6 @@ const (
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=agents,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=agents/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=llms,verbs=get;list;watch
-// +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=tools,verbs=get;list;watch
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=mcpservers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=contactchannels,verbs=get;list;watch
 
@@ -53,33 +52,6 @@ func (r *AgentReconciler) validateLLM(ctx context.Context, agent *acp.Agent) err
 	return nil
 }
 
-// validateTools checks if all referenced tools exist and are ready
-func (r *AgentReconciler) validateTools(ctx context.Context, agent *acp.Agent) ([]acp.ResolvedTool, error) {
-	validTools := make([]acp.ResolvedTool, 0, len(agent.Spec.Tools))
-
-	for _, toolRef := range agent.Spec.Tools {
-		tool := &acp.Tool{}
-		err := r.Get(ctx, client.ObjectKey{
-			Namespace: agent.Namespace,
-			Name:      toolRef.Name,
-		}, tool)
-		if err != nil {
-			return validTools, fmt.Errorf("failed to get Tool %q: %w", toolRef.Name, err)
-		}
-
-		if !tool.Status.Ready {
-			return validTools, fmt.Errorf("tool %q is not ready", toolRef.Name)
-		}
-
-		validTools = append(validTools, acp.ResolvedTool{
-			Kind: "Tool",
-			Name: toolRef.Name,
-		})
-	}
-
-	return validTools, nil
-}
-
 // validateMCPServers checks if all referenced MCP servers exist and are connected
 func (r *AgentReconciler) validateMCPServers(ctx context.Context, agent *acp.Agent) ([]acp.ResolvedMCPServer, error) {
 	if r.MCPManager == nil {
@@ -102,6 +74,7 @@ func (r *AgentReconciler) validateMCPServers(ctx context.Context, agent *acp.Age
 			return validMCPServers, fmt.Errorf("MCPServer %q is not connected", serverRef.Name)
 		}
 
+		// TODO(dex) why don't we just pull the tools off the MCPServer Status - Agent shouldn't know too much about mcp impl
 		tools, exists := r.MCPManager.GetTools(mcpServer.Name)
 		if !exists {
 			return validMCPServers, fmt.Errorf("failed to get tools for MCPServer %q", mcpServer.Name)
@@ -209,11 +182,9 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	// Initialize empty valid tools, servers, and human contact channels slices
-	validTools := make([]acp.ResolvedTool, 0)
 	validMCPServers := make([]acp.ResolvedMCPServer, 0)
 	validHumanContactChannels := make([]acp.ResolvedContactChannel, 0)
 
-	statusUpdate.Status.ValidTools = validTools
 	statusUpdate.Status.ValidMCPServers = validMCPServers
 	statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
 
@@ -223,14 +194,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 	}
 
-	// Validate Tool references
-	validTools, err := r.validateTools(ctx, &agent)
-	if err != nil {
-		logger.Error(err, "Tool validation failed")
-		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
-	}
-
-	statusUpdate.Status.ValidTools = validTools
+	var err error
 
 	// Validate MCP server references, if any
 	if len(agent.Spec.MCPServers) > 0 && r.MCPManager != nil {
@@ -271,7 +235,6 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		"name", agent.Name,
 		"ready", statusUpdate.Status.Ready,
 		"status", statusUpdate.Status.Status,
-		"validTools", statusUpdate.Status.ValidTools,
 		"validHumanContactChannels", statusUpdate.Status.ValidHumanContactChannels)
 	return ctrl.Result{}, nil
 }

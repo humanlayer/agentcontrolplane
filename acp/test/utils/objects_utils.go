@@ -15,9 +15,9 @@ import (
 type TestScopedAgent struct {
 	Name                 string
 	SystemPrompt         string
-	Tools                []string
 	LLM                  string
 	HumanContactChannels []string
+	MCPServers           []string
 	client               client.Client
 }
 
@@ -34,17 +34,17 @@ func (t *TestScopedAgent) Setup(k8sClient client.Client) {
 				Name: t.LLM,
 			},
 			System: t.SystemPrompt,
-			Tools: func() []acp.LocalObjectReference {
-				refs := make([]acp.LocalObjectReference, len(t.Tools))
-				for i, tool := range t.Tools {
-					refs[i] = acp.LocalObjectReference{Name: tool}
-				}
-				return refs
-			}(),
 			HumanContactChannels: func() []acp.LocalObjectReference {
 				refs := make([]acp.LocalObjectReference, len(t.HumanContactChannels))
 				for i, channel := range t.HumanContactChannels {
 					refs[i] = acp.LocalObjectReference{Name: channel}
+				}
+				return refs
+			}(),
+			MCPServers: func() []acp.LocalObjectReference {
+				refs := make([]acp.LocalObjectReference, len(t.MCPServers))
+				for i, server := range t.MCPServers {
+					refs[i] = acp.LocalObjectReference{Name: server}
 				}
 				return refs
 			}(),
@@ -56,16 +56,6 @@ func (t *TestScopedAgent) Setup(k8sClient client.Client) {
 	agent.Status.Ready = true
 	agent.Status.Status = "Ready"
 	agent.Status.StatusDetail = "Ready for testing"
-	agent.Status.ValidTools = func() []acp.ResolvedTool {
-		tools := make([]acp.ResolvedTool, len(t.Tools))
-		for i, tool := range t.Tools {
-			tools[i] = acp.ResolvedTool{
-				Kind: "Tool",
-				Name: tool,
-			}
-		}
-		return tools
-	}()
 	agent.Status.ValidHumanContactChannels = func() []acp.ResolvedContactChannel {
 		channels := make([]acp.ResolvedContactChannel, len(t.HumanContactChannels))
 		for i, channel := range t.HumanContactChannels {

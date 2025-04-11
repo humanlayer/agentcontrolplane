@@ -13,7 +13,7 @@ Current resources include:
 - `Agent` - Defines an agent using an LLM and tools
 - `Tool` - Defines tools that can be used by agents
 - `Task` - Represents a run of a task
-- `TaskRunToolCall` - Represents a tool call during a task run
+- `ToolCall` - Represents a tool call during a task run
 - `MCPServer` - Defines a Model Control Protocol server for tool integration
 
 ## Adding a New Resource

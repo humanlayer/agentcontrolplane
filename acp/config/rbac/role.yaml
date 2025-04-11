@@ -19,9 +19,8 @@ rules:
   - contactchannels
   - llms
   - mcpservers
-  - taskruntoolcalls
   - tasks
-  - tools
+  - toolcalls
   verbs:
   - create
   - delete
@@ -37,9 +36,8 @@ rules:
   - contactchannels/status
   - llms/status
   - mcpservers/status
-  - taskruntoolcalls/status
   - tasks/status
-  - tools/status
+  - toolcalls/status
   verbs:
   - get
   - patch
@@ -50,3 +48,11 @@ rules:
   - contactchannels/finalizers
   verbs:
   - update
+- apiGroups:
+  - acp.humanlayer.dev
+  resources:
+  - tools
+  verbs:
+  - get
+  - list
+  - watch

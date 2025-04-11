@@ -93,20 +93,6 @@ spec:
                 description: System is the system prompt for the agent
                 minLength: 1
                 type: string
-              tools:
-                description: Tools is a list of tools this agent can use
-                items:
-                  description: LocalObjectReference contains enough information to
-                    locate the referenced resource in the same namespace
-                  properties:
-                    name:
-                      description: Name of the referent
-                      minLength: 1
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
             required:
             - llmRef
             - system
@@ -159,24 +145,6 @@ spec:
                         type: string
                       type: array
                   required:
-                  - name
-                  type: object
-                type: array
-              validTools:
-                description: ValidTools is the list of tools that were successfully
-                  validated
-                items:
-                  properties:
-                    kind:
-                      enum:
-                      - Tool
-                      - ToolSet
-                      type: string
-                    name:
-                      description: Name of the tool
-                      type: string
-                  required:
-                  - kind
                   - name
                   type: object
                 type: array
