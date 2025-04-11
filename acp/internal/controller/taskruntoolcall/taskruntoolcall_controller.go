@@ -16,6 +16,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/google/uuid"
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayer"
@@ -41,7 +45,60 @@ type TaskRunToolCallReconciler struct {
 	server          *http.Server
 	MCPManager      mcpmanager.MCPManagerInterface
 	HLClientFactory humanlayer.HumanLayerClientFactory
+	Tracer          trace.Tracer
 }
+
+// --- OTel Helper Functions ---
+
+// attachTaskRootSpan reconstructs the parent Task's root span context and attaches it to the current context.
+func (r *TaskRunToolCallReconciler) attachTaskRootSpan(ctx context.Context, task *acp.Task) context.Context {
+	if task.Status.SpanContext == nil || task.Status.SpanContext.TraceID == "" || task.Status.SpanContext.SpanID == "" {
+		return ctx // No valid parent context to attach
+	}
+	traceID, err := trace.TraceIDFromHex(task.Status.SpanContext.TraceID)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to parse parent Task TraceID", "traceID", task.Status.SpanContext.TraceID)
+		return ctx
+	}
+	spanID, err := trace.SpanIDFromHex(task.Status.SpanContext.SpanID)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to parse parent Task SpanID", "spanID", task.Status.SpanContext.SpanID)
+		return ctx
+	}
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled, // Assuming we always sample if the parent was sampled
+		Remote:     true,
+	})
+	return trace.ContextWithSpanContext(ctx, sc)
+}
+
+// attachTRTCRootSpan reconstructs the TaskRunToolCall's own root span context and attaches it.
+func (r *TaskRunToolCallReconciler) attachTRTCRootSpan(ctx context.Context, trtc *acp.TaskRunToolCall) context.Context {
+	if trtc.Status.SpanContext == nil || trtc.Status.SpanContext.TraceID == "" || trtc.Status.SpanContext.SpanID == "" {
+		return ctx // No valid context to attach
+	}
+	traceID, err := trace.TraceIDFromHex(trtc.Status.SpanContext.TraceID)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to parse TRTC TraceID", "traceID", trtc.Status.SpanContext.TraceID)
+		return ctx
+	}
+	spanID, err := trace.SpanIDFromHex(trtc.Status.SpanContext.SpanID)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to parse TRTC SpanID", "spanID", trtc.Status.SpanContext.SpanID)
+		return ctx
+	}
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled, // Assuming we always sample if the parent was sampled
+		Remote:     true,
+	})
+	return trace.ContextWithSpanContext(ctx, sc)
+}
+
+// --- End OTel Helper Functions ---
 
 func (r *TaskRunToolCallReconciler) webhookHandler(w http.ResponseWriter, req *http.Request) {
 	logger := log.FromContext(context.Background())
@@ -137,21 +194,34 @@ func isMCPTool(trtc *acp.TaskRunToolCall) (serverName string, actualToolName str
 	return "", trtc.Spec.ToolRef.Name, true
 }
 
-// executeMCPTool executes a tool call on an MCP server
+// executeMCPTool executes a tool call on an MCP server, wrapped in a child span.
 func (r *TaskRunToolCallReconciler) executeMCPTool(ctx context.Context, trtc *acp.TaskRunToolCall, serverName, toolName string, args map[string]interface{}) error {
 	logger := log.FromContext(ctx)
 
+	// Start child span for MCP execution
+	execCtx, execSpan := r.Tracer.Start(ctx, "ExecuteMCPTool", trace.WithAttributes(
+		attribute.String("acp.mcp.server", serverName),
+		attribute.String("acp.mcp.tool", toolName),
+		attribute.String("acp.taskruntoolcall.name", trtc.Name),
+	))
+	defer execSpan.End() // Ensure the span is ended
+
 	if r.MCPManager == nil {
-		return fmt.Errorf("MCPManager is not initialized")
+		err := fmt.Errorf("MCPManager is not initialized")
+		execSpan.RecordError(err)
+		execSpan.SetStatus(codes.Error, "MCPManager not initialized")
+		return err
 	}
 
 	// Call the MCP tool
-	result, err := r.MCPManager.CallTool(ctx, serverName, toolName, args)
+	result, err := r.MCPManager.CallTool(execCtx, serverName, toolName, args) // Use execCtx
 	if err != nil {
 		logger.Error(err, "Failed to call MCP tool",
 			"serverName", serverName,
 			"toolName", toolName)
-		return err
+		execSpan.RecordError(err)
+		execSpan.SetStatus(codes.Error, "MCP tool call failed")
+		return err // Propagate error
 	}
 
 	// Update TaskRunToolCall status with the MCP tool result
@@ -160,7 +230,10 @@ func (r *TaskRunToolCallReconciler) executeMCPTool(ctx context.Context, trtc *ac
 	trtc.Status.Status = acp.TaskRunToolCallStatusTypeSucceeded
 	trtc.Status.StatusDetail = "MCP tool executed successfully"
 
-	return nil
+	execSpan.SetStatus(codes.Ok, "MCP tool executed successfully")
+	execSpan.SetAttributes(attribute.String("acp.tool.result_preview", truncateString(result, 100))) // Add result preview
+
+	return nil // Success
 }
 
 // initializeTRTC initializes the TaskRunToolCall status to Pending:Pending
@@ -264,50 +337,6 @@ func (r *TaskRunToolCallReconciler) processMCPTool(ctx context.Context, trtc *ac
 	r.recorder.Event(trtc, corev1.EventTypeNormal, "ExecutionSucceeded",
 		fmt.Sprintf("MCP tool %q executed successfully", trtc.Spec.ToolRef.Name))
 	return ctrl.Result{}, nil
-}
-
-// getTraditionalTool retrieves and validates the Traditional Tool resource
-func (r *TaskRunToolCallReconciler) getTraditionalTool(ctx context.Context, trtc *acp.TaskRunToolCall) (*acp.Tool, string, error) {
-	logger := log.FromContext(ctx)
-
-	// Get the Tool resource
-	var tool acp.Tool
-	if err := r.Get(ctx, client.ObjectKey{Namespace: trtc.Namespace, Name: trtc.Spec.ToolRef.Name}, &tool); err != nil {
-		logger.Error(err, "Failed to get Tool", "tool", trtc.Spec.ToolRef.Name)
-		trtc.Status.Status = acp.TaskRunToolCallStatusTypeError
-		trtc.Status.StatusDetail = fmt.Sprintf("Failed to get Tool: %v", err)
-		trtc.Status.Error = err.Error()
-		r.recorder.Event(trtc, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-		if err := r.Status().Update(ctx, trtc); err != nil {
-			logger.Error(err, "Failed to update status")
-			return nil, "", err
-		}
-		return nil, "", err
-	}
-
-	// Determine tool type from the Tool resource
-	var toolType string
-	if tool.Spec.Execute.Builtin != nil {
-		toolType = "function"
-	} else if tool.Spec.AgentRef != nil {
-		toolType = "delegateToAgent"
-	} else if tool.Spec.ToolType != "" {
-		toolType = tool.Spec.ToolType
-	} else {
-		err := fmt.Errorf("unknown tool type: tool doesn't have valid execution configuration")
-		logger.Error(err, "Invalid tool configuration")
-		trtc.Status.Status = acp.TaskRunToolCallStatusTypeError
-		trtc.Status.StatusDetail = err.Error()
-		trtc.Status.Error = err.Error()
-		r.recorder.Event(trtc, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-		if err := r.Status().Update(ctx, trtc); err != nil {
-			logger.Error(err, "Failed to update status")
-			return nil, "", err
-		}
-		return nil, "", err
-	}
-
-	return &tool, toolType, nil
 }
 
 // processDelegateToAgent handles agent delegation (not yet implemented)
@@ -505,9 +534,19 @@ func (r *TaskRunToolCallReconciler) handlePendingApproval(ctx context.Context, t
 	client := r.HLClientFactory.NewHumanLayerClient()
 	client.SetCallID(trtc.Status.ExternalCallID)
 	client.SetAPIKey(apiKey)
-	functionCall, _, err := client.GetFunctionCallStatus(ctx)
+	// Fix: Ensure correct assignment for 3 return values
+	functionCall, _, err := client.GetFunctionCallStatus(ctx) // Assign *humanlayerapi.FunctionCallOutput, int, error
 	if err != nil {
-		return ctrl.Result{}, err, true
+		// Log the error but attempt to requeue, as it might be transient
+		logger.Error(err, "Failed to get function call status from HumanLayer")
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil, true // Requeue after delay
+	}
+
+	// Check if functionCall is nil before accessing GetStatus
+	if functionCall == nil {
+		logger.Error(fmt.Errorf("GetFunctionCallStatus returned nil functionCall"), "HumanLayer API call returned unexpected nil object")
+		// Decide how to handle this - maybe requeue or set an error status
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil, true // Requeue for now
 	}
 
 	status := functionCall.GetStatus()
@@ -515,30 +554,42 @@ func (r *TaskRunToolCallReconciler) handlePendingApproval(ctx context.Context, t
 	approved, ok := status.GetApprovedOk()
 
 	if !ok || approved == nil {
+		// Still pending, requeue
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil, true
 	}
 
 	if *approved {
+		// Approval received, update status to ReadyToExecuteApprovedTool
 		return r.updateTRTCStatus(ctx, trtc,
 			acp.TaskRunToolCallStatusTypeReady,
 			acp.TaskRunToolCallPhaseReadyToExecuteApprovedTool,
 			"Ready to execute approved tool", "")
 	} else {
+		// Rejection received, update status to ToolCallRejected
 		return r.updateTRTCStatus(ctx, trtc,
-			acp.TaskRunToolCallStatusTypeSucceeded,
+			acp.TaskRunToolCallStatusTypeSucceeded, // Succeeded because the rejection was processed
 			acp.TaskRunToolCallPhaseToolCallRejected,
 			"Tool execution rejected", status.GetComment())
 	}
 }
 
-// requestHumanApproval handles setting up a new human approval request
+// requestHumanApproval handles setting up a new human approval request, wrapped in a child span.
 func (r *TaskRunToolCallReconciler) requestHumanApproval(ctx context.Context, trtc *acp.TaskRunToolCall,
 	contactChannel *acp.ContactChannel, apiKey string, mcpServer *acp.MCPServer,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	// Start child span for the approval request process
+	approvalCtx, approvalSpan := r.Tracer.Start(ctx, "RequestHumanApproval", trace.WithAttributes(
+		attribute.String("acp.contactchannel.name", contactChannel.Name),
+		attribute.String("acp.contactchannel.type", string(contactChannel.Spec.Type)),
+		attribute.String("acp.taskruntoolcall.name", trtc.Name),
+	))
+	defer approvalSpan.End() // Ensure the span is ended
+
 	// Skip if already in progress or approved
 	if trtc.Status.Phase == acp.TaskRunToolCallPhaseReadyToExecuteApprovedTool {
+		approvalSpan.SetStatus(codes.Ok, "Already approved, skipping request")
 		return ctrl.Result{}, nil
 	}
 
@@ -548,39 +599,54 @@ func (r *TaskRunToolCallReconciler) requestHumanApproval(ctx context.Context, tr
 	r.recorder.Event(trtc, corev1.EventTypeNormal, "AwaitingHumanApproval",
 		fmt.Sprintf("Tool execution requires approval via contact channel %s", mcpServer.Spec.ApprovalContactChannel.Name))
 
-	if err := r.Status().Update(ctx, trtc); err != nil {
-		logger.Error(err, "Failed to update TaskRunToolCall status")
+	// Use approvalCtx for the status update
+	if err := r.Status().Update(approvalCtx, trtc); err != nil {
+		logger.Error(err, "Failed to update TaskRunToolCall status to AwaitingHumanApproval")
+		approvalSpan.RecordError(err)
+		approvalSpan.SetStatus(codes.Error, "Failed to update status")
 		return ctrl.Result{}, err
 	}
 
 	// Verify HLClient is initialized
 	if r.HLClientFactory == nil {
 		err := fmt.Errorf("HLClient not initialized")
-		result, errStatus, _ := r.setStatusError(ctx, acp.TaskRunToolCallPhaseErrorRequestingHumanApproval,
+		approvalSpan.RecordError(err)
+		approvalSpan.SetStatus(codes.Error, "HLClient not initialized")
+		// Use approvalCtx for setStatusError
+		// Fix: Adjust return values from setStatusError
+		result, errStatus, _ := r.setStatusError(approvalCtx, acp.TaskRunToolCallPhaseErrorRequestingHumanApproval,
 			"NoHumanLayerClient", trtc, err)
-		return result, errStatus
+		return result, errStatus // Return only Result and error
 	}
 
-	// Post to HumanLayer to request approval
-	functionCall, statusCode, err := r.postToHumanLayer(ctx, trtc, contactChannel, apiKey)
+	// Post to HumanLayer to request approval using approvalCtx
+	functionCall, statusCode, err := r.postToHumanLayer(approvalCtx, trtc, contactChannel, apiKey)
 	if err != nil {
 		errorMsg := fmt.Errorf("HumanLayer request failed with status code: %d", statusCode)
 		if err != nil {
 			errorMsg = fmt.Errorf("HumanLayer request failed with status code %d: %v", statusCode, err)
 		}
-		result, errStatus, _ := r.setStatusError(ctx, acp.TaskRunToolCallPhaseErrorRequestingHumanApproval,
+		approvalSpan.RecordError(errorMsg)
+		approvalSpan.SetStatus(codes.Error, "HumanLayer request failed")
+		// Use approvalCtx for setStatusError
+		// Fix: Adjust return values from setStatusError
+		result, errStatus, _ := r.setStatusError(approvalCtx, acp.TaskRunToolCallPhaseErrorRequestingHumanApproval,
 			"HumanLayerRequestFailed", trtc, errorMsg)
-		return result, errStatus
+		return result, errStatus // Return only Result and error
 	}
 
-	// Update with call ID and requeue
+	// Update with call ID and requeue using approvalCtx
 	callId := functionCall.GetCallId()
 	trtc.Status.ExternalCallID = callId
-	if err := r.Status().Update(ctx, trtc); err != nil {
-		logger.Error(err, "Failed to update TaskRunToolCall status")
+	approvalSpan.SetAttributes(attribute.String("acp.humanlayer.call_id", callId)) // Add call ID to span
+	if err := r.Status().Update(approvalCtx, trtc); err != nil {
+		logger.Error(err, "Failed to update TaskRunToolCall status with ExternalCallID")
+		approvalSpan.RecordError(err)
+		approvalSpan.SetStatus(codes.Error, "Failed to update status with ExternalCallID")
 		return ctrl.Result{}, err
 	}
 
+	approvalSpan.SetStatus(codes.Ok, "HumanLayer approval request sent")
 	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
@@ -680,12 +746,60 @@ func (r *TaskRunToolCallReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	logger.Info("Reconciling TaskRunToolCall", "name", trtc.Name)
 
-	// 1. Check for terminal states - early return
+	// Handle terminal states with proper span ending
 	if trtc.Status.Status == acp.TaskRunToolCallStatusTypeError ||
 		trtc.Status.Status == acp.TaskRunToolCallStatusTypeSucceeded {
 		logger.Info("TaskRunToolCall in terminal state, nothing to do", "status", trtc.Status.Status, "phase", trtc.Status.Phase)
+
+		// Attach the TRTC root span for finalization
+		ctx = r.attachTRTCRootSpan(ctx, &trtc)
+
+		// Create a final span to properly end the trace
+		_, endSpan := r.Tracer.Start(ctx, "FinalizeToolCall")
+		if trtc.Status.Status == acp.TaskRunToolCallStatusTypeError {
+			endSpan.SetStatus(codes.Error, "TRTC ended with error")
+		} else {
+			endSpan.SetStatus(codes.Ok, "TRTC completed successfully")
+		}
+		endSpan.End()
+
 		return ctrl.Result{}, nil
 	}
+
+	// Create the ToolCall root span if it doesn't exist yet
+	if trtc.Status.SpanContext == nil {
+		// 1. Fetch parent task name from label
+		parentTaskName := trtc.Labels["acp.humanlayer.dev/task"]
+		var parentTask acp.Task
+		if err := r.Get(ctx, client.ObjectKey{Namespace: trtc.Namespace, Name: parentTaskName}, &parentTask); err == nil {
+			ctx = r.attachTaskRootSpan(ctx, &parentTask)
+		}
+
+		// 2. Create TRTC root span as child of Task span
+		toolCallCtx, span := r.Tracer.Start(ctx, "ToolCall")
+		defer span.End() // span is short-lived, just to write context
+
+		// Add attributes to make traces more readable
+		span.SetAttributes(
+			attribute.String("toolcall.name", trtc.Name),
+			attribute.String("toolcall.tool", trtc.Spec.ToolRef.Name),
+			attribute.String("toolcall.toolType", string(trtc.Spec.ToolType)),
+		)
+
+		trtc.Status.SpanContext = &acp.SpanContext{
+			TraceID: span.SpanContext().TraceID().String(),
+			SpanID:  span.SpanContext().SpanID().String(),
+		}
+
+		if err := r.Status().Update(toolCallCtx, &trtc); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to store TaskRunToolCall spanContext: %w", err)
+		}
+
+		return ctrl.Result{Requeue: true}, nil // requeue so we re-enter with this span next time
+	}
+
+	// Attach the TRTC root span for all other operations
+	ctx = r.attachTRTCRootSpan(ctx, &trtc)
 
 	// 2. Initialize Pending:Pending status if not set
 	if trtc.Status.Phase == "" {
@@ -779,4 +893,56 @@ func (r *TaskRunToolCallReconciler) Stop() {
 	if err := r.server.Shutdown(ctx); err != nil {
 		log.Log.Error(err, "Failed to shut down HTTP server")
 	}
+}
+
+// Helper function to truncate strings for attributes
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// getTraditionalTool retrieves and validates the Traditional Tool resource
+func (r *TaskRunToolCallReconciler) getTraditionalTool(ctx context.Context, trtc *acp.TaskRunToolCall) (*acp.Tool, string, error) {
+	logger := log.FromContext(ctx)
+
+	// Get the Tool resource
+	var tool acp.Tool
+	if err := r.Get(ctx, client.ObjectKey{Namespace: trtc.Namespace, Name: trtc.Spec.ToolRef.Name}, &tool); err != nil {
+		logger.Error(err, "Failed to get Tool", "tool", trtc.Spec.ToolRef.Name)
+		trtc.Status.Status = acp.TaskRunToolCallStatusTypeError
+		trtc.Status.StatusDetail = fmt.Sprintf("Failed to get Tool: %v", err)
+		trtc.Status.Error = err.Error()
+		r.recorder.Event(trtc, corev1.EventTypeWarning, "ValidationFailed", err.Error())
+		if err := r.Status().Update(ctx, trtc); err != nil {
+			logger.Error(err, "Failed to update status")
+			return nil, "", err
+		}
+		return nil, "", err
+	}
+
+	// Determine tool type from the Tool resource
+	var toolType string
+	if tool.Spec.Execute.Builtin != nil {
+		toolType = "function"
+	} else if tool.Spec.AgentRef != nil {
+		toolType = "delegateToAgent"
+	} else if tool.Spec.ToolType != "" {
+		toolType = string(tool.Spec.ToolType) // Use ToolType field if present
+	} else {
+		err := fmt.Errorf("unknown tool type: tool doesn't have valid execution configuration")
+		logger.Error(err, "Invalid tool configuration")
+		trtc.Status.Status = acp.TaskRunToolCallStatusTypeError
+		trtc.Status.StatusDetail = err.Error()
+		trtc.Status.Error = err.Error()
+		r.recorder.Event(trtc, corev1.EventTypeWarning, "ValidationFailed", err.Error())
+		if err := r.Status().Update(ctx, trtc); err != nil {
+			logger.Error(err, "Failed to update status")
+			return nil, "", err
+		}
+		return nil, "", err
+	}
+
+	return &tool, toolType, nil
 }
