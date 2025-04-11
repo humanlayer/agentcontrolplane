@@ -1,4 +1,4 @@
-### DRAFT - v0.5.0 (April 11, 2025) 
+### v0.5.0 (April 11, 2025) 
 
 This release simplifies tool management, enhances traceability, and strengthens human-in-the-loop execution patterns.
 
