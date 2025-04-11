@@ -415,7 +415,7 @@ var _ = Describe("Task Controller", func() {
 			mockLLMClient := &llmclient.MockLLMClient{
 				Response: &acp.Message{
 					Role: "assistant",
-					ToolCalls: []acp.ToolCall{
+					ToolCalls: []acp.MessageToolCall{
 						{
 							ID:       "1",
 							Function: acp.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url": "https://api.example.com/data"}`},
@@ -520,7 +520,7 @@ var _ = Describe("Task Controller", func() {
 					},
 					{
 						Role: "assistant",
-						ToolCalls: []acp.ToolCall{
+						ToolCalls: []acp.MessageToolCall{
 							{
 								ID: "1", // Corresponds to testToolCall
 								Function: acp.ToolCallFunction{

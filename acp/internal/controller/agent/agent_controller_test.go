@@ -52,24 +52,6 @@ var _ = Describe("Agent Controller", func() {
 			llm.Status.StatusDetail = "Ready for testing"
 			Expect(k8sClient.Status().Update(ctx, llm)).To(Succeed())
 
-			// Create a test Tool
-			tool := &acp.Tool{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      toolName,
-					Namespace: "default",
-				},
-				Spec: acp.ToolSpec{
-					ToolType: "function",
-					Name:     "test",
-				},
-			}
-			Expect(k8sClient.Create(ctx, tool)).To(Succeed())
-
-			// Mark Tool as ready
-			tool.Status.Ready = true
-			Expect(k8sClient.Status().Update(ctx, tool)).To(Succeed())
-
-			// Create a test ContactChannel
 			contactChannel := &acp.ContactChannel{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      humanContactChannelName,
@@ -107,13 +89,6 @@ var _ = Describe("Agent Controller", func() {
 				Expect(k8sClient.Delete(ctx, llm)).To(Succeed())
 			}
 
-			By("Cleanup the test Tool")
-			tool := &acp.Tool{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: toolName, Namespace: "default"}, tool)
-			if err == nil {
-				Expect(k8sClient.Delete(ctx, tool)).To(Succeed())
-			}
-
 			By("Cleanup the test ContactChannel")
 			contactChannel := &acp.ContactChannel{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: humanContactChannelName, Namespace: "default"}, contactChannel)
@@ -134,7 +109,6 @@ var _ = Describe("Agent Controller", func() {
 			testAgent := &utils.TestScopedAgent{
 				Name:                 resourceName,
 				SystemPrompt:         "Test agent",
-				Tools:                []string{toolName},
 				LLM:                  llmName,
 				HumanContactChannels: []string{humanContactChannelName},
 			}
@@ -179,7 +153,6 @@ var _ = Describe("Agent Controller", func() {
 			testAgent := &utils.TestScopedAgent{
 				Name:                 resourceName,
 				SystemPrompt:         "Test agent",
-				Tools:                []string{toolName},
 				LLM:                  "nonexistent-llm",
 				HumanContactChannels: []string{humanContactChannelName},
 			}
@@ -217,7 +190,6 @@ var _ = Describe("Agent Controller", func() {
 			testAgent := &utils.TestScopedAgent{
 				Name:                 resourceName,
 				SystemPrompt:         "Test agent",
-				Tools:                []string{"nonexistent-tool"},
 				LLM:                  llmName,
 				HumanContactChannels: []string{humanContactChannelName},
 			}
@@ -255,7 +227,6 @@ var _ = Describe("Agent Controller", func() {
 			testAgent := &utils.TestScopedAgent{
 				Name:                 resourceName,
 				SystemPrompt:         "Test agent",
-				Tools:                []string{toolName},
 				LLM:                  llmName,
 				HumanContactChannels: []string{"nonexistent-humancontactchannel"},
 			}

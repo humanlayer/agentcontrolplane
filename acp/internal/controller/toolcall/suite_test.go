@@ -122,7 +122,6 @@ var _ = BeforeSuite(func() {
 		// Try to list all required CRD types
 		lists := []client.ObjectList{
 			&acp.LLMList{},
-			&acp.ToolList{},
 			&acp.AgentList{},
 			&acp.TaskList{},
 			&acp.ToolCallList{},
