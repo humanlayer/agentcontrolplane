@@ -48,8 +48,11 @@ type TaskReconciler struct {
 func (r *TaskReconciler) initializePhaseAndSpan(ctx context.Context, task *acp.Task) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Create a new span for the Task
-	spanCtx, span := r.Tracer.Start(ctx, "Task")
+	// Create a new *root* span for the Task
+	spanCtx, span := r.Tracer.Start(ctx, "Task",
+		trace.WithSpanKind(trace.SpanKindServer), // optional
+	)
+	// Do NOT 'span.End()' here—this is your single “root” for the entire Task lifetime.
 
 	// Set initial phase
 	task.Status.Phase = acp.TaskPhaseInitializing
@@ -71,6 +74,37 @@ func (r *TaskReconciler) initializePhaseAndSpan(ctx context.Context, task *acp.T
 }
 
 // validateTaskAndAgent checks if the agent exists and is ready
+func (r *TaskReconciler) attachRootSpan(ctx context.Context, task *acp.Task) context.Context {
+	if task.Status.SpanContext == nil || task.Status.SpanContext.TraceID == "" || task.Status.SpanContext.SpanID == "" {
+		return ctx // no root yet or invalid context
+	}
+
+	traceID, err := trace.TraceIDFromHex(task.Status.SpanContext.TraceID)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to parse TraceID from Task status", "traceID", task.Status.SpanContext.TraceID)
+		return ctx
+	}
+	spanID, err := trace.SpanIDFromHex(task.Status.SpanContext.SpanID)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to parse SpanID from Task status", "spanID", task.Status.SpanContext.SpanID)
+		return ctx
+	}
+
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	})
+
+	if !sc.IsValid() {
+		log.FromContext(ctx).Error(fmt.Errorf("reconstructed SpanContext is invalid"), "traceID", traceID, "spanID", spanID)
+		return ctx
+	}
+
+	return trace.ContextWithSpanContext(ctx, sc)
+}
+
 func (r *TaskReconciler) validateTaskAndAgent(ctx context.Context, task *acp.Task, statusUpdate *acp.Task) (*acp.Agent, ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -291,30 +325,32 @@ func (r *TaskReconciler) getLLMAndCredentials(ctx context.Context, agent *acp.Ag
 }
 
 // endTaskSpan ends the Task span with the given status
-func (r *TaskReconciler) endTaskSpan(ctx context.Context, task *acp.Task, code codes.Code, message string) {
+func (r *TaskReconciler) endTaskTrace(ctx context.Context, task *acp.Task, code codes.Code, message string) {
+	logger := log.FromContext(ctx)
 	if task.Status.SpanContext == nil {
+		logger.Info("No span context found in task status, cannot end trace")
 		return
 	}
 
-	traceID, err := trace.TraceIDFromHex(task.Status.SpanContext.TraceID)
-	if err != nil {
-		return
-	}
-	spanID, err := trace.SpanIDFromHex(task.Status.SpanContext.SpanID)
-	if err != nil {
-		return
-	}
+	// Reattach the parent's context again to ensure the final span is correctly parented.
+	ctx = r.attachRootSpan(ctx, task)
 
-	spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID: traceID,
-		SpanID:  spanID,
-	})
-
-	ctx = trace.ContextWithSpanContext(ctx, spanCtx)
-	_, span := r.Tracer.Start(ctx, "Task")
-	defer span.End()
+	// Now create a final child span to mark "root" completion.
+	_, span := r.Tracer.Start(ctx, "EndTaskSpan")
+	defer span.End() // End this specific child span immediately.
 
 	span.SetStatus(code, message)
+	// Add any last attributes if needed
+	span.SetAttributes(attribute.String("task.name", task.Name))
+
+	logger.Info("Ended task trace with a final child span", "taskName", task.Name, "status", code.String())
+
+	// Optionally clear the SpanContext from the resource status if you don't want subsequent
+	// reconciles (e.g., for cleanup) to re-attach to the same trace.
+	// task.Status.SpanContext = nil
+	// if err := r.Status().Update(context.Background(), task); err != nil { // Use a background context for this update?
+	// 	logger.Error(err, "Failed to clear SpanContext after ending trace")
+	// }
 }
 
 // collectTools collects all tools from the agent's MCP servers
@@ -348,34 +384,24 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *acp.Agent) []l
 }
 
 // createLLMRequestSpan creates a child span for the LLM request
-func (r *TaskReconciler) createLLMRequestSpan(ctx context.Context, task *acp.Task, numMessages int, numTools int) (context.Context, trace.Span) {
-	if task.Status.SpanContext == nil {
-		return ctx, nil
-	}
-
-	traceID, err := trace.TraceIDFromHex(task.Status.SpanContext.TraceID)
-	if err != nil {
-		return ctx, nil
-	}
-	spanID, err := trace.SpanIDFromHex(task.Status.SpanContext.SpanID)
-	if err != nil {
-		return ctx, nil
-	}
-
-	spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID: traceID,
-		SpanID:  spanID,
-	})
-
-	ctx = trace.ContextWithSpanContext(ctx, spanCtx)
-	childCtx, span := r.Tracer.Start(ctx, "LLMRequest")
-
-	span.SetAttributes(
-		attribute.Int("messages", numMessages),
-		attribute.Int("tools", numTools),
+func (r *TaskReconciler) createLLMRequestSpan(
+	ctx context.Context, // This context should already have the root span attached via attachRootSpan
+	task *acp.Task,
+	numMessages int,
+	numTools int,
+) (context.Context, trace.Span) {
+	// Now that ctx has the *root* span in it (from attachRootSpan), we can start a child:
+	childCtx, childSpan := r.Tracer.Start(ctx, "LLMRequest",
+		trace.WithSpanKind(trace.SpanKindClient), // Mark as client span for LLM call
 	)
 
-	return childCtx, span
+	childSpan.SetAttributes(
+		attribute.Int("acp.task.context_window.messages", numMessages),
+		attribute.Int("acp.task.tools.count", numTools),
+		attribute.String("acp.task.name", task.Name), // Add task name for context
+	)
+
+	return childCtx, childSpan
 }
 
 // processLLMResponse processes the LLM response and updates the Task status
@@ -396,8 +422,11 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 		statusUpdate.Status.Error = ""
 		r.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
 
-		// End the parent span since we've reached a terminal state
-		r.endTaskSpan(ctx, task, codes.Ok, "Task completed successfully with final answer")
+		// End the task trace with OK status since we have a final answer.
+		// The context passed here should ideally be the one from Reconcile after attachRootSpan.
+		// r.endTaskTrace(ctx, task, codes.Ok, "Task completed successfully with final answer")
+		// NOTE: The plan suggests calling endTaskTrace from Reconcile when phase is FinalAnswer,
+		// so we might not need to call it here. Let's follow the plan's structure.
 	} else {
 		// Generate a unique ID for this set of tool calls
 		toolCallRequestId := uuid.New().String()[:7] // Using first 7 characters for brevity
@@ -489,35 +518,6 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, st
 	return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 }
 
-// func (r *TaskReconciler) createReconcileSpan(ctx context.Context, task *acp.Task) (context.Context, trace.Span) {
-// 	if task.Status.SpanContext == nil {
-// 		return ctx, nil
-// 	}
-
-// 	traceID, err := trace.TraceIDFromHex(task.Status.SpanContext.TraceID)
-// 	if err != nil {
-// 		return ctx, nil
-// 	}
-// 	spanID, err := trace.SpanIDFromHex(task.Status.SpanContext.SpanID)
-// 	if err != nil {
-// 		return ctx, nil
-// 	}
-
-// 	spanCtx := trace.NewSpanContext(trace.SpanContextConfig{
-// 		TraceID: traceID,
-// 		SpanID:  spanID,
-// 	})
-
-// 	ctx = trace.ContextWithSpanContext(ctx, spanCtx)
-// 	childCtx, span := r.Tracer.Start(ctx, "LLMRequest")
-
-// 	span.SetAttributes(
-// 		attribute.String("startPhase", string(task.Status.Phase)),
-// 	)
-
-// 	return childCtx, span
-// }
-
 // Reconcile validates the task's agent reference and sends the prompt to the LLM.
 func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -532,20 +532,37 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// Create a copy for status update
 	statusUpdate := task.DeepCopy()
 
-	// Initialize phase if not set
-	if statusUpdate.Status.Phase == "" {
+	// Initialize phase and root span if not set
+	if statusUpdate.Status.Phase == "" || statusUpdate.Status.SpanContext == nil {
+		// If phase is empty OR span context is missing, initialize.
+		logger.Info("Initializing phase and span context", "name", task.Name)
 		return r.initializePhaseAndSpan(ctx, statusUpdate)
 	}
+
+	// For all subsequent reconciles, reattach the root span context
+	ctx = r.attachRootSpan(ctx, &task)
 
 	// reconcileCtx, reconcileSpan := r.createReconcileSpan(ctx, &task)
 	// if reconcileSpan != nil {
 	// 	defer reconcileSpan.End()
 	// }
 
-	// Skip reconciliation for terminal states
-	if statusUpdate.Status.Phase == acp.TaskPhaseFinalAnswer || statusUpdate.Status.Phase == acp.TaskPhaseFailed {
-		logger.V(1).Info("Task in terminal state, skipping reconciliation", "phase", statusUpdate.Status.Phase)
-		return ctrl.Result{}, nil
+	// Skip reconciliation for terminal states, but end the trace if needed
+	if statusUpdate.Status.Phase == acp.TaskPhaseFinalAnswer {
+		logger.V(1).Info("Task in FinalAnswer state, ensuring trace is ended", "name", task.Name)
+		// Call endTaskTrace here as per the plan
+		r.endTaskTrace(ctx, statusUpdate, codes.Ok, "Task completed successfully with final answer")
+		return ctrl.Result{}, nil // No further action needed
+	}
+	if statusUpdate.Status.Phase == acp.TaskPhaseFailed {
+		logger.V(1).Info("Task in Failed state, ensuring trace is ended", "name", task.Name)
+		// End trace with error status
+		errMsg := "Task failed"
+		if statusUpdate.Status.Error != "" {
+			errMsg = statusUpdate.Status.Error
+		}
+		r.endTaskTrace(ctx, statusUpdate, codes.Error, errMsg)
+		return ctrl.Result{}, nil // No further action needed
 	}
 
 	// Step 1: Validate Agent
@@ -592,14 +609,15 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		statusUpdate.Status.Error = err.Error()
 		r.recorder.Event(&task, corev1.EventTypeWarning, "LLMClientCreationFailed", err.Error())
 
-		// End span since we've failed with a terminal error
-		r.endTaskSpan(ctx, &task, codes.Error, "Failed to create LLM client: "+err.Error())
+		// End trace since we've failed with a terminal error
+		r.endTaskTrace(ctx, statusUpdate, codes.Error, "Failed to create LLM client: "+err.Error())
 
 		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
 			logger.Error(updateErr, "Failed to update Task status")
 			return ctrl.Result{}, updateErr
 		}
-		return ctrl.Result{}, err
+		// Don't return the error itself, as status is updated and trace ended.
+		return ctrl.Result{}, nil
 	}
 
 	// Step 7: Collect tools from all sources
@@ -625,14 +643,17 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 		// Check for LLMRequestError with 4xx status code
 		var llmErr *llmclient.LLMRequestError
-		if errors.As(err, &llmErr) && llmErr.StatusCode >= 400 && llmErr.StatusCode < 500 {
+		is4xxError := errors.As(err, &llmErr) && llmErr.StatusCode >= 400 && llmErr.StatusCode < 500
+
+		if is4xxError {
 			logger.Info("LLM request failed with 4xx status code, marking as failed",
 				"statusCode", llmErr.StatusCode,
 				"message", llmErr.Message)
-			statusUpdate.Status.Phase = acp.TaskPhaseFailed
+			statusUpdate.Status.Phase = acp.TaskPhaseFailed // Set phase to Failed for 4xx
 			r.recorder.Event(&task, corev1.EventTypeWarning, "LLMRequestFailed4xx",
 				fmt.Sprintf("LLM request failed with status %d: %s", llmErr.StatusCode, llmErr.Message))
 		} else {
+			// For non-4xx errors, just record the event, phase remains ReadyForLLM (or current)
 			r.recorder.Event(&task, corev1.EventTypeWarning, "LLMRequestFailed", err.Error())
 		}
 
@@ -642,10 +663,19 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			llmSpan.SetStatus(codes.Error, err.Error())
 		}
 
+		// Attempt to update the status
 		if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
 			logger.Error(updateErr, "Failed to update Task status after LLM error")
+			// If status update fails, return that error
 			return ctrl.Result{}, updateErr
 		}
+
+		// If it was a 4xx error and status update succeeded, return nil error (terminal state)
+		if is4xxError {
+			return ctrl.Result{}, nil
+		}
+
+		// Otherwise (non-4xx error), return the original LLM error to trigger requeue/backoff
 		return ctrl.Result{}, err
 	}
 

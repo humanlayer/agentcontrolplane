@@ -7,7 +7,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.opentelemetry.io/otel/trace/noop"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -29,14 +28,14 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task")
 			reconciler, _ := reconciler()
-			reconciler.Tracer = noop.NewTracerProvider().Tracer("test")
+			// reconciler.Tracer = noop.NewTracerProvider().Tracer("test") // Tracer is now set in reconciler() helper
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
 			By("checking the reconciler result")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeTrue())
+			Expect(result.Requeue).To(BeTrue()) // Expect requeue after initialization
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
 			By("checking the task status")
@@ -50,21 +49,27 @@ var _ = Describe("Task Controller", func() {
 		It("moves to error if the agent is not found", func() {
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
 				Phase: acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 			})
 			defer testTask.Teardown(ctx)
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
 
+			// First reconcile (should handle Initializing -> Pending/Error)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
 			Expect(err).NotTo(HaveOccurred())
+			// Expect requeue after 5 seconds because agent is not found
 			Expect(result.RequeueAfter).To(Equal(time.Second * 5))
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(acp.TaskPhasePending))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhasePending)) // Should move to Pending while waiting
 			Expect(task.Status.StatusDetail).To(ContainSubstring("Waiting for Agent to exist"))
 			ExpectRecorder(recorder).ToEmitEventContaining("Waiting")
 		})
@@ -73,12 +78,17 @@ var _ = Describe("Task Controller", func() {
 		It("moves to pending if upstream agent does not exist", func() {
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
 				Phase: acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 			})
 			defer testTask.Teardown(ctx)
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
 
+			// First reconcile (should handle Initializing -> Pending)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
@@ -99,12 +109,17 @@ var _ = Describe("Task Controller", func() {
 
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
 				Phase: acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 			})
 			defer testTask.Teardown(ctx)
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
 
+			// First reconcile (should handle Initializing -> Pending)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
@@ -131,12 +146,17 @@ var _ = Describe("Task Controller", func() {
 				agentName:   testAgent.name,
 				userMessage: "test-user-message",
 			}
+			// Start with Initializing phase and span context
 			task := testTask2.SetupWithStatus(ctx, acp.TaskStatus{
 				Phase: acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 			})
 			defer testTask2.Teardown(ctx)
 
-			By("reconciling the task")
+			By("reconciling the task (step 1: Initializing -> ReadyForLLM)")
 			reconciler, recorder := reconciler()
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -144,17 +164,21 @@ var _ = Describe("Task Controller", func() {
 			})
 
 			Expect(err).NotTo(HaveOccurred())
+			// Expect requeue because prepareForLLM updates status and requeues
 			Expect(result.Requeue).To(BeTrue())
 
-			By("ensuring the context window is set correctly")
+			By("ensuring the context window is set correctly after first reconcile")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask2.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM)) // Should transition here
 			Expect(task.Status.ContextWindow).To(HaveLen(2))
 			Expect(task.Status.ContextWindow[0].Role).To(Equal("system"))
 			Expect(task.Status.ContextWindow[0].Content).To(ContainSubstring(testAgent.system))
 			Expect(task.Status.ContextWindow[1].Role).To(Equal("user"))
 			Expect(task.Status.ContextWindow[1].Content).To(ContainSubstring("test-user-message"))
 			ExpectRecorder(recorder).ToEmitEventContaining("ValidationSucceeded")
+
+			// Note: The test previously expected the reconcile to proceed further.
+			// Now, it correctly checks the state after the first effective reconcile step.
 		})
 	})
 	Context("Pending -> ReadyForLLM", func() {
@@ -166,17 +190,23 @@ var _ = Describe("Task Controller", func() {
 			defer testAgent.Teardown(ctx)
 
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
-				Phase: acp.TaskPhasePending,
+				Phase: acp.TaskPhasePending, // Start from Pending
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 			})
 			defer testTask.Teardown(ctx)
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
 
+			// Reconcile (should handle Pending -> ReadyForLLM)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
 			Expect(err).NotTo(HaveOccurred())
+			// Expect requeue because prepareForLLM updates status and requeues
 			Expect(result.Requeue).To(BeTrue())
 
 			By("ensuring the context window is set correctly")
@@ -197,7 +227,11 @@ var _ = Describe("Task Controller", func() {
 			defer teardown()
 
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
-				Phase: acp.TaskPhaseReadyForLLM,
+				Phase: acp.TaskPhaseReadyForLLM, // Start from ReadyForLLM
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
@@ -223,11 +257,14 @@ var _ = Describe("Task Controller", func() {
 				return mockLLMClient, nil
 			}
 
+			// Reconcile (should handle ReadyForLLM -> LLMFinalAnswer)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
 			Expect(err).NotTo(HaveOccurred())
+			// Expect no requeue because it reached a final state
 			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero()) // Explicitly check RequeueAfter
 
 			By("ensuring the task status is updated with the llm final answer")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
@@ -254,7 +291,11 @@ var _ = Describe("Task Controller", func() {
 			defer teardown()
 
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
-				Phase: acp.TaskPhaseReadyForLLM,
+				Phase: acp.TaskPhaseReadyForLLM, // Start from ReadyForLLM
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
@@ -277,15 +318,16 @@ var _ = Describe("Task Controller", func() {
 				return mockLLMClient, nil
 			}
 
+			// Reconcile (should handle ReadyForLLM -> Error)
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
-			Expect(err).To(HaveOccurred())
+			Expect(err).To(HaveOccurred()) // Expect the error to be returned for requeue
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
 			Expect(task.Status.Status).To(Equal(acp.TaskStatusTypeError))
-			// Phase shouldn't be Failed for general errors
+			// Phase shouldn't be Failed for general errors, should remain ReadyForLLM
 			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM))
 			Expect(task.Status.Error).To(Equal("connection timeout"))
 			ExpectRecorder(recorder).ToEmitEventContaining("LLMRequestFailed")
@@ -296,7 +338,11 @@ var _ = Describe("Task Controller", func() {
 			defer teardown()
 
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
-				Phase: acp.TaskPhaseReadyForLLM,
+				Phase: acp.TaskPhaseReadyForLLM, // Start from ReadyForLLM
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
@@ -323,10 +369,14 @@ var _ = Describe("Task Controller", func() {
 				return mockLLMClient, nil
 			}
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			// Reconcile (should handle ReadyForLLM -> Failed)
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
-			Expect(err).To(HaveOccurred())
+			// Expect NO error returned because the status is updated to Failed (terminal)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
@@ -352,7 +402,11 @@ var _ = Describe("Task Controller", func() {
 			defer teardown()
 
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
-				Phase: acp.TaskPhaseReadyForLLM,
+				Phase: acp.TaskPhaseReadyForLLM, // Start from ReadyForLLM
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 			})
 			defer testTask.Teardown(ctx)
 
@@ -373,10 +427,12 @@ var _ = Describe("Task Controller", func() {
 				return mockLLMClient, nil
 			}
 
+			// Reconcile (should handle ReadyForLLM -> ToolCallsPending)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
 			Expect(err).NotTo(HaveOccurred())
+			// Expect requeue after 5 seconds because tool calls were created
 			Expect(result.RequeueAfter).To(Equal(time.Second * 5))
 
 			By("ensuring the task status is updated with the tool calls pending")
@@ -387,10 +443,13 @@ var _ = Describe("Task Controller", func() {
 
 			By("ensuring the tool call was created")
 			toolCalls := &acp.TaskRunToolCallList{}
-			Expect(k8sClient.List(ctx, toolCalls, client.InNamespace("default"))).To(Succeed())
+			Expect(k8sClient.List(ctx, toolCalls, client.InNamespace("default"), client.MatchingLabels{
+				"acp.humanlayer.dev/task": testTask.name,
+			})).To(Succeed())
 			Expect(toolCalls.Items).To(HaveLen(1))
 			Expect(toolCalls.Items[0].Spec.ToolRef.Name).To(Equal("fetch__fetch"))
 			Expect(toolCalls.Items[0].Spec.Arguments).To(Equal(`{"url": "https://api.example.com/data"}`))
+			Expect(toolCalls.Items[0].Labels["acp.humanlayer.dev/toolcallrequest"]).To(Equal(task.Status.ToolCallRequestID))
 
 			By("cleaning up the tool call")
 			Expect(k8sClient.Delete(ctx, &toolCalls.Items[0])).To(Succeed())
@@ -407,28 +466,34 @@ var _ = Describe("Task Controller", func() {
 			defer teardown()
 
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
-				Phase:             acp.TaskPhaseToolCallsPending,
+				Phase:             acp.TaskPhaseToolCallsPending, // Start from ToolCallsPending
 				ToolCallRequestID: "test123",
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 			})
 			defer testTask.Teardown(ctx)
 
 			testTaskRunToolCall.SetupWithStatus(ctx, acp.TaskRunToolCallStatus{
-				Phase: acp.TaskRunToolCallPhasePending,
+				Phase: acp.TaskRunToolCallPhasePending, // Tool call is still pending
 			})
 			defer testTaskRunToolCall.Teardown(ctx)
 
 			By("reconciling the task")
 			reconciler, _ := reconciler()
 
+			// Reconcile (should handle ToolCallsPending -> ToolCallsPending)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
 			Expect(err).NotTo(HaveOccurred())
+			// Expect requeue after 5 seconds because tool calls are still pending
 			Expect(result.RequeueAfter).To(Equal(time.Second * 5))
 
 			By("checking the task status")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
-			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseToolCallsPending))
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseToolCallsPending)) // Should remain in this phase
 		})
 	})
 	Context("ToolCallsPending -> ReadyForLLM", func() {
@@ -438,8 +503,12 @@ var _ = Describe("Task Controller", func() {
 
 			By("setting up the task with a tool call pending")
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
-				Phase:             acp.TaskPhaseToolCallsPending,
+				Phase:             acp.TaskPhaseToolCallsPending, // Start from ToolCallsPending
 				ToolCallRequestID: "test123",
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 				ContextWindow: []acp.Message{
 					{
 						Role:    "system",
@@ -453,10 +522,17 @@ var _ = Describe("Task Controller", func() {
 						Role: "assistant",
 						ToolCalls: []acp.ToolCall{
 							{
-								ID: "1",
+								ID: "1", // Corresponds to testTaskRunToolCall
 								Function: acp.ToolCallFunction{
 									Name:      "fetch__fetch",
 									Arguments: `{"url": "https://api.example.com/data"}`,
+								},
+							},
+							{
+								ID: "2", // Corresponds to testTaskRunToolCallTwo
+								Function: acp.ToolCallFunction{
+									Name:      "human_contact",
+									Arguments: `{"message": "needs help"}`,
 								},
 							},
 						},
@@ -465,27 +541,43 @@ var _ = Describe("Task Controller", func() {
 			})
 			defer testTask.Teardown(ctx)
 
-			testTaskRunToolCall.SetupWithStatus(ctx, acp.TaskRunToolCallStatus{
+			// Setup first tool call object with correct ToolCallID in Spec
+			trtc1 := testTaskRunToolCall.Setup(ctx)            // Use Setup first
+			trtc1.Spec.ToolCallID = "1"                        // Set the Spec field
+			Expect(k8sClient.Update(ctx, trtc1)).To(Succeed()) // Update the object
+			// Now apply the status
+			trtc1.Status = acp.TaskRunToolCallStatus{
 				Status: acp.TaskRunToolCallStatusTypeSucceeded,
 				Phase:  acp.TaskRunToolCallPhaseSucceeded,
 				Result: `{"data": "test-data"}`,
-			})
-			defer testTaskRunToolCall.Teardown(ctx)
+				// NO ToolCallID or ExternalCallID here
+			}
+			Expect(k8sClient.Status().Update(ctx, trtc1)).To(Succeed()) // Update status
+			defer testTaskRunToolCall.Teardown(ctx)                     // Ensure teardown uses the correct object
 
-			testTaskRunToolCallTwo.SetupWithStatus(ctx, acp.TaskRunToolCallStatus{
-				Status: acp.TaskRunToolCallStatusTypeSucceeded,
+			// Setup second tool call object with correct ToolCallID in Spec
+			trtc2 := testTaskRunToolCallTwo.Setup(ctx)         // Use Setup first
+			trtc2.Spec.ToolCallID = "2"                        // Set the Spec field
+			Expect(k8sClient.Update(ctx, trtc2)).To(Succeed()) // Update the object
+			// Now apply the status
+			trtc2.Status = acp.TaskRunToolCallStatus{
+				Status: acp.TaskRunToolCallStatusTypeSucceeded, // Or maybe Error if rejection is error? Let's assume Succeeded for now.
 				Phase:  acp.TaskRunToolCallPhaseToolCallRejected,
 				Result: `human contact channel rejected this tool call with the following response: "I'm out here just testing things okay, try again later."`,
-			})
-			defer testTaskRunToolCallTwo.Teardown(ctx)
+				// NO ToolCallID or ExternalCallID here
+			}
+			Expect(k8sClient.Status().Update(ctx, trtc2)).To(Succeed()) // Update status
+			defer testTaskRunToolCallTwo.Teardown(ctx)                  // Ensure teardown uses the correct object
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
 
+			// Reconcile (should handle ToolCallsPending -> ReadyForLLM)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
 			})
 			Expect(err).NotTo(HaveOccurred())
+			// Expect requeue because it moved to ReadyForLLLM
 			Expect(result.Requeue).To(BeTrue())
 
 			By("checking the task status")
@@ -494,16 +586,61 @@ var _ = Describe("Task Controller", func() {
 			Expect(task.Status.StatusDetail).To(ContainSubstring("All tool calls completed, ready to send tool results to LLM"))
 			ExpectRecorder(recorder).ToEmitEventContaining("AllToolCallsCompleted")
 
-			// todo expect the context window has the tool call result appended
-			Expect(task.Status.ContextWindow).To(HaveLen(5))
-			Expect(task.Status.ContextWindow[3].Role).To(Equal("tool"))
-			Expect(task.Status.ContextWindow[3].Content).To(ContainSubstring("test-data"))
-			Expect(task.Status.ContextWindow[4].Role).To(Equal("tool"))
-			Expect(task.Status.ContextWindow[4].Content).To(ContainSubstring("I'm out here just testing things okay, try again later."))
+			// Check the context window has the tool call results appended
+			// The order might not be guaranteed, so we check for existence and content.
+			Expect(task.Status.ContextWindow).To(HaveLen(5)) // system, user, assistant(tool_calls), tool(result1), tool(result2)
+
+			foundToolResult1 := false
+			foundToolResult2 := false
+			for _, msg := range task.Status.ContextWindow {
+				if msg.Role == "tool" {
+					// The ToolCallID in the message should match the ID from the original assistant message's ToolCalls array.
+					// The ToolCallID in the TaskRunToolCall Spec should also match this.
+					if msg.Content == `{"data": "test-data"}` {
+						// We assume this corresponds to the original ToolCall with ID "1"
+						Expect(msg.ToolCallID).To(Equal("1")) // Check if the reconciler correctly added the ID back
+						foundToolResult1 = true
+					} else if msg.Content == `human contact channel rejected this tool call with the following response: "I'm out here just testing things okay, try again later."` {
+						// We assume this corresponds to the original ToolCall with ID "2"
+						Expect(msg.ToolCallID).To(Equal("2")) // Check if the reconciler correctly added the ID back
+						foundToolResult2 = true
+					}
+				}
+			}
+			Expect(foundToolResult1).To(BeTrue(), "Expected to find tool result 1 in context window")
+			Expect(foundToolResult2).To(BeTrue(), "Expected to find tool result 2 in context window")
 		})
 	})
 	Context("LLMFinalAnswer -> LLMFinalAnswer", func() {
-		It("stays in LLMFinalAnswer", func() {})
+		It("stays in LLMFinalAnswer", func() {
+			_, _, _, teardown := setupSuiteObjects(ctx)
+			defer teardown()
+
+			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
+				Phase: acp.TaskPhaseFinalAnswer, // Start from FinalAnswer
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
+			})
+			defer testTask.Teardown(ctx)
+
+			By("reconciling the task")
+			reconciler, _ := reconciler()
+
+			// Reconcile
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: testTask.name, Namespace: "default"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			// Expect no requeue because it's a terminal state
+			Expect(result.Requeue).To(BeFalse())
+			Expect(result.RequeueAfter).To(BeZero())
+
+			By("checking the task status")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.name, Namespace: "default"}, task)).To(Succeed())
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFinalAnswer)) // Should remain in FinalAnswer
+		})
 	})
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
@@ -528,6 +665,10 @@ var _ = Describe("Task Controller", func() {
 			By("setting up the task with an existing conversation history")
 			task := testTask.SetupWithStatus(ctx, acp.TaskStatus{
 				Phase: acp.TaskPhaseReadyForLLM,
+				SpanContext: &acp.SpanContext{ // Add a dummy span context
+					TraceID: "0af7651916cd43dd8448eb211c80319c",
+					SpanID:  "b7ad6b7169203331",
+				},
 				ContextWindow: []acp.Message{
 					{
 						Role:    "system",

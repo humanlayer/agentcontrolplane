@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+	"go.opentelemetry.io/otel/trace/noop" // Import the noop tracer
 
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 )
@@ -280,6 +281,7 @@ func reconciler() (*TaskReconciler, *record.FakeRecorder) {
 		Scheme:     k8sClient.Scheme(),
 		recorder:   recorder,
 		MCPManager: &mcpmanager.MCPServerManager{},
+		Tracer:     noop.NewTracerProvider().Tracer("test"),
 	}
 	return reconciler, recorder
 }
