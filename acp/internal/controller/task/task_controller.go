@@ -193,7 +193,9 @@ func (r *TaskReconciler) processToolCalls(ctx context.Context, task *acp.Task) (
 	// Check if all tool calls are completed
 	allCompleted := true
 	for _, tc := range toolCalls.Items {
-		if tc.Status.Status != acp.TaskRunToolCallStatusTypeSucceeded {
+		if tc.Status.Status != acp.TaskRunToolCallStatusTypeSucceeded &&
+			// todo separate between send-to-model failures and tool-is-retrying failures
+			tc.Status.Status != acp.TaskRunToolCallStatusTypeError {
 			allCompleted = false
 			break
 		}
@@ -535,10 +537,10 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return r.initializePhaseAndSpan(ctx, statusUpdate)
 	}
 
-	reconcileCtx, reconcileSpan := r.createReconcileSpan(ctx, &task)
-	if reconcileSpan != nil {
-		defer reconcileSpan.End()
-	}
+	// reconcileCtx, reconcileSpan := r.createReconcileSpan(ctx, &task)
+	// if reconcileSpan != nil {
+	// 	defer reconcileSpan.End()
+	// }
 
 	// Skip reconciliation for terminal states
 	if statusUpdate.Status.Phase == acp.TaskPhaseFinalAnswer || statusUpdate.Status.Phase == acp.TaskPhaseFailed {
@@ -656,6 +658,7 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			attribute.Int("llm.response.tool_calls.count", len(output.ToolCalls)),
 			attribute.Bool("llm.response.has_content", output.Content != ""),
 		)
+		llmSpan.End()
 	}
 
 	logger.V(3).Info("Processing LLM response")
