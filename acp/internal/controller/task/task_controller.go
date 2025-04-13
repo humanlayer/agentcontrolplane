@@ -480,6 +480,7 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 			return ctrl.Result{}, err
 		}
 
+		// todo should this technically happen before the status update? is there a chance they get dropped?
 		return r.createToolCalls(ctx, task, statusUpdate, output.ToolCalls, tools)
 	}
 	return ctrl.Result{}, nil

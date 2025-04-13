@@ -257,6 +257,14 @@ func reconciler() (*ToolCallReconciler, *record.FakeRecorder) {
 	return reconciler, recorder
 }
 
+// SetupTestSubAgentConfig contains configuration for setupTestSubAgentResources
+type SetupTestSubAgentConfig struct {
+	ToolCallStatus *acp.ToolCallStatus
+	ToolCallName   string
+	ToolCallArgs   string
+	SubAgentName   string
+}
+
 // SetupTestApprovalConfig contains optional configuration for setupTestApprovalResources
 type SetupTestApprovalConfig struct {
 	ToolCallStatus     *acp.ToolCallStatus

@@ -15,6 +15,228 @@ import (
 )
 
 var _ = Describe("TaskRunToolCall Controller", func() {
+	// Tests for DelegateToAgent tool
+	Context("Ready:AwaitingSubAgent -> Error:Failed (DelegateToAgent Tool, Task Failed)", func() {
+		It("transitions to Error:Failed when sub-agent task fails", func() {
+			By("creating a ToolCall for delegate to agent already in AwaitingSubAgent phase")
+			toolCall := &TestToolCall{
+				name:      "test-delegate-tool-call-failed",
+				toolName:  "delegate_to_agent__test-sub-agent",
+				arguments: `{"message": "Please analyze this data"}`,
+				toolType:  acp.ToolTypeDelegateToAgent,
+			}
+			
+			// Set up with Ready:AwaitingSubAgent status
+			tc := toolCall.SetupWithStatus(ctx, acp.ToolCallStatus{
+				Status:       acp.ToolCallStatusTypeReady,
+				Phase:        acp.ToolCallPhaseAwaitingSubAgent,
+				StatusDetail: "Delegating to sub-agent test-sub-agent",
+				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				SpanContext:  fakeSpanContext,
+			})
+			defer toolCall.Teardown(ctx)
+			
+			By("creating a failed child Task")
+			childTask := &acp.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-child-task-failed",
+					Namespace: "default",
+					Labels: map[string]string{
+						"acp.humanlayer.dev/parent-toolcall": tc.Name,
+					},
+				},
+				Spec: acp.TaskSpec{
+					AgentRef: acp.LocalObjectReference{
+						Name: "test-sub-agent",
+					},
+					UserMessage: "Please analyze this data",
+				},
+				Status: acp.TaskStatus{
+					Status:       acp.TaskStatusTypeError,
+					Phase:        acp.TaskPhaseFailed,
+					Error:        "Failed to analyze data: insufficient permissions",
+					StartTime:    &metav1.Time{Time: time.Now().Add(-5 * time.Minute)},
+					CompletionTime: &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				},
+			}
+			
+			Expect(k8sClient.Create(ctx, childTask)).To(Succeed())
+			Expect(k8sClient.Status().Update(ctx, childTask)).To(Succeed())
+			defer func() { k8sClient.Delete(ctx, childTask) }()
+			
+			By("reconciling the ToolCall")
+			reconciler, recorder := reconciler()
+			
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+			
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
+			
+			By("checking the ToolCall is updated to Error state")
+			updatedTC := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedTC)
+			
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseFailed))
+			Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeError))
+			Expect(updatedTC.Status.Error).To(Equal("Failed to analyze data: insufficient permissions"))
+			Expect(updatedTC.Status.Result).To(ContainSubstring("Sub-agent task failed"))
+			Expect(updatedTC.Status.CompletionTime).NotTo(BeNil())
+			
+			By("checking that appropriate events were emitted")
+			utils.ExpectRecorder(recorder).ToEmitEventContaining("SubAgentFailed")
+		})
+	})
+	
+	Context("Ready:AwaitingSubAgent -> Succeeded:Succeeded (DelegateToAgent Tool, Task Completed)", func() {
+		It("transitions to Succeeded:Succeeded when sub-agent task completes", func() {
+			By("creating a ToolCall for delegate to agent already in AwaitingSubAgent phase")
+			toolCall := &TestToolCall{
+				name:      "test-delegate-tool-call-completed",
+				toolName:  "delegate_to_agent__test-sub-agent",
+				arguments: `{"message": "Please analyze this data"}`,
+				toolType:  acp.ToolTypeDelegateToAgent,
+			}
+			
+			// Set up with Ready:AwaitingSubAgent status
+			tc := toolCall.SetupWithStatus(ctx, acp.ToolCallStatus{
+				Status:       acp.ToolCallStatusTypeReady,
+				Phase:        acp.ToolCallPhaseAwaitingSubAgent,
+				StatusDetail: "Delegating to sub-agent test-sub-agent",
+				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				SpanContext:  fakeSpanContext,
+			})
+			defer toolCall.Teardown(ctx)
+			
+			By("creating a completed child Task")
+			childTask := &acp.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-child-task",
+					Namespace: "default",
+					Labels: map[string]string{
+						"acp.humanlayer.dev/parent-toolcall": tc.Name,
+					},
+				},
+				Spec: acp.TaskSpec{
+					AgentRef: acp.LocalObjectReference{
+						Name: "test-sub-agent",
+					},
+					UserMessage: "Please analyze this data",
+				},
+				Status: acp.TaskStatus{
+					Status:       acp.TaskStatusTypeSucceeded,
+					Phase:        acp.TaskPhaseFinalAnswer,
+					Output:       "Analysis completed: The data shows significant patterns.",
+					StartTime:    &metav1.Time{Time: time.Now().Add(-5 * time.Minute)},
+					CompletionTime: &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				},
+			}
+			
+			Expect(k8sClient.Create(ctx, childTask)).To(Succeed())
+			Expect(k8sClient.Status().Update(ctx, childTask)).To(Succeed())
+			defer func() { k8sClient.Delete(ctx, childTask) }()
+			
+			By("reconciling the ToolCall")
+			reconciler, recorder := reconciler()
+			
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+			
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
+			
+			By("checking the ToolCall is updated to Succeeded state")
+			updatedTC := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedTC)
+			
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseSucceeded))
+			Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeSucceeded))
+			Expect(updatedTC.Status.Result).To(Equal("Analysis completed: The data shows significant patterns."))
+			Expect(updatedTC.Status.CompletionTime).NotTo(BeNil())
+			
+			By("checking that appropriate events were emitted")
+			utils.ExpectRecorder(recorder).ToEmitEventContaining("SubAgentCompleted")
+		})
+	})
+	
+	Context("Ready:Pending -> Ready:AwaitingSubAgent (DelegateToAgent Tool)", func() {
+		It("transitions to Ready:AwaitingSubAgent and creates a child Task", func() {
+			By("creating a ToolCall for delegate to agent")
+			toolCall := &TestToolCall{
+				name:      "test-delegate-tool-call",
+				toolName:  "delegate_to_agent__test-sub-agent",
+				arguments: `{"message": "Please analyze this data"}`,
+				toolType:  acp.ToolTypeDelegateToAgent,
+			}
+			
+			// Set up with Ready:Pending status
+			tc := toolCall.SetupWithStatus(ctx, acp.ToolCallStatus{
+				Status:       acp.ToolCallStatusTypeReady,
+				Phase:        acp.ToolCallPhasePending,
+				StatusDetail: "Ready to execute",
+				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				SpanContext:  fakeSpanContext,
+			})
+			defer toolCall.Teardown(ctx)
+			
+			By("reconciling the ToolCall")
+			reconciler, recorder := reconciler()
+			
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+			
+			Expect(err).NotTo(HaveOccurred())
+			// Should requeue to check on child task status
+			Expect(result.RequeueAfter).To(Equal(5 * time.Second))
+			
+			By("checking the ToolCall is updated to AwaitingSubAgent phase")
+			updatedTC := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedTC)
+			
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingSubAgent))
+			Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
+			Expect(updatedTC.Status.StatusDetail).To(ContainSubstring("Delegating to sub-agent"))
+			
+			By("checking that a child Task was created")
+			var childTasks acp.TaskList
+			err = k8sClient.List(ctx, &childTasks, 
+				client.InNamespace(tc.Namespace),
+				client.MatchingLabels{"acp.humanlayer.dev/parent-toolcall": tc.Name})
+			
+			Expect(err).NotTo(HaveOccurred())
+			Expect(childTasks.Items).NotTo(BeEmpty())
+			Expect(childTasks.Items[0].Spec.AgentRef.Name).To(Equal("test-sub-agent"))
+			Expect(childTasks.Items[0].Spec.UserMessage).To(Equal("Please analyze this data"))
+			
+			By("checking that appropriate events were emitted")
+			utils.ExpectRecorder(recorder).ToEmitEventContaining("DelegatingToSubAgent")
+		})
+	})
+	
 	Context("'':'' -> Pending:Pending", func() {
 		XIt("moves to Pending:Pending - need a non-builtin test here", func() {
 		})
