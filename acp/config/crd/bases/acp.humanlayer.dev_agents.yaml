@@ -50,6 +50,11 @@ spec:
           spec:
             description: AgentSpec defines the desired state of Agent
             properties:
+              description:
+                description: |-
+                  Description is an optional description for an agent.
+                  If present, it's included in any "delegateToAgent" tool descriptions
+                type: string
               humanContactChannels:
                 description: HumanContactChannels is a list of ContactChannel resources
                   that can be used for human interactions
@@ -77,6 +82,22 @@ spec:
                 type: object
               mcpServers:
                 description: MCPServers is a list of MCP servers this agent can use
+                items:
+                  description: LocalObjectReference contains enough information to
+                    locate the referenced resource in the same namespace
+                  properties:
+                    name:
+                      description: Name of the referent
+                      minLength: 1
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              subAgents:
+                description: |-
+                  SubAgents is a list of local object references to other Agents
+                  that can be delegated to as sub-agents.
                 items:
                   description: LocalObjectReference contains enough information to
                     locate the referenced resource in the same namespace

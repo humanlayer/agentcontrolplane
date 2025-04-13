@@ -22,6 +22,16 @@ type AgentSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	System string `json:"system"`
+
+	// SubAgents is a list of local object references to other Agents
+	// that can be delegated to as sub-agents.
+	// +optional
+	SubAgents []LocalObjectReference `json:"subAgents,omitempty"`
+
+	// Description is an optional description for an agent.
+	// If present, it's included in any "delegateToAgent" tool descriptions
+	// +optional
+	Description string `json:"description,omitempty"`
 }
 
 // LocalObjectReference contains enough information to locate the referenced resource in the same namespace

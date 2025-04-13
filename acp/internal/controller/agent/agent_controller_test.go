@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -255,6 +256,121 @@ var _ = Describe("Agent Controller", func() {
 
 			By("checking that a failure event was created")
 			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationFailed")
+		})
+	})
+
+	Context("When reconciling an agent with sub-agents", func() {
+		const resourceName = "parent-agent"
+		const subAgentName = "sub-agent"
+		const llmName = "test-llm"
+
+		ctx := context.Background()
+
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			// Create a test LLM
+			llm := &acp.LLM{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      llmName,
+					Namespace: "default",
+				},
+				Spec: acp.LLMSpec{
+					Provider: "openai",
+					APIKeyFrom: &acp.APIKeySource{
+						SecretKeyRef: acp.SecretKeyRef{
+							Name: "test-secret",
+							Key:  "api-key",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, llm)).To(Succeed())
+
+			// Mark LLM as ready
+			llm.Status.Status = "Ready"
+			llm.Status.StatusDetail = "Ready for testing"
+			Expect(k8sClient.Status().Update(ctx, llm)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			// Cleanup test resources
+			By("Cleanup the test agents and LLM")
+			llm := &acp.LLM{}
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: llmName, Namespace: "default"}, llm)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, llm)).To(Succeed())
+			}
+
+			parentAgent := &acp.Agent{}
+			err = k8sClient.Get(ctx, typeNamespacedName, parentAgent)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, parentAgent)).To(Succeed())
+			}
+
+			subAgent := &acp.Agent{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: subAgentName, Namespace: "default"}, subAgent)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, subAgent)).To(Succeed())
+			}
+		})
+
+		It("should set parent agent to pending when sub-agent is not ready", func() {
+			By("creating the sub-agent first")
+			subAgentObj := &utils.TestScopedAgent{
+				Name:         subAgentName,
+				SystemPrompt: "Sub agent",
+				LLM:          llmName,
+			}
+			subAgentObj.Setup(k8sClient)
+
+			// Explicitly set the sub-agent to not ready
+			subAgent := &acp.Agent{}
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: subAgentName, Namespace: "default"}, subAgent)
+			Expect(err).NotTo(HaveOccurred())
+			subAgent.Status.Ready = false
+			subAgent.Status.Status = "Pending"
+			subAgent.Status.StatusDetail = "Not ready yet"
+			Expect(k8sClient.Status().Update(ctx, subAgent)).To(Succeed())
+
+			By("creating the parent agent with a reference to the sub-agent")
+			parentAgentObj := &utils.TestScopedAgent{
+				Name:         resourceName,
+				SystemPrompt: "Parent agent",
+				LLM:          llmName,
+				SubAgents:    []string{subAgentName},
+				Description:  "A parent agent that delegates to sub-agents",
+			}
+			parentAgentObj.Setup(k8sClient)
+
+			By("reconciling the parent agent")
+			eventRecorder := record.NewFakeRecorder(10)
+			reconciler := &AgentReconciler{
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				recorder: eventRecorder,
+			}
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(5 * time.Second))
+
+			By("checking the parent agent status")
+			updatedParent := &acp.Agent{}
+			err = k8sClient.Get(ctx, typeNamespacedName, updatedParent)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedParent.Status.Ready).To(BeFalse())
+			Expect(updatedParent.Status.Status).To(Equal("Pending"))
+			Expect(updatedParent.Status.StatusDetail).To(ContainSubstring("waiting for sub-agent"))
+			Expect(updatedParent.Status.StatusDetail).To(ContainSubstring("not ready"))
+
+			By("checking that a pending event was created")
+			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("SubAgentsPending")
 		})
 	})
 })

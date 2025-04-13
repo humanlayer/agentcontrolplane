@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,6 +51,29 @@ func (r *AgentReconciler) validateLLM(ctx context.Context, agent *acp.Agent) err
 	}
 
 	return nil
+}
+
+// validateSubAgents checks if all referenced sub-agents exist and are ready
+// Returns two items:
+// - bool: true if all sub-agents are ready, false otherwise
+// - string: detail message if any sub-agent issues are found
+func (r *AgentReconciler) validateSubAgents(ctx context.Context, agent *acp.Agent) (bool, string) {
+	for _, subAgentRef := range agent.Spec.SubAgents {
+		subAgent := &acp.Agent{}
+		err := r.Get(ctx, client.ObjectKey{
+			Namespace: agent.Namespace,
+			Name:      subAgentRef.Name,
+		}, subAgent)
+		if err != nil {
+			return false, fmt.Sprintf("waiting for sub-agent %q (not found)", subAgentRef.Name)
+		}
+
+		if !subAgent.Status.Ready {
+			return false, fmt.Sprintf("waiting for sub-agent %q (not ready)", subAgentRef.Name)
+		}
+	}
+
+	return true, ""
 }
 
 // validateMCPServers checks if all referenced MCP servers exist and are connected
@@ -192,6 +216,26 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if err := r.validateLLM(ctx, &agent); err != nil {
 		logger.Error(err, "LLM validation failed")
 		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
+	}
+
+	// Validate sub-agent references, if any
+	if len(agent.Spec.SubAgents) > 0 {
+		subAgentsReady, subAgentsMessage := r.validateSubAgents(ctx, &agent)
+		if !subAgentsReady {
+			// Set to Pending state when sub-agents are not ready
+			statusUpdate.Status.Ready = false
+			statusUpdate.Status.Status = "Pending"
+			statusUpdate.Status.StatusDetail = subAgentsMessage
+			r.recorder.Event(&agent, corev1.EventTypeNormal, "SubAgentsPending", subAgentsMessage)
+
+			if err := r.Status().Update(ctx, statusUpdate); err != nil {
+				logger.Error(err, "Unable to update Agent status")
+				return ctrl.Result{}, err
+			}
+
+			// Requeue to check again later
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
 	}
 
 	var err error
