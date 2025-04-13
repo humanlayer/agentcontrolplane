@@ -52,7 +52,7 @@ func (r *TaskReconciler) initializePhaseAndSpan(ctx context.Context, task *acp.T
 	spanCtx, span := r.Tracer.Start(ctx, "Task",
 		trace.WithSpanKind(trace.SpanKindServer), // optional
 	)
-	// Do NOT 'span.End()' here—this is your single “root” for the entire Task lifetime.
+	// Do NOT 'span.End()' here—this is your single "root" for the entire Task lifetime.
 
 	// Set initial phase
 	task.Status.Phase = acp.TaskPhaseInitializing
@@ -378,6 +378,34 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *acp.Agent) []l
 		clientTool := llmclient.ToolFromContactChannel(*channel)
 		tools = append(tools, *clientTool)
 		logger.Info("Added human contact channel tool", "name", channel.Name, "type", channel.Spec.Type)
+	}
+
+	// Add delegate tools for sub-agents
+	for _, subAgentRef := range agent.Spec.SubAgents {
+		subAgent := &acp.Agent{}
+		if err := r.Get(ctx, client.ObjectKey{Namespace: agent.Namespace, Name: subAgentRef.Name}, subAgent); err != nil {
+			logger.Error(err, "Failed to get sub-agent", "name", subAgentRef.Name)
+			continue
+		}
+
+		// Create a delegate tool for the sub-agent
+		delegateTool := llmclient.Tool{
+			Type: "function",
+			Function: llmclient.ToolFunction{
+				Name:        "delegate_to_agent__" + subAgent.Name,
+				Description: subAgent.Spec.Description,
+				Parameters: llmclient.ToolFunctionParameters{
+					Type: "object",
+					Properties: map[string]llmclient.ToolFunctionParameter{
+						"message": {Type: "string"},
+					},
+					Required: []string{"message"},
+				},
+			},
+			ACPToolType: acp.ToolTypeDelegateToAgent,
+		}
+		tools = append(tools, delegateTool)
+		logger.Info("Added delegate tool for sub-agent", "name", subAgent.Name)
 	}
 
 	return tools
