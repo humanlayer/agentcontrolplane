@@ -10,59 +10,20 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
-	"go.opentelemetry.io/otel/trace/noop" // Import the noop tracer
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var testSecret = &utils.TestSecret{
 	Name: "test-secret",
 }
 
-type TestLLM struct {
-	name string
-	llm  *acp.LLM
-}
-
-func (t *TestLLM) Setup(ctx context.Context) *acp.LLM {
-	By("creating the llm")
-	llm := &acp.LLM{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      t.name,
-			Namespace: "default",
-		},
-		Spec: acp.LLMSpec{
-			Provider: "openai",
-			APIKeyFrom: &acp.APIKeySource{
-				SecretKeyRef: acp.SecretKeyRef{
-					Name: testSecret.Name,
-					Key:  "api-key",
-				},
-			},
-		},
-	}
-	err := k8sClient.Create(ctx, llm)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.name, Namespace: "default"}, llm)).To(Succeed())
-	t.llm = llm
-	return llm
-}
-
-func (t *TestLLM) SetupWithStatus(ctx context.Context, status acp.LLMStatus) *acp.LLM {
-	llm := t.Setup(ctx)
-	llm.Status = status
-	Expect(k8sClient.Status().Update(ctx, llm)).To(Succeed())
-	t.llm = llm
-	return llm
-}
-
-func (t *TestLLM) Teardown(ctx context.Context) {
-	By("deleting the llm")
-	Expect(k8sClient.Delete(ctx, t.llm)).To(Succeed())
-}
-
-var testLLM = &TestLLM{
-	name: "test-llm",
+var testLLM = &utils.TestLLM{
+	Name:       "test-llm",
+	SecretName: testSecret.Name,
 }
 
 type TestAgent struct {
@@ -111,7 +72,7 @@ func (t *TestAgent) Teardown(ctx context.Context) {
 
 var testAgent = &TestAgent{
 	name:       "test-agent",
-	llmName:    testLLM.name,
+	llmName:    testLLM.Name,
 	system:     "you are a testing assistant",
 	mcpServers: []acp.LocalObjectReference{},
 }
