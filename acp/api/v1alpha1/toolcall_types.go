@@ -86,7 +86,7 @@ type ToolCallStatus struct {
 }
 
 // ToolCallPhase represents the phase of a ToolCall
-// +kubebuilder:validation:Enum=Pending;Running;Succeeded;Failed;AwaitingHumanInput;AwaitingSubAgent;AwaitingHumanApproval;ReadyToExecuteApprovedTool;ErrorRequestingHumanApproval;ToolCallRejected
+// +kubebuilder:validation:Enum=Pending;Running;Succeeded;Failed;AwaitingHumanInput;AwaitingSubAgent;AwaitingHumanApproval;ReadyToExecuteApprovedTool;ErrorRequestingHumanApproval;ErrorRequestingHumanInput;ToolCallRejected
 type ToolCallPhase string
 
 const (
@@ -108,6 +108,8 @@ const (
 	ToolCallPhaseReadyToExecuteApprovedTool ToolCallPhase = "ReadyToExecuteApprovedTool"
 	// ToolCallPhaseErrorRequestingHumanApproval indicates there was an error requesting human approval
 	ToolCallPhaseErrorRequestingHumanApproval ToolCallPhase = "ErrorRequestingHumanApproval"
+	// ToolCallPhaseErrorRequestingHumanInput indicates there was an error requesting human input
+	ToolCallPhaseErrorRequestingHumanInput ToolCallPhase = "ErrorRequestingHumanInput"
 	// ToolCallPhaseToolCallRejected indicates the tool call was rejected by human approval
 	ToolCallPhaseToolCallRejected ToolCallPhase = "ToolCallRejected"
 )
