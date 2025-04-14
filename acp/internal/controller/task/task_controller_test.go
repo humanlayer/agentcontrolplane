@@ -475,7 +475,7 @@ var _ = Describe("Task Controller", func() {
 			})
 			defer testTask.Teardown(ctx)
 
-			testToolCall.SetupWithStatus(ctx, acp.ToolCallStatus{
+			testToolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
 				Phase: acp.ToolCallPhasePending, // Tool call is still pending
 			})
 			defer testToolCall.Teardown(ctx)
@@ -542,7 +542,7 @@ var _ = Describe("Task Controller", func() {
 			defer testTask.Teardown(ctx)
 
 			// Setup first tool call object with correct ToolCallID in Spec
-			tc1 := testToolCall.Setup(ctx)                   // Use Setup first
+			tc1 := testToolCall.Setup(ctx, k8sClient)        // Use Setup first
 			tc1.Spec.ToolCallID = "1"                        // Set the Spec field
 			Expect(k8sClient.Update(ctx, tc1)).To(Succeed()) // Update the object
 			// Now apply the status
@@ -556,7 +556,7 @@ var _ = Describe("Task Controller", func() {
 			defer testToolCall.Teardown(ctx)                          // Ensure teardown uses the correct object
 
 			// Setup second tool call object with correct ToolCallID in Spec
-			tc2 := testToolCallTwo.Setup(ctx)                // Use Setup first
+			tc2 := testToolCallTwo.Setup(ctx, k8sClient)     // Use Setup first
 			tc2.Spec.ToolCallID = "2"                        // Set the Spec field
 			Expect(k8sClient.Update(ctx, tc2)).To(Succeed()) // Update the object
 			// Now apply the status

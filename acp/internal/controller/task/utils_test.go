@@ -6,8 +6,6 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/test/utils"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
@@ -15,7 +13,6 @@ import (
 
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 var testSecret = &utils.TestSecret{
@@ -40,58 +37,14 @@ var testTask = &utils.TestTask{
 	UserMessage: "what is the capital of the moon?",
 }
 
-type TestToolCall struct {
-	name            string
-	taskRunToolCall *acp.ToolCall
+var testToolCall = &utils.TestToolCall{
+	Name:     "test-toolcall",
+	TaskName: testTask.Name,
 }
 
-func (t *TestToolCall) Setup(ctx context.Context) *acp.ToolCall {
-	By("creating the toolcall")
-	taskRunToolCall := &acp.ToolCall{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      t.name,
-			Namespace: "default",
-			Labels: map[string]string{
-				"acp.humanlayer.dev/task":            testTask.Name,
-				"acp.humanlayer.dev/toolcallrequest": "test123",
-			},
-		},
-		Spec: acp.ToolCallSpec{
-			TaskRef: acp.LocalObjectReference{
-				Name: testTask.Name,
-			},
-			ToolRef: acp.LocalObjectReference{
-				Name: "test-tool",
-			},
-			Arguments: `{"url": "https://api.example.com/data"}`,
-		},
-	}
-	err := k8sClient.Create(ctx, taskRunToolCall)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.name, Namespace: "default"}, taskRunToolCall)).To(Succeed())
-	t.taskRunToolCall = taskRunToolCall
-	return taskRunToolCall
-}
-
-func (t *TestToolCall) SetupWithStatus(ctx context.Context, status acp.ToolCallStatus) *acp.ToolCall {
-	taskRunToolCall := t.Setup(ctx)
-	taskRunToolCall.Status = status
-	Expect(k8sClient.Status().Update(ctx, taskRunToolCall)).To(Succeed())
-	t.taskRunToolCall = taskRunToolCall
-	return taskRunToolCall
-}
-
-func (t *TestToolCall) Teardown(ctx context.Context) {
-	By("deleting the toolcall")
-	Expect(k8sClient.Delete(ctx, t.taskRunToolCall)).To(Succeed())
-}
-
-var testToolCall = &TestToolCall{
-	name: "test-toolcall",
-}
-
-var testToolCallTwo = &TestToolCall{
-	name: "test-toolcall-two",
+var testToolCallTwo = &utils.TestToolCall{
+	Name:     "test-toolcall-two",
+	TaskName: testTask.Name,
 }
 
 // nolint:golint,unparam
