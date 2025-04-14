@@ -237,6 +237,10 @@ func (m *MockMCPManager) CallTool(ctx context.Context, serverName, toolName stri
 	return "5", nil // Default result
 }
 
+type TestTask struct{}
+
+var testSubAgentTask = &TestTask{}
+
 // reconciler creates a new reconciler for testing
 func reconciler() (*ToolCallReconciler, *record.FakeRecorder) {
 	By("creating a test reconciler")

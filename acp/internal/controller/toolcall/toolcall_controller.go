@@ -416,7 +416,7 @@ func (r *ToolCallReconciler) getHumanLayerAPIKey(ctx context.Context, secretKeyR
 }
 
 //nolint:unparam
-func (r *ToolCallReconciler) setStatusError(ctx context.Context, tcPhase acp.ToolCallPhase, eventType string, tc *acp.ToolCall, err error) (ctrl.Result, error, bool) {
+func (r *ToolCallReconciler) setStatusError(ctx context.Context, tcPhase acp.ToolCallPhase, eventType string, tc *acp.ToolCall, err error) (ctrl.Result, error) {
 	tcDeepCopy := tc.DeepCopy()
 	logger := log.FromContext(ctx)
 
@@ -437,9 +437,9 @@ func (r *ToolCallReconciler) setStatusError(ctx context.Context, tcPhase acp.Too
 
 	if err := r.Status().Update(ctx, tcDeepCopy); err != nil {
 		logger.Error(err, "Failed to update status")
-		return ctrl.Result{}, err, true
+		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, nil, true
+	return ctrl.Result{}, nil
 }
 
 func (r *ToolCallReconciler) updateTCStatus(ctx context.Context, tc *acp.ToolCall, tcStatusType acp.ToolCallStatusType, tcStatusPhase acp.ToolCallPhase, statusDetail string, result string) (ctrl.Result, error, bool) {
@@ -597,7 +597,7 @@ func (r *ToolCallReconciler) requestHumanApproval(ctx context.Context, tc *acp.T
 		approvalSpan.SetStatus(codes.Error, "HLClient not initialized")
 		// Use approvalCtx for setStatusError
 		// Fix: Adjust return values from setStatusError
-		result, errStatus, _ := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+		result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
 			"NoHumanLayerClient", tc, err)
 		return result, errStatus // Return only Result and error
 	}
@@ -613,7 +613,7 @@ func (r *ToolCallReconciler) requestHumanApproval(ctx context.Context, tc *acp.T
 		approvalSpan.SetStatus(codes.Error, "HumanLayer request failed")
 		// Use approvalCtx for setStatusError
 		// Fix: Adjust return values from setStatusError
-		result, errStatus, _ := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+		result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
 			"HumanLayerRequestFailed", tc, errorMsg)
 		return result, errStatus // Return only Result and error
 	}
@@ -655,7 +655,7 @@ func (r *ToolCallReconciler) handleMCPApprovalFlow(ctx context.Context, tc *acp.
 	tcNamespace := tc.Namespace
 	contactChannel, err := r.getContactChannel(ctx, mcpServer, tcNamespace)
 	if err != nil {
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
 			"NoContactChannel", tc, err)
 		return result, errStatus, true
 	}
@@ -666,7 +666,7 @@ func (r *ToolCallReconciler) handleMCPApprovalFlow(ctx context.Context, tc *acp.
 		tcNamespace)
 
 	if err != nil || apiKey == "" {
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
 			"NoAPIKey", tc, err)
 		return result, errStatus, true
 	}
@@ -720,7 +720,7 @@ func isDelegateToAgentTool(tc *acp.ToolCall) (agentName string, isDelegateToAgen
 	if len(parts) == 2 && parts[0] == "delegate_to_agent" {
 		return parts[1], true, nil
 	}
-	
+
 	// This shouldn't happen if toolType is set correctly
 	return "", true, fmt.Errorf("invalid delegate tool name format: %s", tc.Spec.ToolRef.Name)
 }
@@ -820,7 +820,7 @@ func (r *ToolCallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, nil
 		}
 	}
-	
+
 	// 4.5. Check if we need to process a sub-agent result
 	if tc.Status.Phase == acp.ToolCallPhaseAwaitingSubAgent {
 		return r.processAwaitingSubAgent(ctx, &tc)
@@ -831,7 +831,7 @@ func (r *ToolCallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		logger.Error(nil, "ToolCall not in Ready status before execution",
 			"status", tc.Status.Status,
 			"phase", tc.Status.Phase)
-		result, err, _ := r.setStatusError(ctx, acp.ToolCallPhaseFailed,
+		result, err := r.setStatusError(ctx, acp.ToolCallPhaseFailed,
 			"ExecutionFailedNotReady", &tc, fmt.Errorf("ToolCall must be in Ready status before execution"))
 		return result, err
 	}
@@ -903,73 +903,73 @@ func truncateString(s string, maxLen int) string {
 func (r *ToolCallReconciler) processAwaitingSubAgent(ctx context.Context, tc *acp.ToolCall) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Processing ToolCall awaiting sub-agent completion", "name", tc.Name)
-	
+
 	// Find the child tasks for this ToolCall
 	var taskList acp.TaskList
-	if err := r.List(ctx, &taskList, client.InNamespace(tc.Namespace), 
+	if err := r.List(ctx, &taskList, client.InNamespace(tc.Namespace),
 		client.MatchingLabels{"acp.humanlayer.dev/parent-toolcall": tc.Name}); err != nil {
 		logger.Error(err, "Failed to list child Tasks")
 		return ctrl.Result{}, err
 	}
-	
+
 	if len(taskList.Items) == 0 {
 		// No child tasks found, this shouldn't happen
 		err := fmt.Errorf("no child tasks found for ToolCall in AwaitingSubAgent state")
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseFailed, "NoChildTaskFound", tc, err)
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseFailed, "NoChildTaskFound", tc, err)
 		return result, errStatus
 	}
-	
+
 	// Get the most recent child task
 	childTask := &taskList.Items[0]
-	
+
 	// Check if the task is done with final answer (success)
 	if childTask.Status.Phase == acp.TaskPhaseFinalAnswer {
 		// Success - task completed with final answer
 		logger.Info("Child task completed successfully", "taskName", childTask.Name)
-		
+
 		// Copy the output from the task to the ToolCall result
 		tc.Status.Result = childTask.Status.Output
 		tc.Status.Phase = acp.ToolCallPhaseSucceeded
 		tc.Status.Status = acp.ToolCallStatusTypeSucceeded
 		tc.Status.StatusDetail = fmt.Sprintf("Sub-agent task %s completed successfully", childTask.Name)
 		tc.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-		
-		r.recorder.Event(tc, corev1.EventTypeNormal, "SubAgentCompleted", 
+
+		r.recorder.Event(tc, corev1.EventTypeNormal, "SubAgentCompleted",
 			fmt.Sprintf("Sub-agent task %s completed successfully", childTask.Name))
-			
+
 		if err := r.Status().Update(ctx, tc); err != nil {
 			logger.Error(err, "Failed to update ToolCall status after sub-agent completion")
 			return ctrl.Result{}, err
 		}
-		
+
 		return ctrl.Result{}, nil
-	} 
-	
+	}
+
 	// Check if the task has failed
 	if childTask.Status.Phase == acp.TaskPhaseFailed {
 		// Error - task failed
 		logger.Info("Child task failed", "taskName", childTask.Name, "error", childTask.Status.Error)
-		
+
 		tc.Status.Result = fmt.Sprintf("Sub-agent task failed: %s", childTask.Status.Error)
 		tc.Status.Phase = acp.ToolCallPhaseFailed
 		tc.Status.Status = acp.ToolCallStatusTypeError
 		tc.Status.StatusDetail = fmt.Sprintf("Sub-agent task %s failed", childTask.Name)
 		tc.Status.Error = childTask.Status.Error
 		tc.Status.CompletionTime = &metav1.Time{Time: time.Now()}
-		
-		r.recorder.Event(tc, corev1.EventTypeWarning, "SubAgentFailed", 
+
+		r.recorder.Event(tc, corev1.EventTypeWarning, "SubAgentFailed",
 			fmt.Sprintf("Sub-agent task %s failed: %s", childTask.Name, childTask.Status.Error))
-			
+
 		if err := r.Status().Update(ctx, tc); err != nil {
 			logger.Error(err, "Failed to update ToolCall status after sub-agent failure")
 			return ctrl.Result{}, err
 		}
-		
+
 		return ctrl.Result{}, nil
 	}
-	
+
 	// Still in progress, requeue to check again later
-	logger.Info("Child task still in progress", "taskName", childTask.Name, 
+	logger.Info("Child task still in progress", "taskName", childTask.Name,
 		"phase", childTask.Status.Phase, "status", childTask.Status.Status)
 	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
@@ -983,7 +983,7 @@ func (r *ToolCallReconciler) processDelegateToAgent(ctx context.Context, tc *acp
 	message, ok := args["message"].(string)
 	if !ok {
 		err := fmt.Errorf("missing or invalid 'message' argument for delegation")
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseFailed, "InvalidDelegationArguments", tc, err)
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseFailed, "InvalidDelegationArguments", tc, err)
 		return result, errStatus
 	}
 
@@ -1013,23 +1013,23 @@ func (r *ToolCallReconciler) processDelegateToAgent(ctx context.Context, tc *acp
 
 	if err := r.Create(ctx, childTask); err != nil {
 		logger.Error(err, "Failed to create child Task")
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseFailed, "ChildTaskCreationFailed", tc, err)
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseFailed, "ChildTaskCreationFailed", tc, err)
 		return result, errStatus
 	}
 
 	logger.Info("Created child Task for sub-agent", "childTaskName", childTask.Name, "agentName", agentName)
-	
+
 	// Mark as awaiting sub-agent after successfully creating the task
 	tc.Status.Phase = acp.ToolCallPhaseAwaitingSubAgent
 	tc.Status.StatusDetail = fmt.Sprintf("Delegating to sub-agent %s via task %s", agentName, childTask.Name)
-	r.recorder.Event(tc, corev1.EventTypeNormal, "DelegatingToSubAgent", 
+	r.recorder.Event(tc, corev1.EventTypeNormal, "DelegatingToSubAgent",
 		fmt.Sprintf("Delegating to sub-agent %s via task %s", agentName, childTask.Name))
-	
+
 	if err := r.Status().Update(ctx, tc); err != nil {
 		logger.Error(err, "Failed to update status to AwaitingSubAgent")
 		return ctrl.Result{}, err
 	}
-	
+
 	// Requeue to check on child Task status
 	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
