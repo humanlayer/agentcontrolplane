@@ -391,7 +391,7 @@ func setupTestHumanContactResources(ctx context.Context, config *SetupTestHumanC
 
 	toolCall := &TestToolCall{
 		name:      name,
-		toolName:  testContactChannel.name, // For human contact, we reference the contact channel directly
+		toolName:  fmt.Sprintf("%s__%s", testContactChannel.name, testHumanContactTool.name),
 		arguments: args,
 		toolType:  acp.ToolTypeHumanContact,
 	}

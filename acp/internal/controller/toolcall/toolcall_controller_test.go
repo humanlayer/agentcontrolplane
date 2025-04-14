@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var _ = Describe("TaskRunToolCall Controller", func() {
+var _ = Describe("ToolCall Controller", func() {
 	Context("'':'' -> Pending:Pending", func() {
 		XIt("moves to Pending:Pending - need a non-builtin test here", func() {
 		})
@@ -151,7 +151,7 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			tc, teardown := setupTestHumanContactResources(ctx, nil)
 			defer teardown()
 
-			By("reconciling the taskruntoolcall that uses HumanContact tool")
+			By("reconciling the toolcall that uses HumanContact tool")
 			reconciler, recorder := reconciler()
 
 			reconciler.HLClientFactory = &humanlayer.MockHumanLayerClientFactory{
@@ -170,20 +170,58 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(Equal(5 * time.Second)) // Should requeue after 5 seconds
 
-			By("checking the taskruntoolcall has AwaitingHumanInput phase and Ready status")
-			updatedTRTC := &acp.ToolCall{}
+			By("checking the toolcall has AwaitingHumanInput phase and Ready status")
+			updatedToolCall := &acp.ToolCall{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
 				Name:      tc.Name,
 				Namespace: tc.Namespace,
-			}, updatedTRTC)
+			}, updatedToolCall)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(updatedTRTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanInput))
-			Expect(updatedTRTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
-			Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Waiting for human input via contact channel"))
+			Expect(updatedToolCall.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanInput))
+			Expect(updatedToolCall.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
+			Expect(updatedToolCall.Status.StatusDetail).To(ContainSubstring("Waiting for human input via contact channel"))
 
 			By("checking that appropriate events were emitted")
 			utils.ExpectRecorder(recorder).ToEmitEventContaining("AwaitingHumanContact")
+		})
+	})
+
+	Context("Ready:Pending -> Error:ErrorRequestingHumanInput (HumanContact Tool)", func() {
+		It("transitions to Error:ErrorRequestingHumanInput when request to HumanLayer for human contact fails", func() {
+			// Set up resources for human contact
+			tc, teardown := setupTestHumanContactResources(ctx, nil)
+			defer teardown()
+
+			By("reconciling the toolcall that uses HumanContact tool with a failing API call")
+			reconciler, _ := reconciler()
+
+			reconciler.HLClientFactory = &humanlayer.MockHumanLayerClientFactory{
+				ShouldFail:  true,
+				StatusCode:  500,
+				ReturnError: fmt.Errorf("failed to contact human: service unavailable"),
+			}
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeFalse())
+
+			By("checking the toolcall has ErrorRequestingHumanInput phase and Error status")
+			updatedToolCall := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedToolCall)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedToolCall.Status.Phase).To(Equal(acp.ToolCallPhaseErrorRequestingHumanInput))
+			Expect(updatedToolCall.Status.Status).To(Equal(acp.ToolCallStatusTypeError))
 		})
 	})
 
@@ -342,11 +380,11 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 			trtc, teardown := setupTestApprovalResources(ctx, nil)
 			defer teardown()
 
-			By("reconciling the taskruntoolcall that uses MCP tool with approval")
+			By("reconciling the ToolCall that uses MCP tool with approval")
 			reconciler, _ := reconciler()
 
 			reconciler.MCPManager = &MockMCPManager{
-				NeedsApproval: false,
+				NeedsApproval: true,
 			}
 
 			reconciler.HLClientFactory = &humanlayer.MockHumanLayerClientFactory{

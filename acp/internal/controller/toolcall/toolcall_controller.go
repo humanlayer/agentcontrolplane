@@ -768,7 +768,16 @@ func (r *ToolCallReconciler) handleHumanContactFlow(ctx context.Context, tc *acp
 	}
 
 	tcNamespace := tc.Namespace
-	contactChannel, err := r.getContactChannel(ctx, tc.Spec.ToolRef.Name, tcNamespace)
+	toolName := tc.Spec.ToolRef.Name
+	// Split toolName to get channel name from format CHANNEL_NAME__TOOLNAME
+	parts := strings.Split(toolName, "__")
+	if len(parts) != 2 {
+		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+			"InvalidToolName", tc, fmt.Errorf("invalid tool name format: %s", toolName))
+		return result, errStatus, true
+	}
+	channelName := parts[0]
+	contactChannel, err := r.getContactChannel(ctx, channelName, tcNamespace)
 	if err != nil {
 		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
 			"NoContactChannel", tc, err)
