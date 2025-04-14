@@ -380,11 +380,11 @@ func (r *ToolCallReconciler) getMCPServer(ctx context.Context, tc *acp.ToolCall)
 }
 
 // getContactChannel fetches and validates the ContactChannel resource
-func (r *ToolCallReconciler) getContactChannel(ctx context.Context, mcpServer *acp.MCPServer, tcNamespace string) (*acp.ContactChannel, error) {
+func (r *ToolCallReconciler) getContactChannel(ctx context.Context, channelName string, trtcNamespace string) (*acp.ContactChannel, error) {
 	var contactChannel acp.ContactChannel
 	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: tcNamespace,
-		Name:      mcpServer.Spec.ApprovalContactChannel.Name,
+		Namespace: trtcNamespace,
+		Name:      channelName,
 	}, &contactChannel); err != nil {
 
 		err := fmt.Errorf("failed to get ContactChannel: %v", err)
@@ -451,10 +451,8 @@ func (r *ToolCallReconciler) updateTCStatus(ctx context.Context, tc *acp.ToolCal
 	tcDeepCopy.Status.StatusDetail = statusDetail
 	tcDeepCopy.Status.Phase = tcStatusPhase
 
-	// Store the result for tool call rejection
-	if tcStatusPhase == acp.ToolCallPhaseToolCallRejected {
-		toolName := tc.Spec.ToolRef.Name
-		tcDeepCopy.Status.Result = fmt.Sprintf("User denied `%s` with feedback: %s", toolName, result)
+	if result != "" {
+		tcDeepCopy.Status.Result = result
 	}
 
 	if err := r.Status().Update(ctx, tcDeepCopy); err != nil {
@@ -552,8 +550,38 @@ func (r *ToolCallReconciler) handlePendingApproval(ctx context.Context, tc *acp.
 		return r.updateTCStatus(ctx, tc,
 			acp.ToolCallStatusTypeSucceeded, // Succeeded because the rejection was processed
 			acp.ToolCallPhaseToolCallRejected,
-			"Tool execution rejected", status.GetComment())
+			"Tool execution rejected", fmt.Sprintf("User denied `%s` with feedback: %s", tc.Spec.ToolRef.Name, status.GetComment()))
 	}
+}
+
+func (r *ToolCallReconciler) handlePendingHumanInput(ctx context.Context, tc *acp.ToolCall, apiKey string) (result ctrl.Result, err error, handled bool) {
+	if tc.Status.ExternalCallID == "" {
+		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+			"NoExternalCallID", tc, fmt.Errorf("missing ExternalCallID in AwaitingHumanInput phase"))
+		return result, errStatus, true
+	}
+
+	client := r.HLClientFactory.NewHumanLayerClient()
+	client.SetCallID(tc.Status.ExternalCallID)
+	client.SetAPIKey(apiKey)
+
+	hc, _, err := client.GetHumanContactStatus(ctx)
+	if err != nil {
+		return ctrl.Result{}, err, true
+	}
+
+	status := hc.GetStatus()
+
+	response, ok := status.GetResponseOk()
+
+	if !ok || response == nil {
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil, true
+	}
+
+	return r.updateTCStatus(ctx, tc,
+		acp.ToolCallStatusTypeSucceeded,
+		acp.ToolCallPhaseSucceeded,
+		"Human response received", *response)
 }
 
 // requestHumanApproval handles setting up a new human approval request, wrapped in a child span.
@@ -633,6 +661,55 @@ func (r *ToolCallReconciler) requestHumanApproval(ctx context.Context, tc *acp.T
 	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
+func (r *ToolCallReconciler) requestHumanContact(ctx context.Context, tc *acp.ToolCall, contactChannel *acp.ContactChannel, apiKey string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	// Verify HLClient is initialized
+	if r.HLClientFactory == nil {
+		err := fmt.Errorf("HLClient not initialized")
+		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+			"NoHumanLayerClient", tc, err)
+		return result, errStatus
+	}
+
+	client := r.HLClientFactory.NewHumanLayerClient()
+
+	switch contactChannel.Spec.Type {
+	case acp.ContactChannelTypeSlack:
+		client.SetSlackConfig(contactChannel.Spec.Slack)
+	case acp.ContactChannelTypeEmail:
+		client.SetEmailConfig(contactChannel.Spec.Email)
+	default:
+		return ctrl.Result{}, fmt.Errorf("unsupported channel type: %s", contactChannel.Spec.Type)
+	}
+
+	client.SetCallID("hc-" + uuid.New().String()[:7])
+	client.SetRunID(tc.Name)
+	client.SetAPIKey(apiKey)
+
+	humanContact, statusCode, err := client.RequestHumanContact(ctx, tc.Spec.Arguments)
+	if err != nil {
+		errorMsg := fmt.Errorf("HumanLayer request failed with status code: %d", statusCode)
+		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+			"HumanLayerRequestFailed", tc, errorMsg)
+		return result, errStatus
+	}
+
+	tc.Status.Phase = acp.ToolCallPhaseAwaitingHumanInput
+	tc.Status.StatusDetail = fmt.Sprintf("Waiting for human input via contact channel %s", contactChannel.Name)
+	tc.Status.ExternalCallID = humanContact.GetCallId()
+
+	r.recorder.Event(tc, corev1.EventTypeNormal, "AwaitingHumanContact",
+		fmt.Sprintf("Tool response requires human input via contact channel %s", contactChannel.Name))
+
+	if err := r.Status().Update(ctx, tc); err != nil {
+		logger.Error(err, "Failed to update ToolCall status")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+}
+
 // handleMCPApprovalFlow encapsulates the MCP approval flow logic
 func (r *ToolCallReconciler) handleMCPApprovalFlow(ctx context.Context, tc *acp.ToolCall) (result ctrl.Result, err error, handled bool) {
 	// We've already been through the approval flow and are ready to execute the tool
@@ -653,7 +730,7 @@ func (r *ToolCallReconciler) handleMCPApprovalFlow(ctx context.Context, tc *acp.
 
 	// Get contact channel and API key information
 	tcNamespace := tc.Namespace
-	contactChannel, err := r.getContactChannel(ctx, mcpServer, tcNamespace)
+	contactChannel, err := r.getContactChannel(ctx, mcpServer.Spec.ApprovalContactChannel.Name, tcNamespace)
 	if err != nil {
 		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
 			"NoContactChannel", tc, err)
@@ -681,6 +758,39 @@ func (r *ToolCallReconciler) handleMCPApprovalFlow(ctx context.Context, tc *acp.
 
 	// Request human approval if not already done
 	result, err = r.requestHumanApproval(ctx, tc, contactChannel, apiKey, mcpServer)
+	return result, err, true
+}
+
+func (r *ToolCallReconciler) handleHumanContactFlow(ctx context.Context, tc *acp.ToolCall,
+) (result ctrl.Result, err error, handled bool) {
+	if tc.Spec.ToolType != acp.ToolTypeHumanContact {
+		return ctrl.Result{}, nil, false
+	}
+
+	tcNamespace := tc.Namespace
+	contactChannel, err := r.getContactChannel(ctx, tc.Spec.ToolRef.Name, tcNamespace)
+	if err != nil {
+		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+			"NoContactChannel", tc, err)
+		return result, errStatus, true
+	}
+
+	apiKey, err := r.getHumanLayerAPIKey(ctx,
+		contactChannel.Spec.APIKeyFrom.SecretKeyRef.Name,
+		contactChannel.Spec.APIKeyFrom.SecretKeyRef.Key,
+		tcNamespace)
+
+	if err != nil || apiKey == "" {
+		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+			"NoAPIKey", tc, err)
+		return result, errStatus, true
+	}
+
+	if tc.Status.Phase == acp.ToolCallPhaseAwaitingHumanInput {
+		return r.handlePendingHumanInput(ctx, tc, apiKey)
+	}
+
+	result, err = r.requestHumanContact(ctx, tc, contactChannel, apiKey)
 	return result, err, true
 }
 
@@ -820,13 +930,19 @@ func (r *ToolCallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return result, err
 	}
 
-	// 7. Parse arguments for execution
+	// 7. Handle human contact flow
+	result, err, handled = r.handleHumanContactFlow(ctx, &tc)
+	if handled {
+		return result, err
+	}
+
+	// 8. Parse arguments for execution
 	args, err := r.parseArguments(ctx, &tc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// 8. Execute the appropriate tool type
+	// 9. Execute the appropriate tool type
 	return r.dispatchToolExecution(ctx, &tc, args)
 }
 
