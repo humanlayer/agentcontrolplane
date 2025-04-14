@@ -4,9 +4,9 @@
 
 </div>
 
-ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on Kubernetes. It supports [long-lived outer-loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards) that can process asynchronous execution of both LLM inference and long-running tool calls. It's designed for simplicity and gives strong durability and reliability guarantees for agents that make asynchronous tool calls like contacting humans or delegating work to other agents.
+ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on Kubernetes. It supports [long-lived outer-loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards) that can process asynchronous execution of both LLM inference and long-running tool calls. It's designed for simplicity and gives strong durability and reliability guarantees. It embraces concepts from [12-factor-agents](https://hlyr.dev/12fa) for agents that make asynchronous tool calls like contacting humans or delegating work to other agents.
 
-:warning: **Note** - ACP is in alpha. Use at your own risk.
+:warning: **Note** - ACP is in alpha.
 
 <div align="center">
 
