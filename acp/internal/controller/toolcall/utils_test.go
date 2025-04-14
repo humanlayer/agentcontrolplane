@@ -66,11 +66,11 @@ func (t *TestContactChannel) Setup(ctx context.Context) *acp.ContactChannel {
 	}
 
 	// Add specific config based on channel type
-	if t.channelType == "slack" {
+	if t.channelType == acp.ContactChannelTypeSlack {
 		contactChannel.Spec.Slack = &acp.SlackChannelConfig{
 			ChannelOrUserID: "C12345678",
 		}
-	} else if t.channelType == "email" {
+	} else if t.channelType == acp.ContactChannelTypeEmail {
 		contactChannel.Spec.Email = &acp.EmailChannelConfig{
 			Address: "test@example.com",
 		}
@@ -329,6 +329,89 @@ func setupTestApprovalResources(ctx context.Context, config *SetupTestApprovalCo
 	return tc, func() {
 		toolCall.Teardown(ctx)
 		testMCPServer.Teardown(ctx)
+		testContactChannel.Teardown(ctx)
+		testSecret.Teardown(ctx)
+	}
+}
+
+// TODO: Combine the below config with the above mcp/approval flow config, extremely similar
+var testHumanContactTool = &TestToolCall{
+	name:     "test-human-contact-tool",
+	toolName: "test-human-contact-tool",
+	toolType: acp.ToolTypeHumanContact,
+}
+
+// SetupTestHumanContactConfig contains optional configuration for setupTestHumanContactResources
+type SetupTestHumanContactConfig struct {
+	ToolCallStatus     *acp.ToolCallStatus
+	ToolCallName       string
+	ToolCallArgs       string
+	ContactChannelType acp.ContactChannelType
+}
+
+// setupTestHumanContactResources sets up all resources needed for testing human contact
+func setupTestHumanContactResources(ctx context.Context, config *SetupTestHumanContactConfig) (*acp.ToolCall, func()) {
+	By("creating the secret")
+	testSecret.Setup(ctx)
+	By("creating the contact channel")
+
+	// Set contact channel type based on config or default to ContactChannelTypeSlack
+	channelType := acp.ContactChannelTypeSlack
+	if config != nil && config.ContactChannelType != "" {
+		switch config.ContactChannelType {
+		case "email":
+			channelType = acp.ContactChannelTypeEmail
+		default:
+			channelType = acp.ContactChannelTypeSlack
+		}
+	}
+
+	testContactChannel.channelType = channelType
+	testContactChannel.SetupWithStatus(ctx, acp.ContactChannelStatus{
+		Ready:  true,
+		Status: "Ready",
+	})
+
+	By("creating the human contact tool")
+	testHumanContactTool.SetupWithStatus(ctx, acp.ToolCallStatus{
+		Ready:  true,
+		Status: "Ready",
+	})
+
+	name := "test-human-contact-tc"
+	args := `{"message": "This is a test human contact message", "options": ["Yes", "No"]}`
+	if config != nil {
+		if config.ToolCallName != "" {
+			name = config.ToolCallName
+		}
+		if config.ToolCallArgs != "" {
+			args = config.ToolCallArgs
+		}
+	}
+
+	toolCall := &TestToolCall{
+		name:      name,
+		toolName:  fmt.Sprintf("%s__%s", testContactChannel.name, testHumanContactTool.name),
+		arguments: args,
+		toolType:  acp.ToolTypeHumanContact,
+	}
+
+	status := acp.ToolCallStatus{
+		Phase:        acp.ToolCallPhasePending,
+		Status:       acp.ToolCallStatusTypeReady,
+		StatusDetail: "Setup complete",
+		StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+		SpanContext:  fakeSpanContext,
+	}
+
+	if config != nil && config.ToolCallStatus != nil {
+		status = *config.ToolCallStatus
+	}
+
+	tc := toolCall.SetupWithStatus(ctx, status)
+
+	return tc, func() {
+		testHumanContactTool.Teardown(ctx)
 		testContactChannel.Teardown(ctx)
 		testSecret.Teardown(ctx)
 	}

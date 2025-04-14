@@ -122,6 +122,7 @@ spec:
                 - AwaitingHumanApproval
                 - ReadyToExecuteApprovedTool
                 - ErrorRequestingHumanApproval
+                - ErrorRequestingHumanInput
                 - ToolCallRejected
                 type: string
               ready:
