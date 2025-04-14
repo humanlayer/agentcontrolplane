@@ -1088,7 +1088,7 @@ kubectl delete secret humanlayer
 Remove the operator, resources and custom resource definitions:
 
 ```
-kubectl delete -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest.yaml
+kubectl delete -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/acp/config/release/latest.yaml
 ```
 
 If you made a kind cluster, you can delete it with:
