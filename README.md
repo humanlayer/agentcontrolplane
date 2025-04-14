@@ -34,6 +34,7 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
   - [Adding Tools with MCP](#adding-tools-with-mcp)
   - [Using other language models](#using-other-language-models)
   - [Incorporating Human Approval](#incorporating-human-approval)
+  - [Incorporating Humans as Tools](#humans-as-tools)
   - [Cleaning Up](#cleaning-up)
 - [Design Principles](#design-principles)
 - [Contributing](#contributing)
@@ -932,7 +933,7 @@ cat <<EOF | kubectl apply -f -
 apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: ContactChannel
 metadata:
-  name: approval-channel
+  name: approval-channel 
 spec:
   type: email # Replace with "slack" if using Slack
   apiKeyFrom:
@@ -1052,6 +1053,90 @@ Events:
   Normal  AllToolCallsCompleted      7s                task-controller  All tool calls completed, ready to send tool results to LLM
   Normal  LLMFinalAnswer             6s                task-controller  LLM response received successfully
 ```
+
+### Incorporating Humans as Tools
+
+For certain workflows, you may desire humans to provide non-deterministic input (in contrast to the deterministic behavior described in the "Human Approval" workflow above). For these operations, ACP provides support via [HumanLayer's](https://github.com/humanlayer/humanlayer) [Human as Tool](https://www.humanlayer.dev/docs/core/human-as-tool) feature set.
+
+**Note**: We recommend running through the above examples first prior exploring this section. Several Kubernetes resources created in that section will be assumed to exist.
+
+We're going to create a new `Agent` and related `Task`, but before we can do that, we'll want a new `ContactChannel` to work with:
+
+```bash
+export MY_EMAIL=... # your email here
+```
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: ContactChannel
+metadata:
+  name: frodo-baggins-expert
+spec:
+  type: email
+  apiKeyFrom:
+    secretKeyRef:
+      name: humanlayer
+      key: HUMANLAYER_API_KEY
+  email:
+    address: "$MY_EMAIL"
+    subject: "Frodo Baggins Knowledge Request" 
+    contextAboutUser: "Expert on all things related to the Lord of the Rings character, Frodo Baggins"
+EOF
+```
+
+Alright, we're ready for a brand new agent:
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: Agent
+metadata:
+  name: agent-with-human-tool
+spec:
+  llmRef:
+    name: gpt-4o
+  system: |
+    You are a helpful assistant. Your job is to help the user with their tasks.
+  mcpServers:
+    - name: fetch
+  humanContactChannels:
+    - name: frodo-baggins-expert
+EOF
+```
+
+Note the inclusion of `humanContactChannels` here, which now incorporates the `ContactChannel` we just made. Moving forward, any `Task` calls made against this `Agent` will attempt to make use of a human contact where appropriate. As an example, the following Task, _should_ (remember, "non-deterministic") reach out to our Luke Skywalker expert for more information before wrapping up the final output:
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: Task
+metadata:
+  name: baggins-task
+spec:
+  agentRef:
+    name: agent-with-human-tool
+  userMessage: "Learn about the character found at https://lotrapi.co/api/v1/characters/1. If the character is Frodo Baggins, consult an expert for extra knowledge. Provide final information about the character in the form of a haiku."
+EOF
+```
+
+Conversely, the following request should not:
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: Task
+metadata:
+  name: gandalf-task
+spec:
+  agentRef:
+    name: agent-with-human-tool
+  userMessage: "Learn about the character found at https://lotrapi.co/api/v1/characters/3. If the character is Frodo Baggins, consult an expert for extra knowledge. Provide final information about the character in the form of a haiku."
+EOF
+```
+
+
+
 ### Open Telemetry support
 
 You can use the `acp-example` folder to spin up a cluster with an otel stack, to view Task execution traces in grafana + tempo
