@@ -2,10 +2,11 @@ package utils
 
 import (
 	"context"
+
 	"github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -42,7 +43,11 @@ func (t *TestLLM) Setup(ctx context.Context, k8sClient client.Client) *v1alpha1.
 	return llm
 }
 
-func (t *TestLLM) SetupWithStatus(ctx context.Context, k8sClient client.Client, status v1alpha1.LLMStatus) *v1alpha1.LLM {
+func (t *TestLLM) SetupWithStatus(
+	ctx context.Context,
+	k8sClient client.Client,
+	status v1alpha1.LLMStatus,
+) *v1alpha1.LLM {
 	llm := t.Setup(ctx, k8sClient)
 	llm.Status = status
 	Expect(k8sClient.Status().Update(ctx, llm)).To(Succeed())

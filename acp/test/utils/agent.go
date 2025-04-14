@@ -2,10 +2,11 @@ package utils
 
 import (
 	"context"
+
 	"github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -43,7 +44,11 @@ func (t *TestAgent) Setup(ctx context.Context, k8sClient client.Client) *v1alpha
 	return agent
 }
 
-func (t *TestAgent) SetupWithStatus(ctx context.Context, k8sClient client.Client, status v1alpha1.AgentStatus) *v1alpha1.Agent {
+func (t *TestAgent) SetupWithStatus(
+	ctx context.Context,
+	k8sClient client.Client,
+	status v1alpha1.AgentStatus,
+) *v1alpha1.Agent {
 	agent := t.Setup(ctx, k8sClient)
 	agent.Status = status
 	gomega.Expect(t.k8sClient.Status().Update(ctx, agent)).To(gomega.Succeed())

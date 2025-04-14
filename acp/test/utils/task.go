@@ -46,7 +46,11 @@ func (t *TestTask) Setup(ctx context.Context, k8sClient client.Client) *v1alpha1
 	return task
 }
 
-func (t *TestTask) SetupWithStatus(ctx context.Context, k8sClient client.Client, status v1alpha1.TaskStatus) *v1alpha1.Task {
+func (t *TestTask) SetupWithStatus(
+	ctx context.Context,
+	k8sClient client.Client,
+	status v1alpha1.TaskStatus,
+) *v1alpha1.Task {
 	task := t.Setup(ctx, k8sClient)
 	task.Status = status
 	Expect(t.k8sClient.Status().Update(ctx, task)).To(Succeed())
