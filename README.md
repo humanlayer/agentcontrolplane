@@ -653,7 +653,7 @@ metadata:
 spec:
   agentRef:
     name: my-assistant
-  userMessage: "what is the data at https://swapi.dev/api/people/1? "
+  userMessage: "what is the data at https://lotrapi.co/api/characters/1? "
 EOF
 ```
 
@@ -679,32 +679,25 @@ You can also explore the ToolCall events
 kubectl get task fetch-task -o jsonpath='{.status.output}'
 ```
 
-> The URL [https://swapi.dev/api/people/1](https://swapi.dev/api/people/1) contains the following data about a Star Wars character:
->
-> - **Name**: Luke Skywalker
-> - **Height**: 172 cm
-> - **Mass**: 77 kg
-> - **Hair Color**: Blond
-> - **Skin Color**: Fair
-> - **Eye Color**: Blue
-> - **Birth Year**: 19BBY
-> - **Gender**: Male
-> - **Homeworld**: [Link to Homeworld](https://swapi.dev/api/planets/1/)
-> - **Films**: Appeared in several films, linked as:
->   - [Film 1](https://swapi.dev/api/films/1/)
->   - [Film 2](https://swapi.dev/api/films/2/)
->   - [Film 3](https://swapi.dev/api/films/3/)
->   - [Film 6](https://swapi.dev/api/films/6/)
-> - **Species**: None listed
-> - **Vehicles**:
->   - [Vehicle 14](https://swapi.dev/api/vehicles/14/)
->   - [Vehicle 30](https://swapi.dev/api/vehicles/30/)
-> - **Starships**:
->   - [Starship 12](https://swapi.dev/api/starships/12/)
->   - [Starship 22](https://swapi.dev/api/starships/22/)
-> - **Created**: 2014-12-09T13:50:51.644000Z
-> - **Edited**: 2014-12-20T21:17:56.891000Z
-> - **URL**: [https://swapi.dev/api/people/1/](https://swapi.dev/api/people/1/)
+> This URL returns JSON data about Frodo Baggins from The Lord of the Rings. The data includes:
+> - Name: Frodo Baggins
+> - Height: 1.06m
+> - Hair color: Brown
+> - Eye color: Blue
+> - Date of birth: 22 September, TA 2968
+> - Gender: Male
+> - Weapons: Sting and Barrow-blade
+
+> The data also includes references (URLs) to additional information about his:
+> - Realm
+> - Species
+> - Race
+> - Group
+> - Languages (3 different ones)
+> - Appearances in films (3 films)
+> - Appearances in books (3 books)
+
+> Each of these references is provided as a URL that could be queried separately for more detailed information about those aspects.
 
 and you can describe the task to see the full context window and tool-calling turns
 
@@ -761,47 +754,75 @@ Status:
     Content:  You are a helpful assistant. Your job is to help the user with their tasks.
 
     Role:     system
-    Content:  what is the data at https://swapi.dev/api/people/1?
+    Content:  what is the data at https://lotrapi.co/api/v1/characters/1?
     Role:     user
     Content:
     Role:     assistant
     Tool Calls:
       Function:
-        Arguments:  {"url":"https://swapi.dev/api/people/1"}
+        Arguments:  {"url":"https://lotrapi.co/api/v1/characters/1"}
         Name:       fetch__fetch
-      Id:           call_sLHvRHebP7YkpLUsAdKiF6u0
-      Type:         function
+      Id:           toolu_01DpAsxM5t458cyFgmdZQhj1
+      Type:
     Content:        Content type application/json cannot be simplified to markdown, but here is the raw content:
-Contents of https://swapi.dev/api/people/1:
-{"name":"Luke Skywalker","height":"172","mass":"77","hair_color":"blond","skin_color":"fair","eye_color":"blue","birth_year":"19BBY","gender":"male","homeworld":"https://swapi.dev/api/planets/1/","films":["https://swapi.dev/api/films/1/","https://swapi.dev/api/films/2/","https://swapi.dev/api/films/3/","https://swapi.dev/api/films/6/"],"species":[],"vehicles":["https://swapi.dev/api/vehicles/14/","https://swapi.dev/api/vehicles/30/"],"starships":["https://swapi.dev/api/starships/12/","https://swapi.dev/api/starships/22/"],"created":"2014-12-09T13:50:51.644000Z","edited":"2014-12-20T21:17:56.891000Z","url":"https://swapi.dev/api/people/1/"}
-    Role:          tool
-    Tool Call Id:  call_sLHvRHebP7YkpLUsAdKiF6u0
-    Content:       The URL [https://swapi.dev/api/people/1](https://swapi.dev/api/people/1) contains the following data about a Star Wars character:
+Contents of https://lotrapi.co/api/v1/characters/1:
 
-- **Name**: Luke Skywalker
-- **Height**: 172 cm
-- **Mass**: 77 kg
-- **Hair Color**: Blond
-- **Skin Color**: Fair
-- **Eye Color**: Blue
-- **Birth Year**: 19BBY
-- **Gender**: Male
-- **Homeworld**: [Link to Homeworld](https://swapi.dev/api/planets/1/)
-- **Films**: Appeared in several films, linked as:
-  - [Film 1](https://swapi.dev/api/films/1/)
-  - [Film 2](https://swapi.dev/api/films/2/)
-  - [Film 3](https://swapi.dev/api/films/3/)
-  - [Film 6](https://swapi.dev/api/films/6/)
-- **Species**: None listed
-- **Vehicles**:
-  - [Vehicle 14](https://swapi.dev/api/vehicles/14/)
-  - [Vehicle 30](https://swapi.dev/api/vehicles/30/)
-- **Starships**:
-  - [Starship 12](https://swapi.dev/api/starships/12/)
-  - [Starship 22](https://swapi.dev/api/starships/22/)
-- **Created**: 2014-12-09T13:50:51.644000Z
-- **Edited**: 2014-12-20T21:17:56.891000Z
-- **URL**: [https://swapi.dev/api/people/1/](https://swapi.dev/api/people/1/)
+    {
+        "id": 1,
+        "name": "Frodo Baggins",
+        "realm": "https://lotrapi.co/api/v1/realms/1",
+        "height": "1.06m",
+        "hair_color": "Brown",
+        "eye_color": "Blue",
+        "date_of_birth": "22 September, TA 2968",
+        "date_of_death": "Unknown",
+        "gender": "Male",
+        "species": "https://lotrapi.co/api/v1/species/1",
+        "race": "https://lotrapi.co/api/v1/races/1",
+        "group": "https://lotrapi.co/api/v1/groups/1",
+        "weapons": [
+            "Sting",
+            "Barrow-blade"
+        ],
+        "languages": [
+            "https://lotrapi.co/api/v1/languages/1",
+            "https://lotrapi.co/api/v1/languages/3",
+            "https://lotrapi.co/api/v1/languages/4"
+        ],
+        "films": [
+            "https://lotrapi.co/api/v1/films/1",
+            "https://lotrapi.co/api/v1/films/2",
+            "https://lotrapi.co/api/v1/films/3"
+        ],
+        "books": [
+            "https://lotrapi.co/api/v1/books/1",
+            "https://lotrapi.co/api/v1/books/2",
+            "https://lotrapi.co/api/v1/books/3"
+        ],
+        "url": "https://lotrapi.co/api/v1/characters/1"
+    }
+
+    Role:          tool
+    Tool Call Id:  toolu_01DpAsxM5t458cyFgmdZQhj1
+    Content:       This URL returns JSON data about Frodo Baggins from The Lord of the Rings. The data includes:
+- Name: Frodo Baggins
+- Height: 1.06m
+- Hair color: Brown
+- Eye color: Blue
+- Date of birth: 22 September, TA 2968
+- Gender: Male
+- Weapons: Sting and Barrow-blade
+
+The data also includes references (URLs) to additional information about his:
+- Realm
+- Species
+- Race
+- Group
+- Languages (3 different ones)
+- Appearances in films (3 films)
+- Appearances in books (3 books)
+
+Each of these references is provided as a URL that could be queried separately for more detailed information about those aspects.
     Role:  assistant
 
 # ...snip...
