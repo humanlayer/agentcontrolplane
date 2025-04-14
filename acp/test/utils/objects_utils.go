@@ -12,6 +12,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type TestUtils struct {
+	K8sClient client.Client
+}
+
 type TestScopedAgent struct {
 	Name                 string
 	SystemPrompt         string

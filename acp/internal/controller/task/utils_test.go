@@ -2,9 +2,8 @@ package task
 
 import (
 	"context"
+	"github.com/humanlayer/agentcontrolplane/acp/test/utils"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -16,36 +15,8 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 )
 
-// todo this file should probably live in a shared package, but for now...
-type TestSecret struct {
-	name   string
-	secret *corev1.Secret
-}
-
-func (t *TestSecret) Setup(ctx context.Context) *corev1.Secret {
-	By("creating the secret")
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      t.name,
-			Namespace: "default",
-		},
-		Data: map[string][]byte{
-			"api-key": []byte("test-api-key"),
-		},
-	}
-	err := k8sClient.Create(ctx, secret)
-	Expect(err).NotTo(HaveOccurred())
-	t.secret = secret
-	return secret
-}
-
-func (t *TestSecret) Teardown(ctx context.Context) {
-	By("deleting the secret")
-	Expect(k8sClient.Delete(ctx, t.secret)).To(Succeed())
-}
-
-var testSecret = &TestSecret{
-	name: "test-secret",
+var testSecret = &utils.TestSecret{
+	Name: "test-secret",
 }
 
 type TestLLM struct {
@@ -64,7 +35,7 @@ func (t *TestLLM) Setup(ctx context.Context) *acp.LLM {
 			Provider: "openai",
 			APIKeyFrom: &acp.APIKeySource{
 				SecretKeyRef: acp.SecretKeyRef{
-					Name: testSecret.name,
+					Name: testSecret.Name,
 					Key:  "api-key",
 				},
 			},
