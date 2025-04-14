@@ -380,10 +380,10 @@ func (r *ToolCallReconciler) getMCPServer(ctx context.Context, tc *acp.ToolCall)
 }
 
 // getContactChannel fetches and validates the ContactChannel resource
-func (r *ToolCallReconciler) getContactChannel(ctx context.Context, channelName string, trtcNamespace string) (*acp.ContactChannel, error) {
+func (r *ToolCallReconciler) getContactChannel(ctx context.Context, channelName string, tcNamespace string) (*acp.ContactChannel, error) {
 	var contactChannel acp.ContactChannel
 	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: trtcNamespace,
+		Namespace: tcNamespace,
 		Name:      channelName,
 	}, &contactChannel); err != nil {
 

@@ -1071,7 +1071,7 @@ cat <<EOF | kubectl apply -f -
 apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: ContactChannel
 metadata:
-  name: frodo-baggins-expert
+  name: human-expert
 spec:
   type: email
   apiKeyFrom:
@@ -1080,8 +1080,8 @@ spec:
       key: HUMANLAYER_API_KEY
   email:
     address: "$MY_EMAIL"
-    subject: "Frodo Baggins Knowledge Request" 
-    contextAboutUser: "Expert on all things related to the Lord of the Rings character, Frodo Baggins"
+    subject: "Request for Expertise" 
+    contextAboutUser: "A human expert that can provide a wide-range answers on a variety of topics"
 EOF
 ```
 
@@ -1101,7 +1101,7 @@ spec:
   mcpServers:
     - name: fetch
   humanContactChannels:
-    - name: frodo-baggins-expert
+    - name: human-expert
 EOF
 ```
 
@@ -1112,29 +1112,15 @@ cat <<EOF | kubectl apply -f -
 apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
-  name: baggins-task
+  name: human-expert-task
 spec:
   agentRef:
     name: agent-with-human-tool
-  userMessage: "Learn about the character found at https://lotrapi.co/api/v1/characters/1. If the character is Frodo Baggins, consult an expert for extra knowledge. Provide final information about the character in the form of a haiku."
+  userMessage: "Ask an expert what the the fastest animal on the planet is."
 EOF
 ```
 
-Conversely, the following request should not:
-
-```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
-kind: Task
-metadata:
-  name: gandalf-task
-spec:
-  agentRef:
-    name: agent-with-human-tool
-  userMessage: "Learn about the character found at https://lotrapi.co/api/v1/characters/3. If the character is Frodo Baggins, consult an expert for extra knowledge. Provide final information about the character in the form of a haiku."
-EOF
-```
-
+Provided, you've setup your `ContactChannel` correctly, you should receive an email requesting your expertise. Feel free to respond when ready and keep an eye on how your `Task` and `ToolCall` statuses changes as the answer is picked up.
 
 
 ### Open Telemetry support
