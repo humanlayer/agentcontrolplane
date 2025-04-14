@@ -1058,7 +1058,7 @@ Events:
 
 For certain workflows, you may desire humans to provide non-deterministic input (in contrast to the deterministic behavior described in the "Human Approval" workflow above). For these operations, ACP provides support via [HumanLayer's](https://github.com/humanlayer/humanlayer) [Human as Tool](https://www.humanlayer.dev/docs/core/human-as-tool) feature set.
 
-**Note**: We recommend running through the above examples first prior exploring this section. Several Kubernetes resources created in that section will be assumed to exist.
+**Note**: This example builds on prior examples, and assumes you've already created base objects like Secrets, LLMs.
 
 We're going to create a new `Agent` and related `Task`, but before we can do that, we'll want a new `ContactChannel` to work with:
 
