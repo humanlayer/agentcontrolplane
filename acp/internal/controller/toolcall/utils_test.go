@@ -66,11 +66,11 @@ func (t *TestContactChannel) Setup(ctx context.Context) *acp.ContactChannel {
 	}
 
 	// Add specific config based on channel type
-	if t.channelType == "slack" {
+	if t.channelType == acp.ContactChannelTypeSlack {
 		contactChannel.Spec.Slack = &acp.SlackChannelConfig{
 			ChannelOrUserID: "C12345678",
 		}
-	} else if t.channelType == "email" {
+	} else if t.channelType == acp.ContactChannelTypeEmail {
 		contactChannel.Spec.Email = &acp.EmailChannelConfig{
 			Address: "test@example.com",
 		}
