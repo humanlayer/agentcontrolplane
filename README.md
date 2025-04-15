@@ -4,9 +4,9 @@
 
 </div>
 
-ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on Kubernetes. It supports [long-lived outer-loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards) that can process asynchronous execution of both LLM inference and long-running tool calls. It's designed for simplicity and gives strong durability and reliability guarantees for agents that make asynchronous tool calls like contacting humans or delegating work to other agents.
+ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on Kubernetes. It supports [long-lived outer-loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards) that can process asynchronous execution of both LLM inference and long-running tool calls. It's designed for simplicity and gives strong durability and reliability guarantees. It embraces concepts from [12-factor-agents](https://hlyr.dev/12fa) for agents that make asynchronous tool calls like contacting humans or delegating work to other agents.
 
-:warning: **Note** - ACP is in alpha. Use at your own risk.
+:warning: **Note** - ACP is in alpha.
 
 <div align="center">
 
@@ -34,6 +34,7 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
   - [Adding Tools with MCP](#adding-tools-with-mcp)
   - [Using other language models](#using-other-language-models)
   - [Incorporating Human Approval](#incorporating-human-approval)
+  - [Incorporating Humans as Tools](#humans-as-tools)
   - [Cleaning Up](#cleaning-up)
 - [Design Principles](#design-principles)
 - [Contributing](#contributing)
@@ -653,7 +654,7 @@ metadata:
 spec:
   agentRef:
     name: my-assistant
-  userMessage: "what is the data at https://swapi.dev/api/people/1? "
+  userMessage: "what is the data at https://lotrapi.co/api/characters/1? "
 EOF
 ```
 
@@ -679,32 +680,25 @@ You can also explore the ToolCall events
 kubectl get task fetch-task -o jsonpath='{.status.output}'
 ```
 
-> The URL [https://swapi.dev/api/people/1](https://swapi.dev/api/people/1) contains the following data about a Star Wars character:
->
-> - **Name**: Luke Skywalker
-> - **Height**: 172 cm
-> - **Mass**: 77 kg
-> - **Hair Color**: Blond
-> - **Skin Color**: Fair
-> - **Eye Color**: Blue
-> - **Birth Year**: 19BBY
-> - **Gender**: Male
-> - **Homeworld**: [Link to Homeworld](https://swapi.dev/api/planets/1/)
-> - **Films**: Appeared in several films, linked as:
->   - [Film 1](https://swapi.dev/api/films/1/)
->   - [Film 2](https://swapi.dev/api/films/2/)
->   - [Film 3](https://swapi.dev/api/films/3/)
->   - [Film 6](https://swapi.dev/api/films/6/)
-> - **Species**: None listed
-> - **Vehicles**:
->   - [Vehicle 14](https://swapi.dev/api/vehicles/14/)
->   - [Vehicle 30](https://swapi.dev/api/vehicles/30/)
-> - **Starships**:
->   - [Starship 12](https://swapi.dev/api/starships/12/)
->   - [Starship 22](https://swapi.dev/api/starships/22/)
-> - **Created**: 2014-12-09T13:50:51.644000Z
-> - **Edited**: 2014-12-20T21:17:56.891000Z
-> - **URL**: [https://swapi.dev/api/people/1/](https://swapi.dev/api/people/1/)
+> This URL returns JSON data about Frodo Baggins from The Lord of the Rings. The data includes:
+> - Name: Frodo Baggins
+> - Height: 1.06m
+> - Hair color: Brown
+> - Eye color: Blue
+> - Date of birth: 22 September, TA 2968
+> - Gender: Male
+> - Weapons: Sting and Barrow-blade
+
+> The data also includes references (URLs) to additional information about his:
+> - Realm
+> - Species
+> - Race
+> - Group
+> - Languages (3 different ones)
+> - Appearances in films (3 films)
+> - Appearances in books (3 books)
+
+> Each of these references is provided as a URL that could be queried separately for more detailed information about those aspects.
 
 and you can describe the task to see the full context window and tool-calling turns
 
@@ -761,47 +755,75 @@ Status:
     Content:  You are a helpful assistant. Your job is to help the user with their tasks.
 
     Role:     system
-    Content:  what is the data at https://swapi.dev/api/people/1?
+    Content:  what is the data at https://lotrapi.co/api/v1/characters/1?
     Role:     user
     Content:
     Role:     assistant
     Tool Calls:
       Function:
-        Arguments:  {"url":"https://swapi.dev/api/people/1"}
+        Arguments:  {"url":"https://lotrapi.co/api/v1/characters/1"}
         Name:       fetch__fetch
-      Id:           call_sLHvRHebP7YkpLUsAdKiF6u0
-      Type:         function
+      Id:           toolu_01DpAsxM5t458cyFgmdZQhj1
+      Type:
     Content:        Content type application/json cannot be simplified to markdown, but here is the raw content:
-Contents of https://swapi.dev/api/people/1:
-{"name":"Luke Skywalker","height":"172","mass":"77","hair_color":"blond","skin_color":"fair","eye_color":"blue","birth_year":"19BBY","gender":"male","homeworld":"https://swapi.dev/api/planets/1/","films":["https://swapi.dev/api/films/1/","https://swapi.dev/api/films/2/","https://swapi.dev/api/films/3/","https://swapi.dev/api/films/6/"],"species":[],"vehicles":["https://swapi.dev/api/vehicles/14/","https://swapi.dev/api/vehicles/30/"],"starships":["https://swapi.dev/api/starships/12/","https://swapi.dev/api/starships/22/"],"created":"2014-12-09T13:50:51.644000Z","edited":"2014-12-20T21:17:56.891000Z","url":"https://swapi.dev/api/people/1/"}
-    Role:          tool
-    Tool Call Id:  call_sLHvRHebP7YkpLUsAdKiF6u0
-    Content:       The URL [https://swapi.dev/api/people/1](https://swapi.dev/api/people/1) contains the following data about a Star Wars character:
+Contents of https://lotrapi.co/api/v1/characters/1:
 
-- **Name**: Luke Skywalker
-- **Height**: 172 cm
-- **Mass**: 77 kg
-- **Hair Color**: Blond
-- **Skin Color**: Fair
-- **Eye Color**: Blue
-- **Birth Year**: 19BBY
-- **Gender**: Male
-- **Homeworld**: [Link to Homeworld](https://swapi.dev/api/planets/1/)
-- **Films**: Appeared in several films, linked as:
-  - [Film 1](https://swapi.dev/api/films/1/)
-  - [Film 2](https://swapi.dev/api/films/2/)
-  - [Film 3](https://swapi.dev/api/films/3/)
-  - [Film 6](https://swapi.dev/api/films/6/)
-- **Species**: None listed
-- **Vehicles**:
-  - [Vehicle 14](https://swapi.dev/api/vehicles/14/)
-  - [Vehicle 30](https://swapi.dev/api/vehicles/30/)
-- **Starships**:
-  - [Starship 12](https://swapi.dev/api/starships/12/)
-  - [Starship 22](https://swapi.dev/api/starships/22/)
-- **Created**: 2014-12-09T13:50:51.644000Z
-- **Edited**: 2014-12-20T21:17:56.891000Z
-- **URL**: [https://swapi.dev/api/people/1/](https://swapi.dev/api/people/1/)
+    {
+        "id": 1,
+        "name": "Frodo Baggins",
+        "realm": "https://lotrapi.co/api/v1/realms/1",
+        "height": "1.06m",
+        "hair_color": "Brown",
+        "eye_color": "Blue",
+        "date_of_birth": "22 September, TA 2968",
+        "date_of_death": "Unknown",
+        "gender": "Male",
+        "species": "https://lotrapi.co/api/v1/species/1",
+        "race": "https://lotrapi.co/api/v1/races/1",
+        "group": "https://lotrapi.co/api/v1/groups/1",
+        "weapons": [
+            "Sting",
+            "Barrow-blade"
+        ],
+        "languages": [
+            "https://lotrapi.co/api/v1/languages/1",
+            "https://lotrapi.co/api/v1/languages/3",
+            "https://lotrapi.co/api/v1/languages/4"
+        ],
+        "films": [
+            "https://lotrapi.co/api/v1/films/1",
+            "https://lotrapi.co/api/v1/films/2",
+            "https://lotrapi.co/api/v1/films/3"
+        ],
+        "books": [
+            "https://lotrapi.co/api/v1/books/1",
+            "https://lotrapi.co/api/v1/books/2",
+            "https://lotrapi.co/api/v1/books/3"
+        ],
+        "url": "https://lotrapi.co/api/v1/characters/1"
+    }
+
+    Role:          tool
+    Tool Call Id:  toolu_01DpAsxM5t458cyFgmdZQhj1
+    Content:       This URL returns JSON data about Frodo Baggins from The Lord of the Rings. The data includes:
+- Name: Frodo Baggins
+- Height: 1.06m
+- Hair color: Brown
+- Eye color: Blue
+- Date of birth: 22 September, TA 2968
+- Gender: Male
+- Weapons: Sting and Barrow-blade
+
+The data also includes references (URLs) to additional information about his:
+- Realm
+- Species
+- Race
+- Group
+- Languages (3 different ones)
+- Appearances in films (3 films)
+- Appearances in books (3 books)
+
+Each of these references is provided as a URL that could be queried separately for more detailed information about those aspects.
     Role:  assistant
 
 # ...snip...
@@ -932,7 +954,7 @@ cat <<EOF | kubectl apply -f -
 apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: ContactChannel
 metadata:
-  name: approval-channel
+  name: approval-channel 
 spec:
   type: email # Replace with "slack" if using Slack
   apiKeyFrom:
@@ -1052,6 +1074,76 @@ Events:
   Normal  AllToolCallsCompleted      7s                task-controller  All tool calls completed, ready to send tool results to LLM
   Normal  LLMFinalAnswer             6s                task-controller  LLM response received successfully
 ```
+
+### Incorporating Humans as Tools
+
+For certain workflows, you may desire humans to provide non-deterministic input (in contrast to the deterministic behavior described in the "Human Approval" workflow above). For these operations, ACP provides support via [HumanLayer's](https://github.com/humanlayer/humanlayer) [Human as Tool](https://www.humanlayer.dev/docs/core/human-as-tool) feature set.
+
+**Note**: This example builds on prior examples, and assumes you've already created base objects like Secrets, LLMs.
+
+We're going to create a new `Agent` and related `Task`, but before we can do that, we'll want a new `ContactChannel` to work with:
+
+```bash
+export MY_EMAIL=... # your email here
+```
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: ContactChannel
+metadata:
+  name: human-expert
+spec:
+  type: email
+  apiKeyFrom:
+    secretKeyRef:
+      name: humanlayer
+      key: HUMANLAYER_API_KEY
+  email:
+    address: "$MY_EMAIL"
+    subject: "Request for Expertise" 
+    contextAboutUser: "A human expert that can provide a wide-range answers on a variety of topics"
+EOF
+```
+
+Alright, we're ready for a brand new agent:
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: Agent
+metadata:
+  name: agent-with-human-tool
+spec:
+  llmRef:
+    name: gpt-4o
+  system: |
+    You are a helpful assistant. Your job is to help the user with their tasks.
+  mcpServers:
+    - name: fetch
+  humanContactChannels:
+    - name: human-expert
+EOF
+```
+
+Note the inclusion of `humanContactChannels` here, which now incorporates the `ContactChannel` we just made. Moving forward, any `Task` calls made against this `Agent` will attempt to make use of a human contact where appropriate. As an example, the following Task, _should_ (remember, "non-deterministic") reach out to our Luke Skywalker expert for more information before wrapping up the final output:
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: Task
+metadata:
+  name: human-expert-task
+spec:
+  agentRef:
+    name: agent-with-human-tool
+  userMessage: "Ask an expert what the the fastest animal on the planet is."
+EOF
+```
+
+Provided, you've setup your `ContactChannel` correctly, you should receive an email requesting your expertise. Feel free to respond when ready and keep an eye on how your `Task` and `ToolCall` statuses changes as the answer is picked up.
+
+
 ### Open Telemetry support
 
 You can use the `acp-example` folder to spin up a cluster with an otel stack, to view Task execution traces in grafana + tempo
@@ -1088,7 +1180,7 @@ kubectl delete secret humanlayer
 Remove the operator, resources and custom resource definitions:
 
 ```
-kubectl delete -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/config/release/latest.yaml
+kubectl delete -f https://raw.githubusercontent.com/humanlayer/agentcontrolplane/refs/heads/main/acp/config/release/latest.yaml
 ```
 
 If you made a kind cluster, you can delete it with:

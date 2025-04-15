@@ -23,6 +23,8 @@ metadata:
   name: gpt-4o
 spec:
   provider: openai
+  parameters: 
+    model: "gpt-4o"
   apiKeyFrom:
     secretKeyRef:
       name: openai
