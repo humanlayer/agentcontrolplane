@@ -61,6 +61,10 @@ type AgentStatus struct {
 	// ValidHumanContactChannels is the list of human contact channels that were successfully validated
 	// +optional
 	ValidHumanContactChannels []ResolvedContactChannel `json:"validHumanContactChannels,omitempty"`
+
+	// ValidSubAgents is the list of sub-agents that were successfully validated
+	// +optional
+	ValidSubAgents []ResolvedSubAgent `json:"validSubAgents,omitempty"`
 }
 
 type ResolvedMCPServer struct {
@@ -81,6 +85,12 @@ type ResolvedContactChannel struct {
 	// Type of the contact channel (e.g., "slack", "email")
 	// +kubebuilder:validation:Required
 	Type string `json:"type"`
+}
+
+type ResolvedSubAgent struct {
+	// Name of the sub-agent
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
 }
 
 // +kubebuilder:object:root=true
