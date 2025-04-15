@@ -147,7 +147,7 @@ var _ = Describe("ToolCall Controller", func() {
 				Ready:  true,
 				Status: "Ready",
 			})
-			defer testSlackContactChannel.Teardown(ctx)
+			defer testEmailContactChannel.Teardown(ctx)
 
 			testMCPServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
 				Connected: true,
