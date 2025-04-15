@@ -139,20 +139,16 @@ func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agen
 		}
 
 		// Check that the context about the user/channel is provided based on the channel type
+		// todo(dex) why does this happen at runtime in the agent controller and not when the contact channel is created?
+		// the agent controller shouldn't have to know about this, this is a ContactChannel controller responsibility
 		switch channel.Spec.Type {
 		case acp.ContactChannelTypeEmail:
 			if channel.Spec.Email == nil {
 				return validChannels, fmt.Errorf("ContactChannel %q is missing Email configuration", channelRef.Name)
 			}
-			if channel.Spec.Email.ContextAboutUser == "" {
-				return validChannels, fmt.Errorf("ContactChannel %q must have ContextAboutUser set", channelRef.Name)
-			}
 		case acp.ContactChannelTypeSlack:
 			if channel.Spec.Slack == nil {
 				return validChannels, fmt.Errorf("ContactChannel %q is missing Slack configuration", channelRef.Name)
-			}
-			if channel.Spec.Slack.ContextAboutChannelOrUser == "" {
-				return validChannels, fmt.Errorf("ContactChannel %q must have ContextAboutChannelOrUser set", channelRef.Name)
 			}
 		default:
 			return validChannels, fmt.Errorf("ContactChannel %q has unsupported type %q", channelRef.Name, channel.Spec.Type)
