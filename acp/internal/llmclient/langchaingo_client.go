@@ -101,11 +101,7 @@ func (c *LangchainClient) SendRequest(ctx context.Context, messages []acp.Messag
 	// Make the API call
 	response, err := c.model.GenerateContent(ctx, langchainMessages, options...)
 	if err != nil {
-		return nil, &LLMRequestError{
-			StatusCode: response.StatusCode,
-			Message:    fmt.Sprintf("langchain API call failed: %v", err),
-			Err:        err,
-		}
+		return nil, fmt.Errorf("model API call failed: %w", err)
 	}
 
 	// Log response characteristics for debugging
