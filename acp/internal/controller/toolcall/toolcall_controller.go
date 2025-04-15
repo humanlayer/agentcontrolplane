@@ -1114,6 +1114,13 @@ func (r *ToolCallReconciler) processDelegateToAgent(ctx context.Context, tc *acp
 	childTaskName := fmt.Sprintf("delegate-%s-%s", tc.Name, agentName)
 	if len(childTaskName) > 63 {
 		// Ensure name isn't too long for Kubernetes
+		// todo(dex) the task will also need tool calls which will need unique names - so need to get smarter here
+		// the current namends up like -
+		//
+		//    delegate-manager-task-00293a0-tc-01-web-search-90b382e-tc-01
+		//
+		// might mean removing the generationID-INDEX and just giving every tool call a unique 7-char sha-ish thing, among other things
+		//
 		childTaskName = childTaskName[:55] + "-" + uuid.New().String()[:7]
 	}
 

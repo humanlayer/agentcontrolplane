@@ -16,6 +16,9 @@ import (
 )
 
 // LangchainClient implements the LLMClient interface using langchaingo
+
+var _ LLMClient = &LangchainClient{}
+
 type LangchainClient struct {
 	model llms.Model
 }
@@ -98,7 +101,11 @@ func (c *LangchainClient) SendRequest(ctx context.Context, messages []acp.Messag
 	// Make the API call
 	response, err := c.model.GenerateContent(ctx, langchainMessages, options...)
 	if err != nil {
-		return nil, fmt.Errorf("langchain API call failed: %w", err)
+		return nil, &LLMRequestError{
+			StatusCode: response.StatusCode,
+			Message:    fmt.Sprintf("langchain API call failed: %v", err),
+			Err:        err,
+		}
 	}
 
 	// Log response characteristics for debugging

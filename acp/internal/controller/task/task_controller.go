@@ -671,6 +671,10 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		statusUpdate.Status.Error = err.Error()
 
 		// Check for LLMRequestError with 4xx status code
+		// todo(dex) this .As() casting does not work - this error still retries forever
+		//
+		//     langchain API call failed: API returned unexpected status code: 400: An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. The following tool_call_ids did not have response messages: call_N38DB1obDYZF0yDYxZhK6lTe
+		//
 		var llmErr *llmclient.LLMRequestError
 		is4xxError := errors.As(err, &llmErr) && llmErr.StatusCode >= 400 && llmErr.StatusCode < 500
 
