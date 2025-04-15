@@ -556,7 +556,7 @@ func (r *ToolCallReconciler) handlePendingApproval(ctx context.Context, tc *acp.
 
 func (r *ToolCallReconciler) handlePendingHumanInput(ctx context.Context, tc *acp.ToolCall, apiKey string) (result ctrl.Result, err error, handled bool) {
 	if tc.Status.ExternalCallID == "" {
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
 			"NoExternalCallID", tc, fmt.Errorf("missing ExternalCallID in AwaitingHumanInput phase"))
 		return result, errStatus, true
 	}
@@ -639,8 +639,6 @@ func (r *ToolCallReconciler) requestHumanApproval(ctx context.Context, tc *acp.T
 		}
 		approvalSpan.RecordError(errorMsg)
 		approvalSpan.SetStatus(codes.Error, "HumanLayer request failed")
-		// Use approvalCtx for setStatusError
-		// Fix: Adjust return values from setStatusError
 		result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
 			"HumanLayerRequestFailed", tc, errorMsg)
 		return result, errStatus // Return only Result and error
@@ -667,7 +665,7 @@ func (r *ToolCallReconciler) requestHumanContact(ctx context.Context, tc *acp.To
 	// Verify HLClient is initialized
 	if r.HLClientFactory == nil {
 		err := fmt.Errorf("HLClient not initialized")
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
 			"NoHumanLayerClient", tc, err)
 		return result, errStatus
 	}
@@ -690,7 +688,7 @@ func (r *ToolCallReconciler) requestHumanContact(ctx context.Context, tc *acp.To
 	humanContact, statusCode, err := client.RequestHumanContact(ctx, tc.Spec.Arguments)
 	if err != nil {
 		errorMsg := fmt.Errorf("HumanLayer request failed with status code: %d", statusCode)
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
 			"HumanLayerRequestFailed", tc, errorMsg)
 		return result, errStatus
 	}
@@ -772,14 +770,14 @@ func (r *ToolCallReconciler) handleHumanContactFlow(ctx context.Context, tc *acp
 	// Split toolName to get channel name from format CHANNEL_NAME__TOOLNAME
 	parts := strings.Split(toolName, "__")
 	if len(parts) != 2 {
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
 			"InvalidToolName", tc, fmt.Errorf("invalid tool name format: %s", toolName))
 		return result, errStatus, true
 	}
 	channelName := parts[0]
 	contactChannel, err := r.getContactChannel(ctx, channelName, tcNamespace)
 	if err != nil {
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
 			"NoContactChannel", tc, err)
 		return result, errStatus, true
 	}
@@ -790,7 +788,7 @@ func (r *ToolCallReconciler) handleHumanContactFlow(ctx context.Context, tc *acp
 		tcNamespace)
 
 	if err != nil || apiKey == "" {
-		result, errStatus, _ := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
+		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanInput,
 			"NoAPIKey", tc, err)
 		return result, errStatus, true
 	}
