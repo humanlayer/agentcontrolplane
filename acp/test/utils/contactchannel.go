@@ -61,7 +61,11 @@ func (t *TestContactChannel) Setup(ctx context.Context, k8sClient client.Client)
 	return contactChannel
 }
 
-func (t *TestContactChannel) SetupWithStatus(ctx context.Context, k8sClient client.Client, status acp.ContactChannelStatus) *acp.ContactChannel {
+func (t *TestContactChannel) SetupWithStatus(
+	ctx context.Context,
+	k8sClient client.Client,
+	status acp.ContactChannelStatus,
+) *acp.ContactChannel {
 	contactChannel := t.Setup(ctx, k8sClient)
 	contactChannel.Status = status
 	Expect(k8sClient.Status().Update(ctx, contactChannel)).To(Succeed())

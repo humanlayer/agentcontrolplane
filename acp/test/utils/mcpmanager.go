@@ -10,7 +10,11 @@ type MockMCPManager struct {
 }
 
 // CallTool implements the MCPManager.CallTool method
-func (m *MockMCPManager) CallTool(ctx context.Context, serverName, toolName string, args map[string]interface{}) (string, error) {
+func (m *MockMCPManager) CallTool(
+	ctx context.Context,
+	serverName, toolName string,
+	args map[string]interface{},
+) (string, error) {
 	// If we're testing the approval flow, return an error to prevent direct execution
 	if m.NeedsApproval {
 		return "", fmt.Errorf("tool requires approval")

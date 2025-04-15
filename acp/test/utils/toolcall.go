@@ -53,7 +53,11 @@ func (t *TestToolCall) Setup(ctx context.Context, k8sClient client.Client) *acp.
 	return toolCall
 }
 
-func (t *TestToolCall) SetupWithStatus(ctx context.Context, k8sClient client.Client, status acp.ToolCallStatus) *acp.ToolCall {
+func (t *TestToolCall) SetupWithStatus(
+	ctx context.Context,
+	k8sClient client.Client,
+	status acp.ToolCallStatus,
+) *acp.ToolCall {
 	taskRunToolCall := t.Setup(ctx, k8sClient)
 	taskRunToolCall.Status = status
 	Expect(k8sClient.Status().Update(ctx, taskRunToolCall)).To(Succeed())

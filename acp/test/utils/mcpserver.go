@@ -47,7 +47,11 @@ func (t *TestMCPServer) Setup(ctx context.Context, k8sClient client.Client) *acp
 	return mcpServer
 }
 
-func (t *TestMCPServer) SetupWithStatus(ctx context.Context, k8sClient client.Client, status acp.MCPServerStatus) *acp.MCPServer {
+func (t *TestMCPServer) SetupWithStatus(
+	ctx context.Context,
+	k8sClient client.Client,
+	status acp.MCPServerStatus,
+) *acp.MCPServer {
 	mcpServer := t.Setup(ctx, k8sClient)
 	mcpServer.Status = status
 	Expect(k8sClient.Status().Update(ctx, mcpServer)).To(Succeed())
