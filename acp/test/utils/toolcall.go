@@ -58,11 +58,11 @@ func (t *TestToolCall) SetupWithStatus(
 	k8sClient client.Client,
 	status acp.ToolCallStatus,
 ) *acp.ToolCall {
-	taskRunToolCall := t.Setup(ctx, k8sClient)
-	taskRunToolCall.Status = status
-	Expect(k8sClient.Status().Update(ctx, taskRunToolCall)).To(Succeed())
-	t.ToolCall = taskRunToolCall
-	return taskRunToolCall
+	toolCall := t.Setup(ctx, k8sClient)
+	toolCall.Status = status
+	Expect(k8sClient.Status().Update(ctx, toolCall)).To(Succeed())
+	t.ToolCall = toolCall
+	return toolCall
 }
 
 func (t *TestToolCall) Teardown(ctx context.Context) {

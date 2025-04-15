@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -32,6 +33,228 @@ var testMCPServer = &utils.TestMCPServer{
 }
 
 var _ = Describe("ToolCall Controller", func() {
+	// Tests for DelegateToAgent tool
+	Context("Ready:AwaitingSubAgent -> Error:Failed (DelegateToAgent Tool, Task Failed)", func() {
+		It("transitions to Error:Failed when sub-agent task fails", func() {
+			By("creating a ToolCall for delegate to agent already in AwaitingSubAgent phase")
+			toolCall := &utils.TestToolCall{
+				Name:     "test-delegate-tool-call-failed",
+				ToolRef:  "delegate_to_agent__test-sub-agent",
+				TaskName: "task-party-2025",
+				ToolType: acp.ToolTypeDelegateToAgent,
+			}
+
+			// Set up with Ready:AwaitingSubAgent status
+			tc := toolCall.SetupWithStatus(ctx, acp.ToolCallStatus{
+				Status:       acp.ToolCallStatusTypeReady,
+				Phase:        acp.ToolCallPhaseAwaitingSubAgent,
+				StatusDetail: "Delegating to sub-agent test-sub-agent",
+				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				SpanContext:  utils.FakeSpanContext,
+			})
+			defer toolCall.Teardown(ctx)
+
+			By("creating a failed child Task")
+			childTask := &acp.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-child-task-failed",
+					Namespace: "default",
+					Labels: map[string]string{
+						"acp.humanlayer.dev/parent-toolcall": tc.Name,
+					},
+				},
+				Spec: acp.TaskSpec{
+					AgentRef: acp.LocalObjectReference{
+						Name: "test-sub-agent",
+					},
+					UserMessage: "Please analyze this data",
+				},
+				Status: acp.TaskStatus{
+					Status:         acp.TaskStatusTypeError,
+					Phase:          acp.TaskPhaseFailed,
+					Error:          "Failed to analyze data: insufficient permissions",
+					StartTime:      &metav1.Time{Time: time.Now().Add(-5 * time.Minute)},
+					CompletionTime: &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, childTask)).To(Succeed())
+			Expect(k8sClient.Status().Update(ctx, childTask)).To(Succeed())
+			defer func() { k8sClient.Delete(ctx, childTask) }()
+
+			By("reconciling the ToolCall")
+			reconciler, recorder := reconciler()
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
+
+			By("checking the ToolCall is updated to Error state")
+			updatedTC := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedTC)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseFailed))
+			Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeError))
+			Expect(updatedTC.Status.Error).To(Equal("Failed to analyze data: insufficient permissions"))
+			Expect(updatedTC.Status.Result).To(ContainSubstring("Sub-agent task failed"))
+			Expect(updatedTC.Status.CompletionTime).NotTo(BeNil())
+
+			By("checking that appropriate events were emitted")
+			utils.ExpectRecorder(recorder).ToEmitEventContaining("SubAgentFailed")
+		})
+	})
+
+	Context("Ready:AwaitingSubAgent -> Succeeded:Succeeded (DelegateToAgent Tool, Task Completed)", func() {
+		It("transitions to Succeeded:Succeeded when sub-agent task completes", func() {
+			By("creating a ToolCall for delegate to agent already in AwaitingSubAgent phase")
+			toolCall := &TestToolCall{
+				name:      "test-delegate-tool-call-completed",
+				toolName:  "delegate_to_agent__test-sub-agent",
+				arguments: `{"message": "Please analyze this data"}`,
+				toolType:  acp.ToolTypeDelegateToAgent,
+			}
+
+			// Set up with Ready:AwaitingSubAgent status
+			tc := toolCall.SetupWithStatus(ctx, acp.ToolCallStatus{
+				Status:       acp.ToolCallStatusTypeReady,
+				Phase:        acp.ToolCallPhaseAwaitingSubAgent,
+				StatusDetail: "Delegating to sub-agent test-sub-agent",
+				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				SpanContext:  fakeSpanContext,
+			})
+			defer toolCall.Teardown(ctx)
+
+			By("creating a completed child Task")
+			childTask := &acp.Task{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-child-task",
+					Namespace: "default",
+					Labels: map[string]string{
+						"acp.humanlayer.dev/parent-toolcall": tc.Name,
+					},
+				},
+				Spec: acp.TaskSpec{
+					AgentRef: acp.LocalObjectReference{
+						Name: "test-sub-agent",
+					},
+					UserMessage: "Please analyze this data",
+				},
+				Status: acp.TaskStatus{
+					Status:         acp.TaskStatusTypeReady,
+					Phase:          acp.TaskPhaseFinalAnswer,
+					Output:         "Analysis completed: The data shows significant patterns.",
+					StartTime:      &metav1.Time{Time: time.Now().Add(-5 * time.Minute)},
+					CompletionTime: &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, childTask)).To(Succeed())
+			Expect(k8sClient.Status().Update(ctx, childTask)).To(Succeed())
+			defer func() { k8sClient.Delete(ctx, childTask) }()
+
+			By("reconciling the ToolCall")
+			reconciler, recorder := reconciler()
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
+
+			By("checking the ToolCall is updated to Succeeded state")
+			updatedTC := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedTC)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseSucceeded))
+			Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeSucceeded))
+			Expect(updatedTC.Status.Result).To(Equal("Analysis completed: The data shows significant patterns."))
+			Expect(updatedTC.Status.CompletionTime).NotTo(BeNil())
+
+			By("checking that appropriate events were emitted")
+			utils.ExpectRecorder(recorder).ToEmitEventContaining("SubAgentCompleted")
+		})
+	})
+
+	Context("Ready:Pending -> Ready:AwaitingSubAgent (DelegateToAgent Tool)", func() {
+		It("transitions to Ready:AwaitingSubAgent and creates a child Task", func() {
+			By("creating a ToolCall for delegate to agent")
+			toolCall := &TestToolCall{
+				name:      "test-delegate-tool-call",
+				toolName:  "delegate_to_agent__test-sub-agent",
+				arguments: `{"message": "Please analyze this data"}`,
+				toolType:  acp.ToolTypeDelegateToAgent,
+			}
+
+			// Set up with Ready:Pending status
+			tc := toolCall.SetupWithStatus(ctx, acp.ToolCallStatus{
+				Status:       acp.ToolCallStatusTypeReady,
+				Phase:        acp.ToolCallPhasePending,
+				StatusDetail: "Ready to execute",
+				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				SpanContext:  fakeSpanContext,
+			})
+			defer toolCall.Teardown(ctx)
+
+			By("reconciling the ToolCall")
+			reconciler, recorder := reconciler()
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			// Should requeue to check on child task status
+			Expect(result.RequeueAfter).To(Equal(5 * time.Second))
+
+			By("checking the ToolCall is updated to AwaitingSubAgent phase")
+			updatedTC := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedTC)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingSubAgent))
+			Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
+			Expect(updatedTC.Status.StatusDetail).To(ContainSubstring("Delegating to sub-agent"))
+
+			By("checking that a child Task was created")
+			var childTasks acp.TaskList
+			err = k8sClient.List(ctx, &childTasks,
+				client.InNamespace(tc.Namespace),
+				client.MatchingLabels{"acp.humanlayer.dev/parent-toolcall": tc.Name})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(childTasks.Items).NotTo(BeEmpty())
+			Expect(childTasks.Items[0].Spec.AgentRef.Name).To(Equal("test-sub-agent"))
+			Expect(childTasks.Items[0].Spec.UserMessage).To(Equal("Please analyze this data"))
+
+			By("checking that appropriate events were emitted")
+			utils.ExpectRecorder(recorder).ToEmitEventContaining("DelegatingToSubAgent")
+		})
+	})
+
 	Context("'':'' -> Pending:Pending", func() {
 		XIt("moves to Pending:Pending - need a non-builtin test here", func() {
 		})
@@ -54,41 +277,14 @@ var _ = Describe("ToolCall Controller", func() {
 	// Tests for MCP tools with approval requirement
 	Context("Ready:Pending -> Ready:AwaitingHumanApproval (MCP Tool, Slack Contact Channel)", func() {
 		It("transitions to Ready:AwaitingHumanApproval when MCPServer has approval channel", func() {
-			By("setting up test resources for MCP")
-			testSecret.Setup(ctx, k8sClient)
-			defer testSecret.Teardown(ctx)
-
-			testSlackContactChannel.SetupWithStatus(ctx, k8sClient, acp.ContactChannelStatus{
-				Ready:  true,
-				Status: "Ready",
-			})
-			defer testSlackContactChannel.Teardown(ctx)
-
-			testMCPServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
-				Connected: true,
-				Status:    "Ready",
-			})
-			defer testMCPServer.Teardown(ctx)
-
-			toolCall := &utils.TestToolCall{
-				Name:     "test-mcp-tool-call",
-				ToolRef:  testMCPServer.Name + "__fetch",
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeMCP,
-			}
-			tc := toolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
-				Phase:        acp.ToolCallPhasePending,
-				Status:       acp.ToolCallStatusTypeReady,
-				StatusDetail: "Setup complete",
-				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				SpanContext:  fakeSpanContext,
-			})
-			defer toolCall.Teardown(ctx)
+			// Note setupTestApprovalResources sets up the MCP server, MCP tool, and ToolCall
+			trtc, teardown := setupTestApprovalResources(ctx, nil)
+			defer teardown()
 
 			By("reconciling the taskruntoolcall that uses MCP tool with approval")
 			reconciler, recorder := reconciler()
 
-			reconciler.MCPManager = &utils.MockMCPManager{
+			reconciler.MCPManager = &MockMCPManager{
 				NeedsApproval: true,
 			}
 
@@ -100,8 +296,8 @@ var _ = Describe("ToolCall Controller", func() {
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      tc.Name,
-					Namespace: tc.Namespace,
+					Name:      trtc.Name,
+					Namespace: trtc.Namespace,
 				},
 			})
 
@@ -111,8 +307,8 @@ var _ = Describe("ToolCall Controller", func() {
 			By("checking the taskruntoolcall has AwaitingHumanApproval phase and Ready status")
 			updatedTRTC := &acp.ToolCall{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
+				Name:      trtc.Name,
+				Namespace: trtc.Namespace,
 			}, updatedTRTC)
 
 			Expect(err).NotTo(HaveOccurred())
@@ -121,8 +317,8 @@ var _ = Describe("ToolCall Controller", func() {
 			Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Waiting for human approval via contact channel"))
 
 			_ = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
+				Name:      trtc.Name,
+				Namespace: trtc.Namespace,
 			}, updatedTRTC)
 
 			By("checking that appropriate events were emitted")
@@ -133,48 +329,16 @@ var _ = Describe("ToolCall Controller", func() {
 
 	Context("Ready:Pending -> Ready:AwaitingHumanApproval (MCP Tool, Email Contact Channel)", func() {
 		It("transitions to Ready:AwaitingHumanApproval when MCPServer has email approval channel", func() {
-			By("setting up test resources for MCP")
-			testSecret.Setup(ctx, k8sClient)
-			defer testSecret.Teardown(ctx)
-
-			testEmailContactChannel := &utils.TestContactChannel{
-				Name:        "test-contact-channel",
-				ChannelType: acp.ContactChannelTypeEmail,
-				SecretName:  testSecret.Name,
-			}
-
-			testEmailContactChannel.SetupWithStatus(ctx, k8sClient, acp.ContactChannelStatus{
-				Ready:  true,
-				Status: "Ready",
+			// Set up resources with email contact channel
+			trtc, teardown := setupTestApprovalResources(ctx, &SetupTestApprovalConfig{
+				ContactChannelType: "email",
 			})
-			defer testEmailContactChannel.Teardown(ctx)
-
-			testMCPServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
-				Connected: true,
-				Status:    "Ready",
-			})
-			defer testMCPServer.Teardown(ctx)
-
-			toolCall := &utils.TestToolCall{
-				Name:     "test-mcp-tool-call",
-				ToolRef:  testMCPServer.Name + "__fetch",
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeMCP,
-			}
-
-			tc := toolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
-				Phase:        acp.ToolCallPhasePending,
-				Status:       acp.ToolCallStatusTypeReady,
-				StatusDetail: "Setup complete",
-				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				SpanContext:  fakeSpanContext,
-			})
-			defer toolCall.Teardown(ctx)
+			defer teardown()
 
 			By("reconciling the taskruntoolcall that uses MCP tool with email approval")
 			reconciler, recorder := reconciler()
 
-			reconciler.MCPManager = &utils.MockMCPManager{
+			reconciler.MCPManager = &MockMCPManager{
 				NeedsApproval: true,
 			}
 
@@ -186,8 +350,8 @@ var _ = Describe("ToolCall Controller", func() {
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      tc.Name,
-					Namespace: tc.Namespace,
+					Name:      trtc.Name,
+					Namespace: trtc.Namespace,
 				},
 			})
 
@@ -197,8 +361,8 @@ var _ = Describe("ToolCall Controller", func() {
 			By("checking the taskruntoolcall has AwaitingHumanApproval phase and Ready status")
 			updatedTRTC := &acp.ToolCall{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
+				Name:      trtc.Name,
+				Namespace: trtc.Namespace,
 			}, updatedTRTC)
 
 			Expect(err).NotTo(HaveOccurred())
@@ -213,7 +377,7 @@ var _ = Describe("ToolCall Controller", func() {
 			By("verifying the contact channel type is email")
 			var contactChannel acp.ContactChannel
 			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      testEmailContactChannel.Name,
+				Name:      testContactChannel.name,
 				Namespace: "default",
 			}, &contactChannel)
 			Expect(err).NotTo(HaveOccurred())
@@ -221,183 +385,24 @@ var _ = Describe("ToolCall Controller", func() {
 		})
 	})
 
-	Context("Ready:Pending -> Ready:AwaitingHumanInput (HumanContact Tool)", func() {
-		It("transitions to Ready:AwaitingHumanInput when ToolType is HumanContact", func() {
-			// Set up resources for human contact
-			By("setting up test resources for MCP")
-			testSecret.Setup(ctx, k8sClient)
-			defer testSecret.Teardown(ctx)
-
-			testSlackContactChannel.SetupWithStatus(ctx, k8sClient, acp.ContactChannelStatus{
-				Ready:  true,
-				Status: "Ready",
-			})
-			defer testSlackContactChannel.Teardown(ctx)
-
-			testMCPServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
-				Connected: true,
-				Status:    "Ready",
-			})
-			defer testMCPServer.Teardown(ctx)
-
-			testHumanContactTool := &utils.TestToolCall{
-				Name:     "test-human-contact-tool",
-				ToolRef:  fmt.Sprintf("%s__%s", testSlackContactChannel.Name, "test-human-contact-tool"),
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeHumanContact,
-			}
-
-			tc := testHumanContactTool.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
-				Phase:        acp.ToolCallPhasePending,
-				Status:       acp.ToolCallStatusTypeReady,
-				StatusDetail: "Setup complete",
-				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				SpanContext:  fakeSpanContext,
-			})
-			defer testHumanContactTool.Teardown(ctx)
-
-			By("reconciling the toolcall that uses HumanContact tool")
-			reconciler, recorder := reconciler()
-
-			reconciler.HLClientFactory = &humanlayer.MockHumanLayerClientFactory{
-				ShouldFail:  false,
-				StatusCode:  200,
-				ReturnError: nil,
-			}
-
-			result, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      tc.Name,
-					Namespace: tc.Namespace,
-				},
-			})
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(5 * time.Second)) // Should requeue after 5 seconds
-
-			By("checking the toolcall has AwaitingHumanInput phase and Ready status")
-			updatedToolCall := &acp.ToolCall{}
-			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
-			}, updatedToolCall)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(updatedToolCall.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanInput))
-			Expect(updatedToolCall.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
-			Expect(updatedToolCall.Status.StatusDetail).To(ContainSubstring("Waiting for human input via contact channel"))
-
-			By("checking that appropriate events were emitted")
-			utils.ExpectRecorder(recorder).ToEmitEventContaining("AwaitingHumanContact")
-		})
-	})
-
-	Context("Ready:Pending -> Error:ErrorRequestingHumanInput (HumanContact Tool)", func() {
-		It("transitions to Error:ErrorRequestingHumanInput when request to HumanLayer for human contact fails", func() {
-			// Set up resources for human contact
-			By("setting up test resources for MCP")
-			testSecret.Setup(ctx, k8sClient)
-			defer testSecret.Teardown(ctx)
-
-			testSlackContactChannel.SetupWithStatus(ctx, k8sClient, acp.ContactChannelStatus{
-				Ready:  true,
-				Status: "Ready",
-			})
-			defer testSlackContactChannel.Teardown(ctx)
-
-			testMCPServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
-				Connected: true,
-				Status:    "Ready",
-			})
-			defer testMCPServer.Teardown(ctx)
-
-			testHumanContactTool := &utils.TestToolCall{
-				Name:     "test-human-contact-tool",
-				ToolRef:  fmt.Sprintf("%s__%s", testSlackContactChannel.Name, "test-human-contact-tool"),
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeHumanContact,
-			}
-
-			tc := testHumanContactTool.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
-				Phase:        acp.ToolCallPhasePending,
-				Status:       acp.ToolCallStatusTypeReady,
-				StatusDetail: "Setup complete",
-				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				SpanContext:  fakeSpanContext,
-			})
-			defer testHumanContactTool.Teardown(ctx)
-
-			By("reconciling the toolcall that uses HumanContact tool with a failing API call")
-			reconciler, _ := reconciler()
-
-			reconciler.HLClientFactory = &humanlayer.MockHumanLayerClientFactory{
-				ShouldFail:  true,
-				StatusCode:  500,
-				ReturnError: fmt.Errorf("failed to contact human: service unavailable"),
-			}
-
-			result, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      tc.Name,
-					Namespace: tc.Namespace,
-				},
-			})
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result.Requeue).To(BeFalse())
-
-			By("checking the toolcall has ErrorRequestingHumanInput phase and Error status")
-			updatedToolCall := &acp.ToolCall{}
-			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
-			}, updatedToolCall)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(updatedToolCall.Status.Phase).To(Equal(acp.ToolCallPhaseErrorRequestingHumanInput))
-			Expect(updatedToolCall.Status.Status).To(Equal(acp.ToolCallStatusTypeError))
-		})
-	})
-
 	Context("Ready:AwaitingHumanApproval -> Ready:ReadyToExecuteApprovedTool", func() {
 		It("transitions from Ready:AwaitingHumanApproval to Ready:ReadyToExecuteApprovedTool when MCP tool is approved", func() {
-			By("setting up test resources for MCP")
-			testSecret.Setup(ctx, k8sClient)
-			defer testSecret.Teardown(ctx)
-
-			testSlackContactChannel.SetupWithStatus(ctx, k8sClient, acp.ContactChannelStatus{
-				Ready:  true,
-				Status: "Ready",
+			trtc, teardown := setupTestApprovalResources(ctx, &SetupTestApprovalConfig{
+				ToolCallStatus: &acp.ToolCallStatus{
+					ExternalCallID: "call-ready-to-execute-test",
+					Phase:          acp.ToolCallPhaseAwaitingHumanApproval,
+					Status:         acp.ToolCallStatusTypeReady,
+					StatusDetail:   "Waiting for human approval via contact channel",
+					StartTime:      &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				},
 			})
-			defer testSlackContactChannel.Teardown(ctx)
-
-			testMCPServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
-				Connected: true,
-				Status:    "Ready",
-			})
-			defer testMCPServer.Teardown(ctx)
-
-			toolCall := &utils.TestToolCall{
-				Name:     "test-mcp-tool-call",
-				ToolRef:  testMCPServer.Name + "__fetch",
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeMCP,
-			}
-			tc := toolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
-				ExternalCallID: "call-ready-to-execute-test",
-				Phase:          acp.ToolCallPhaseAwaitingHumanApproval,
-				Status:         acp.ToolCallStatusTypeReady,
-				StatusDetail:   "Waiting for human approval via contact channel",
-				StartTime:      &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				SpanContext:    fakeSpanContext,
-			})
-			defer toolCall.Teardown(ctx)
+			defer teardown()
 
 			By("reconciling the trtc against an approval-granting HumanLayer client")
 
 			reconciler, _ := reconciler()
 
-			reconciler.MCPManager = &utils.MockMCPManager{
+			reconciler.MCPManager = &MockMCPManager{
 				NeedsApproval: true,
 			}
 
@@ -410,8 +415,8 @@ var _ = Describe("ToolCall Controller", func() {
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      tc.Name,
-					Namespace: tc.Namespace,
+					Name:      trtc.Name,
+					Namespace: trtc.Namespace,
 				},
 			})
 
@@ -421,8 +426,8 @@ var _ = Describe("ToolCall Controller", func() {
 			By("checking the taskruntoolcall status is set to ReadyToExecuteApprovedTool")
 			updatedTRTC := &acp.ToolCall{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
+				Name:      trtc.Name,
+				Namespace: trtc.Namespace,
 			}, updatedTRTC)
 
 			Expect(err).NotTo(HaveOccurred())
@@ -462,15 +467,15 @@ var _ = Describe("ToolCall Controller", func() {
 				Status:         acp.ToolCallStatusTypeReady,
 				StatusDetail:   "Waiting for human approval via contact channel",
 				StartTime:      &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				SpanContext:    fakeSpanContext,
+				},
 			})
-			defer toolCall.Teardown(ctx)
+			defer teardown()
 
 			By("reconciling the trtc against an approval-rejecting HumanLayer client")
 
 			reconciler, _ := reconciler()
 
-			reconciler.MCPManager = &utils.MockMCPManager{
+			reconciler.MCPManager = &MockMCPManager{
 				NeedsApproval: true,
 			}
 
@@ -486,8 +491,8 @@ var _ = Describe("ToolCall Controller", func() {
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      tc.Name,
-					Namespace: tc.Namespace,
+					Name:      trtc.Name,
+					Namespace: trtc.Namespace,
 				},
 			})
 
@@ -497,8 +502,8 @@ var _ = Describe("ToolCall Controller", func() {
 			By("checking the taskruntoolcall has ToolCallRejected phase and Succeeded status")
 			updatedTRTC := &acp.ToolCall{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
+				Name:      trtc.Name,
+				Namespace: trtc.Namespace,
 			}, updatedTRTC)
 
 			Expect(err).NotTo(HaveOccurred())
@@ -511,37 +516,16 @@ var _ = Describe("ToolCall Controller", func() {
 
 	Context("Ready:ReadyToExecuteApprovedTool -> Succeeded:Succeeded", func() {
 		It("transitions from Ready:ReadyToExecuteApprovedTool to Succeeded:Succeeded when a tool is executed", func() {
-			By("setting up test resources for MCP")
-			testSecret.Setup(ctx, k8sClient)
-			defer testSecret.Teardown(ctx)
-
-			testSlackContactChannel.SetupWithStatus(ctx, k8sClient, acp.ContactChannelStatus{
-				Ready:  true,
-				Status: "Ready",
+			trtc, teardown := setupTestApprovalResources(ctx, &SetupTestApprovalConfig{
+				ToolCallStatus: &acp.ToolCallStatus{
+					ExternalCallID: "call-ready-to-execute-test",
+					Phase:          acp.ToolCallPhaseReadyToExecuteApprovedTool,
+					Status:         acp.ToolCallStatusTypeReady,
+					StatusDetail:   "Ready to execute tool, with great vigor",
+					StartTime:      &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				},
 			})
-			defer testSlackContactChannel.Teardown(ctx)
-
-			testMCPServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
-				Connected: true,
-				Status:    "Ready",
-			})
-			defer testMCPServer.Teardown(ctx)
-
-			toolCall := &utils.TestToolCall{
-				Name:     "test-mcp-tool-call",
-				ToolRef:  testMCPServer.Name + "__fetch",
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeMCP,
-			}
-			tc := toolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
-				ExternalCallID: "call-ready-to-execute-test",
-				Phase:          acp.ToolCallPhaseReadyToExecuteApprovedTool,
-				Status:         acp.ToolCallStatusTypeReady,
-				StatusDetail:   "Ready to execute tool, with great vigor",
-				StartTime:      &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				SpanContext:    fakeSpanContext,
-			})
-			defer toolCall.Teardown(ctx)
+			defer teardown()
 
 			By("reconciling the trtc against an approval-granting HumanLayer client")
 
@@ -549,8 +533,8 @@ var _ = Describe("ToolCall Controller", func() {
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      tc.Name,
-					Namespace: tc.Namespace,
+					Name:      trtc.Name,
+					Namespace: trtc.Namespace,
 				},
 			})
 
@@ -560,8 +544,8 @@ var _ = Describe("ToolCall Controller", func() {
 			By("checking the taskruntoolcall status is set to Ready:Succeeded")
 			updatedTRTC := &acp.ToolCall{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
+				Name:      trtc.Name,
+				Namespace: trtc.Namespace,
 			}, updatedTRTC)
 
 			Expect(err).NotTo(HaveOccurred())
@@ -574,42 +558,14 @@ var _ = Describe("ToolCall Controller", func() {
 	Context("Ready:Pending -> Error:ErrorRequestingHumanApproval (MCP Tool)", func() {
 		It("transitions to Error:ErrorRequestingHumanApproval when request to HumanLayer fails", func() {
 			// Note setupTestApprovalResources sets up the MCP server, MCP tool, and TaskRunToolCall
-			By("setting up test resources for MCP")
-			testSecret.Setup(ctx, k8sClient)
-			defer testSecret.Teardown(ctx)
+			trtc, teardown := setupTestApprovalResources(ctx, nil)
+			defer teardown()
 
-			testSlackContactChannel.SetupWithStatus(ctx, k8sClient, acp.ContactChannelStatus{
-				Ready:  true,
-				Status: "Ready",
-			})
-			defer testSlackContactChannel.Teardown(ctx)
-
-			testMCPServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
-				Connected: true,
-				Status:    "Ready",
-			})
-			defer testMCPServer.Teardown(ctx)
-
-			toolCall := &utils.TestToolCall{
-				Name:     "test-mcp-tool-call",
-				ToolRef:  testMCPServer.Name + "__fetch",
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeMCP,
-			}
-			tc := toolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
-				Phase:        acp.ToolCallPhasePending,
-				Status:       acp.ToolCallStatusTypeReady,
-				StatusDetail: "Setup complete",
-				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
-				SpanContext:  fakeSpanContext,
-			})
-			defer toolCall.Teardown(ctx)
-
-			By("reconciling the ToolCall that uses MCP tool with approval")
+			By("reconciling the taskruntoolcall that uses MCP tool with approval")
 			reconciler, _ := reconciler()
 
-			reconciler.MCPManager = &utils.MockMCPManager{
-				NeedsApproval: true,
+			reconciler.MCPManager = &MockMCPManager{
+				NeedsApproval: false,
 			}
 
 			reconciler.HLClientFactory = &humanlayer.MockHumanLayerClientFactory{
@@ -620,8 +576,8 @@ var _ = Describe("ToolCall Controller", func() {
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      tc.Name,
-					Namespace: tc.Namespace,
+					Name:      trtc.Name,
+					Namespace: trtc.Namespace,
 				},
 			})
 
@@ -631,8 +587,8 @@ var _ = Describe("ToolCall Controller", func() {
 			By("checking the taskruntoolcall has ErrorRequestingHumanApproval phase and Error status")
 			updatedTRTC := &acp.ToolCall{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      tc.Name,
-				Namespace: tc.Namespace,
+				Name:      trtc.Name,
+				Namespace: trtc.Namespace,
 			}, updatedTRTC)
 
 			Expect(err).NotTo(HaveOccurred())
@@ -640,5 +596,4 @@ var _ = Describe("ToolCall Controller", func() {
 			Expect(updatedTRTC.Status.Status).To(Equal(acp.ToolCallStatusTypeError))
 		})
 	})
-
 })
