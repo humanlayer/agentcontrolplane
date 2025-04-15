@@ -40,11 +40,15 @@ var testTask = &utils.TestTask{
 var testToolCall = &utils.TestToolCall{
 	Name:     "test-toolcall",
 	TaskName: testTask.Name,
+	ToolRef:  "test-tool",
+	ToolType: acp.ToolTypeMCP,
 }
 
 var testToolCallTwo = &utils.TestToolCall{
 	Name:     "test-toolcall-two",
 	TaskName: testTask.Name,
+	ToolRef:  "test-tool",
+	ToolType: acp.ToolTypeMCP,
 }
 
 // nolint:golint,unparam

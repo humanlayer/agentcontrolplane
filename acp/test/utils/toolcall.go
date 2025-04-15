@@ -15,6 +15,8 @@ import (
 type TestToolCall struct {
 	Name     string
 	TaskName string
+	ToolRef  string
+	ToolType acp.ToolType
 
 	ToolCall  *acp.ToolCall
 	k8sClient client.Client
@@ -24,7 +26,7 @@ func (t *TestToolCall) Setup(ctx context.Context, k8sClient client.Client) *acp.
 	t.k8sClient = k8sClient
 
 	By("creating the toolcall")
-	taskRunToolCall := &acp.ToolCall{
+	toolCall := &acp.ToolCall{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      t.Name,
 			Namespace: "default",
@@ -38,16 +40,17 @@ func (t *TestToolCall) Setup(ctx context.Context, k8sClient client.Client) *acp.
 				Name: t.TaskName,
 			},
 			ToolRef: acp.LocalObjectReference{
-				Name: "test-tool",
+				Name: t.ToolRef,
 			},
 			Arguments: `{"url": "https://api.example.com/data"}`,
+			ToolType:  t.ToolType,
 		},
 	}
-	err := t.k8sClient.Create(ctx, taskRunToolCall)
+	err := t.k8sClient.Create(ctx, toolCall)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(t.k8sClient.Get(ctx, types.NamespacedName{Name: t.Name, Namespace: "default"}, taskRunToolCall)).To(Succeed())
-	t.ToolCall = taskRunToolCall
-	return taskRunToolCall
+	Expect(t.k8sClient.Get(ctx, types.NamespacedName{Name: t.Name, Namespace: "default"}, toolCall)).To(Succeed())
+	t.ToolCall = toolCall
+	return toolCall
 }
 
 func (t *TestToolCall) SetupWithStatus(ctx context.Context, k8sClient client.Client, status acp.ToolCallStatus) *acp.ToolCall {
