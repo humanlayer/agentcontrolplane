@@ -54,10 +54,13 @@ func (r *AgentReconciler) validateLLM(ctx context.Context, agent *acp.Agent) err
 }
 
 // validateSubAgents checks if all referenced sub-agents exist and are ready
-// Returns two items:
+// Returns three items:
 // - bool: true if all sub-agents are ready, false otherwise
 // - string: detail message if any sub-agent issues are found
-func (r *AgentReconciler) validateSubAgents(ctx context.Context, agent *acp.Agent) (bool, string) {
+// - []acp.ResolvedSubAgent: list of valid sub-agents
+func (r *AgentReconciler) validateSubAgents(ctx context.Context, agent *acp.Agent) (bool, string, []acp.ResolvedSubAgent) {
+	validSubAgents := make([]acp.ResolvedSubAgent, 0, len(agent.Spec.SubAgents))
+
 	for _, subAgentRef := range agent.Spec.SubAgents {
 		subAgent := &acp.Agent{}
 		err := r.Get(ctx, client.ObjectKey{
@@ -65,15 +68,19 @@ func (r *AgentReconciler) validateSubAgents(ctx context.Context, agent *acp.Agen
 			Name:      subAgentRef.Name,
 		}, subAgent)
 		if err != nil {
-			return false, fmt.Sprintf("waiting for sub-agent %q (not found)", subAgentRef.Name)
+			return false, fmt.Sprintf("waiting for sub-agent %q (not found)", subAgentRef.Name), validSubAgents
 		}
 
 		if !subAgent.Status.Ready {
-			return false, fmt.Sprintf("waiting for sub-agent %q (not ready)", subAgentRef.Name)
+			return false, fmt.Sprintf("waiting for sub-agent %q (not ready)", subAgentRef.Name), validSubAgents
 		}
+
+		validSubAgents = append(validSubAgents, acp.ResolvedSubAgent{
+			Name: subAgentRef.Name,
+		})
 	}
 
-	return true, ""
+	return true, "", validSubAgents
 }
 
 // validateMCPServers checks if all referenced MCP servers exist and are connected
@@ -204,9 +211,11 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// Initialize empty valid tools, servers, and human contact channels slices
 	validMCPServers := make([]acp.ResolvedMCPServer, 0)
 	validHumanContactChannels := make([]acp.ResolvedContactChannel, 0)
+	validSubAgents := make([]acp.ResolvedSubAgent, 0)
 
 	statusUpdate.Status.ValidMCPServers = validMCPServers
 	statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
+	statusUpdate.Status.ValidSubAgents = validSubAgents
 
 	// Validate LLM reference
 	if err := r.validateLLM(ctx, &agent); err != nil {
@@ -216,7 +225,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// Validate sub-agent references, if any
 	if len(agent.Spec.SubAgents) > 0 {
-		subAgentsReady, subAgentsMessage := r.validateSubAgents(ctx, &agent)
+		subAgentsReady, subAgentsMessage, validSubAgents := r.validateSubAgents(ctx, &agent)
 		if !subAgentsReady {
 			// Set to Pending state when sub-agents are not ready
 			statusUpdate.Status.Ready = false
@@ -232,6 +241,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// Requeue to check again later
 			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
+		statusUpdate.Status.ValidSubAgents = validSubAgents
 	}
 
 	var err error

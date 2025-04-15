@@ -169,6 +169,18 @@ spec:
                   - name
                   type: object
                 type: array
+              validSubAgents:
+                description: ValidSubAgents is the list of sub-agents that were successfully
+                  validated
+                items:
+                  properties:
+                    name:
+                      description: Name of the sub-agent
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
             type: object
         type: object
     served: true

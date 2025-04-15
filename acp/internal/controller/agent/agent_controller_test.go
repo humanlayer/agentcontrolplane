@@ -312,6 +312,7 @@ var _ = Describe("Agent Controller", func() {
 			Expect(updatedParent.Status.Status).To(Equal("Pending"))
 			Expect(updatedParent.Status.StatusDetail).To(ContainSubstring("waiting for sub-agent"))
 			Expect(updatedParent.Status.StatusDetail).To(ContainSubstring("not ready"))
+			Expect(updatedParent.Status.ValidSubAgents).To(BeEmpty())
 
 			By("checking that a pending event was created")
 			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("SubAgentsPending")
@@ -376,6 +377,9 @@ var _ = Describe("Agent Controller", func() {
 			Expect(updatedParent.Status.Ready).To(BeTrue())
 			Expect(updatedParent.Status.Status).To(Equal("Ready"))
 			Expect(updatedParent.Status.StatusDetail).To(Equal("All dependencies validated successfully"))
+			Expect(updatedParent.Status.ValidSubAgents).To(ContainElement(acp.ResolvedSubAgent{
+				Name: "sub-agent",
+			}))
 
 			By("checking that a success event was created")
 			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationSucceeded")
