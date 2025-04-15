@@ -133,7 +133,7 @@ var _ = Describe("TaskRunToolCall Controller", func() {
 					UserMessage: "Please analyze this data",
 				},
 				Status: acp.TaskStatus{
-					Status:         acp.TaskStatusType,
+					Status:         acp.TaskStatusTypeReady,
 					Phase:          acp.TaskPhaseFinalAnswer,
 					Output:         "Analysis completed: The data shows significant patterns.",
 					StartTime:      &metav1.Time{Time: time.Now().Add(-5 * time.Minute)},
