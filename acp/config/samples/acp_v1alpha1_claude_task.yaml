@@ -5,4 +5,4 @@ metadata:
 spec:
   agentRef:
     name: claude-fetch-agent
-  message: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
+  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
