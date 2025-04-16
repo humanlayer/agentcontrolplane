@@ -28,14 +28,14 @@ func ConvertMCPToolsToLLMClientTools(mcpTools []acp.MCPTool, serverName string) 
 				// Default to a simple object schema if none provided
 				toolFunction.Parameters = llmclient.ToolFunctionParameters{
 					Type:       "object",
-					Properties: map[string]llmclient.ToolFunctionParameter{},
+					Properties: map[string]*llmclient.Schema{},
 				}
 			}
 		} else {
 			// Default to a simple object schema if none provided
 			toolFunction.Parameters = llmclient.ToolFunctionParameters{
 				Type:       "object",
-				Properties: map[string]llmclient.ToolFunctionParameter{},
+				Properties: map[string]*llmclient.Schema{},
 			}
 		}
 

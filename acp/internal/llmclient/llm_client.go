@@ -45,16 +45,21 @@ type ToolFunction struct {
 	Parameters  ToolFunctionParameters `json:"parameters"`
 }
 
-// ToolFunctionParameter defines a parameter type
-type ToolFunctionParameter struct {
-	Type string `json:"type"`
+// Schema represents a JSON Schema structure, supporting nested schemas for arrays and objects
+type Schema struct {
+	Type        string             `json:"type"`
+	Description string             `json:"description,omitempty"`
+	Enum        []interface{}      `json:"enum,omitempty"`
+	Items       *Schema            `json:"items,omitempty"`
+	Properties  map[string]*Schema `json:"properties,omitempty"`
+	Required    []string           `json:"required,omitempty"`
 }
 
 // ToolFunctionParameters defines the schema for the function parameters
 type ToolFunctionParameters struct {
-	Type       string                           `json:"type"`
-	Properties map[string]ToolFunctionParameter `json:"properties"`
-	Required   []string                         `json:"required,omitempty"`
+	Type       string             `json:"type"`
+	Properties map[string]*Schema `json:"properties"`
+	Required   []string           `json:"required,omitempty"`
 }
 
 // FromContactChannel creates a Tool from a ContactChannel resource
@@ -62,8 +67,8 @@ func ToolFromContactChannel(channel acp.ContactChannel) *Tool {
 	// Create base parameters structure for human contact tools
 	params := ToolFunctionParameters{
 		Type: "object",
-		Properties: map[string]ToolFunctionParameter{
-			"message": {Type: "string"},
+		Properties: map[string]*Schema{
+			"message": &Schema{Type: "string"},
 		},
 		Required: []string{"message"},
 	}
