@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"encoding/json"
+
 	"k8s.io/apimachinery/pkg/runtime"
 
 	. "github.com/onsi/ginkgo/v2"
