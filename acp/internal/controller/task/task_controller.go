@@ -358,12 +358,16 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *acp.Agent) []l
 	logger := log.FromContext(ctx)
 	tools := make([]llmclient.Tool, 0)
 
-	// Get tools from MCP manager
-	mcpTools := r.MCPManager.GetToolsForAgent(agent)
-
-	// Convert MCP tools to LLM tools
-	for _, mcpTool := range mcpTools {
-		tools = append(tools, adapters.ConvertMCPToolsToLLMClientTools([]acp.MCPTool{mcpTool}, mcpTool.Name)...)
+	// Iterate through each MCP server directly to maintain server-tool association
+	for _, serverRef := range agent.Spec.MCPServers {
+		mcpTools, found := r.MCPManager.GetTools(serverRef.Name)
+		if !found {
+			logger.Info("Server not found or has no tools", "server", serverRef.Name)
+			continue
+		}
+		// Use the correct server name when converting tools
+		tools = append(tools, adapters.ConvertMCPToolsToLLMClientTools(mcpTools, serverRef.Name)...)
+		logger.Info("Added MCP server tools", "server", serverRef.Name, "toolCount", len(mcpTools))
 	}
 
 	// Convert HumanContactChannel tools to LLM tools
