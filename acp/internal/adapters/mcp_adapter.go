@@ -21,21 +21,21 @@ func ConvertMCPToolsToLLMClientTools(mcpTools []acp.MCPTool, serverName string) 
 
 		// Convert the input schema if available
 		if tool.InputSchema.Raw != nil {
-			var params llmclient.ToolFunctionParameters
+			var params map[string]interface{}
 			if err := json.Unmarshal(tool.InputSchema.Raw, &params); err == nil {
 				toolFunction.Parameters = params
 			} else {
 				// Default to a simple object schema if none provided
 				toolFunction.Parameters = llmclient.ToolFunctionParameters{
-					Type:       "object",
-					Properties: map[string]*llmclient.Schema{},
+					"type":       "object",
+					"properties": map[string]interface{}{},
 				}
 			}
 		} else {
 			// Default to a simple object schema if none provided
 			toolFunction.Parameters = llmclient.ToolFunctionParameters{
-				Type:       "object",
-				Properties: map[string]*llmclient.Schema{},
+				"type":       "object",
+				"properties": map[string]interface{}{},
 			}
 		}
 

@@ -6,131 +6,80 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Schema", func() {
-	It("represents a simple string type", func() {
-		schema := &Schema{Type: "string"}
-		jsonData, err := json.Marshal(schema)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(jsonData)).To(Equal(`{"type":"string"}`))
-	})
-
-	It("represents an array of strings", func() {
-		schema := &Schema{
-			Type:  "array",
-			Items: &Schema{Type: "string"},
-		}
-		jsonData, err := json.Marshal(schema)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(jsonData)).To(MatchJSON(`{"type":"array","items":{"type":"string"}}`))
-	})
-
-	It("represents a nested object with an array", func() {
-		schema := &Schema{
-			Type: "object",
-			Properties: map[string]*Schema{
-				"items": {
-					Type:  "array",
-					Items: &Schema{Type: "string"},
-				},
-			},
-		}
-		jsonData, err := json.Marshal(schema)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(jsonData)).To(MatchJSON(`{"type":"object","properties":{"items":{"type":"array","items":{"type":"string"}}}}`))
-	})
-
-	It("includes enum values when provided", func() {
-		schema := &Schema{
-			Type: "string",
-			Enum: []interface{}{"option1", "option2", "option3"},
-		}
-		jsonData, err := json.Marshal(schema)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(jsonData)).To(MatchJSON(`{"type":"string","enum":["option1","option2","option3"]}`))
-	})
-
-	It("includes description when provided", func() {
-		schema := &Schema{
-			Type:        "boolean",
-			Description: "A flag indicating whether the feature is enabled",
-		}
-		jsonData, err := json.Marshal(schema)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(jsonData)).To(MatchJSON(`{"type":"boolean","description":"A flag indicating whether the feature is enabled"}`))
-	})
-})
-
-var _ = Describe("ToolFunctionParameters", func() {
-	It("represents a parameter with an array property", func() {
+var _ = Describe("Tool Function Parameters", func() {
+	It("represents a simple parameter", func() {
 		params := ToolFunctionParameters{
-			Type: "object",
-			Properties: map[string]*Schema{
-				"names": {
-					Type:  "array",
-					Items: &Schema{Type: "string"},
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type": "string",
 				},
 			},
-			Required: []string{"names"},
 		}
 		jsonData, err := json.Marshal(params)
 		Expect(err).NotTo(HaveOccurred())
-		expected := `{"type":"object","properties":{"names":{"type":"array","items":{"type":"string"}}},"required":["names"]}`
-		Expect(string(jsonData)).To(MatchJSON(expected))
+		Expect(string(jsonData)).To(MatchJSON(`{"type":"object","properties":{"name":{"type":"string"}}}`))
 	})
 
-	It("represents a nested object parameter", func() {
+	It("represents an array parameter", func() {
 		params := ToolFunctionParameters{
-			Type: "object",
-			Properties: map[string]*Schema{
-				"data": {
-					Type: "object",
-					Properties: map[string]*Schema{
-						"values": {
-							Type:  "array",
-							Items: &Schema{Type: "number"},
-						},
+			"type": "object",
+			"properties": map[string]interface{}{
+				"items": map[string]interface{}{
+					"type": "array",
+					"items": map[string]interface{}{
+						"type": "string",
 					},
 				},
 			},
 		}
 		jsonData, err := json.Marshal(params)
 		Expect(err).NotTo(HaveOccurred())
-		expected := `{"type":"object","properties":{"data":{"type":"object","properties":{"values":{"type":"array","items":{"type":"number"}}}}}}`
-		Expect(string(jsonData)).To(MatchJSON(expected))
+		Expect(string(jsonData)).To(MatchJSON(`{"type":"object","properties":{"items":{"type":"array","items":{"type":"string"}}}}`))
 	})
 
-	It("handles a complex schema with multiple properties and nested structures", func() {
+	It("represents a complex schema with nested objects and arrays", func() {
 		params := ToolFunctionParameters{
-			Type: "object",
-			Properties: map[string]*Schema{
-				"name": {
-					Type:        "string",
-					Description: "The name of the item",
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "The name of the item",
 				},
-				"tags": {
-					Type:        "array",
-					Description: "Tags associated with the item",
-					Items:       &Schema{Type: "string"},
+				"tags": map[string]interface{}{
+					"type":        "array",
+					"description": "Tags associated with the item",
+					"items": map[string]interface{}{
+						"type": "string",
+					},
 				},
-				"metadata": {
-					Type: "object",
-					Properties: map[string]*Schema{
-						"created": {Type: "string"},
-						"size":    {Type: "number"},
-						"features": {
-							Type: "array",
-							Items: &Schema{
-								Type: "object",
-								Properties: map[string]*Schema{
-									"id":      {Type: "string"},
-									"enabled": {Type: "boolean"},
+				"metadata": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"created": map[string]interface{}{
+							"type": "string",
+						},
+						"size": map[string]interface{}{
+							"type": "number",
+						},
+						"features": map[string]interface{}{
+							"type": "array",
+							"items": map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"id": map[string]interface{}{
+										"type": "string",
+									},
+									"enabled": map[string]interface{}{
+										"type": "boolean",
+									},
 								},
 							},
 						},
 					},
 				},
 			},
-			Required: []string{"name", "metadata"},
+			"required": []string{"name", "metadata"},
 		}
 
 		jsonData, err := json.Marshal(params)
@@ -161,5 +110,53 @@ var _ = Describe("ToolFunctionParameters", func() {
 		required := result["required"].([]interface{})
 		Expect(required).To(ContainElement("name"))
 		Expect(required).To(ContainElement("metadata"))
+	})
+
+	It("handles complex JSON Schema constructs like anyOf", func() {
+		params := ToolFunctionParameters{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"options": map[string]interface{}{
+					"anyOf": []interface{}{
+						map[string]interface{}{
+							"type": "string",
+							"enum": []string{"option1", "option2"},
+						},
+						map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"customOption": map[string]interface{}{
+									"type": "string",
+								},
+							},
+							"required": []string{"customOption"},
+						},
+					},
+				},
+			},
+		}
+
+		jsonData, err := json.Marshal(params)
+		Expect(err).NotTo(HaveOccurred())
+
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonData, &result)
+		Expect(err).NotTo(HaveOccurred())
+
+		properties := result["properties"].(map[string]interface{})
+		options := properties["options"].(map[string]interface{})
+		Expect(options).To(HaveKey("anyOf"))
+
+		anyOf := options["anyOf"].([]interface{})
+		Expect(anyOf).To(HaveLen(2))
+
+		firstOption := anyOf[0].(map[string]interface{})
+		Expect(firstOption["type"]).To(Equal("string"))
+		Expect(firstOption["enum"]).To(ContainElements("option1", "option2"))
+
+		secondOption := anyOf[1].(map[string]interface{})
+		Expect(secondOption["type"]).To(Equal("object"))
+		Expect(secondOption).To(HaveKey("properties"))
+		Expect(secondOption["required"]).To(ContainElement("customOption"))
 	})
 })
