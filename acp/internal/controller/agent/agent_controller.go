@@ -75,9 +75,7 @@ func (r *AgentReconciler) validateSubAgents(ctx context.Context, agent *acp.Agen
 			return false, fmt.Sprintf("waiting for sub-agent %q (not ready)", subAgentRef.Name), validSubAgents
 		}
 
-		validSubAgents = append(validSubAgents, acp.ResolvedSubAgent{
-			Name: subAgentRef.Name,
-		})
+		validSubAgents = append(validSubAgents, acp.ResolvedSubAgent(subAgentRef))
 	}
 
 	return true, "", validSubAgents

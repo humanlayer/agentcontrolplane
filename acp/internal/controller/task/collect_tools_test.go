@@ -15,6 +15,9 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 )
 
+// todo move to types
+const llmStatusReady = "Ready"
+
 var _ = Describe("Collect Tools", func() {
 	Context("When collecting tools from an agent with sub-agents", func() {
 		const parentAgentName = "parent-agent"
@@ -61,7 +64,7 @@ var _ = Describe("Collect Tools", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, llm)).To(Succeed())
-			llm.Status.Status = "Ready"
+			llm.Status.Status = llmStatusReady
 			llm.Status.Ready = true
 			Expect(k8sClient.Status().Update(ctx, llm)).To(Succeed())
 
@@ -81,7 +84,7 @@ var _ = Describe("Collect Tools", func() {
 			}
 			Expect(k8sClient.Create(ctx, subAgent)).To(Succeed())
 			subAgent.Status.Ready = true
-			subAgent.Status.Status = "Ready"
+			subAgent.Status.Status = llmStatusReady
 			subAgent.Status.StatusDetail = "Ready for testing"
 			Expect(k8sClient.Status().Update(ctx, subAgent)).To(Succeed())
 
@@ -103,7 +106,7 @@ var _ = Describe("Collect Tools", func() {
 			}
 			Expect(k8sClient.Create(ctx, parentAgent)).To(Succeed())
 			parentAgent.Status.Ready = true
-			parentAgent.Status.Status = "Ready"
+			parentAgent.Status.Status = llmStatusReady
 			parentAgent.Status.StatusDetail = "Ready for testing"
 			Expect(k8sClient.Status().Update(ctx, parentAgent)).To(Succeed())
 		})

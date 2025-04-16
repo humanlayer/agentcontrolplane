@@ -266,27 +266,6 @@ func (r *ToolCallReconciler) completeSetup(ctx context.Context, tc *acp.ToolCall
 	return nil
 }
 
-// checkCompletedOrExisting checks if the TC is already complete or has a child TaskRun
-func (r *ToolCallReconciler) checkCompletedOrExisting(ctx context.Context, tc *acp.ToolCall) (completed bool, err error, handled bool) {
-	logger := log.FromContext(ctx)
-
-	// Check if a child TaskRun already exists for this tool call
-	var taskList acp.TaskList
-	// todo(dex) we do not label tasks like this...
-	if err := r.List(ctx, &taskList, client.InNamespace(tc.Namespace), client.MatchingLabels{"acp.humanlayer.dev/task": tc.Name}); err != nil {
-		logger.Error(err, "Failed to list child Tasks")
-		return true, err, true
-	}
-	if len(taskList.Items) > 0 {
-		logger.Info("Child Task already exists", "childTask", taskList.Items[0].Name)
-		// Optionally, sync status from child to parent.
-		// todo(dex) wtf does this mean :point_up:
-		return true, nil, true
-	}
-
-	return false, nil, false
-}
-
 // parseArguments parses the tool call arguments
 func (r *ToolCallReconciler) parseArguments(ctx context.Context, tc *acp.ToolCall) (args map[string]interface{}, err error) {
 	logger := log.FromContext(ctx)
