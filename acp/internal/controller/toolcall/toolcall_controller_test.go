@@ -649,10 +649,11 @@ var _ = Describe("ToolCall Controller", func() {
 			defer testSecret.Teardown(ctx)
 
 			toolCall := &utils.TestToolCall{
-				Name:     "test-delegate-tool-call",
-				TaskName: "task-party-2025",
-				ToolRef:  "delegate_to_agent__test-agent",
-				ToolType: acp.ToolTypeDelegateToAgent,
+				Name:      "test-delegate-tool-call-1",
+				TaskName:  "task-party-2025",
+				ToolRef:   "delegate_to_agent__test-agent",
+				ToolType:  acp.ToolTypeDelegateToAgent,
+				Arguments: `{"message": "test message"}`,
 			}
 			tc := toolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
 				Phase:        acp.ToolCallPhasePending,
@@ -701,14 +702,14 @@ var _ = Describe("ToolCall Controller", func() {
 		})
 	})
 
-	Context("Ready:AwaitingSubAgent -> Succeeded:Succeeded", func() {
+	Context("Ready:AwaitingSubAgent -> Succeeded:Succeeded (Sub Agent)", func() {
 		It("transitions to Succeeded:Succeeded when sub-agent task completes successfully", func() {
 			By("setting up test resources")
 			testSecret.Setup(ctx, k8sClient)
 			defer testSecret.Teardown(ctx)
 
 			toolCall := &utils.TestToolCall{
-				Name:     "test-delegate-tool-call",
+				Name:     "test-delegate-tool-call-2",
 				TaskName: "task-party-2025",
 				ToolRef:  "delegate_to_agent__test-agent",
 				ToolType: acp.ToolTypeDelegateToAgent,
@@ -727,6 +728,9 @@ var _ = Describe("ToolCall Controller", func() {
 				Name:        "delegate-test-delegate-tool-call-test-agent",
 				AgentName:   "test-agent",
 				UserMessage: "test message",
+				Labels: map[string]string{
+					"acp.humanlayer.dev/parent-toolcall": tc.Name,
+				},
 			}
 			childTask.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
 				Phase:  acp.TaskPhaseFinalAnswer,
@@ -734,13 +738,6 @@ var _ = Describe("ToolCall Controller", func() {
 				Status: acp.TaskStatusTypeReady,
 			})
 			defer childTask.Teardown(ctx)
-
-			// Add the parent-toolcall label
-			task := childTask.Task
-			task.Labels = map[string]string{
-				"acp.humanlayer.dev/parent-toolcall": tc.Name,
-			}
-			Expect(k8sClient.Update(ctx, task)).To(Succeed())
 
 			By("reconciling the toolcall")
 			reconciler, recorder := reconciler()
@@ -780,7 +777,7 @@ var _ = Describe("ToolCall Controller", func() {
 			defer testSecret.Teardown(ctx)
 
 			toolCall := &utils.TestToolCall{
-				Name:     "test-delegate-tool-call",
+				Name:     "test-delegate-tool-call-3",
 				TaskName: "task-party-2025",
 				ToolRef:  "delegate_to_agent__test-agent",
 				ToolType: acp.ToolTypeDelegateToAgent,
@@ -796,9 +793,12 @@ var _ = Describe("ToolCall Controller", func() {
 
 			By("creating a failed child task")
 			childTask := &utils.TestTask{
-				Name:        "delegate-test-delegate-tool-call-test-agent",
+				Name:        "delegate-test-delegate-tool-call-test-agent-f",
 				AgentName:   "test-agent",
 				UserMessage: "test message",
+				Labels: map[string]string{
+					"acp.humanlayer.dev/parent-toolcall": tc.Name,
+				},
 			}
 			childTask.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
 				Phase:  acp.TaskPhaseFailed,
@@ -806,13 +806,6 @@ var _ = Describe("ToolCall Controller", func() {
 				Status: acp.TaskStatusTypeError,
 			})
 			defer childTask.Teardown(ctx)
-
-			// Add the parent-toolcall label
-			task := childTask.Task
-			task.Labels = map[string]string{
-				"acp.humanlayer.dev/parent-toolcall": tc.Name,
-			}
-			Expect(k8sClient.Update(ctx, task)).To(Succeed())
 
 			By("reconciling the toolcall")
 			reconciler, recorder := reconciler()

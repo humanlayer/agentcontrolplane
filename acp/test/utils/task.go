@@ -16,6 +16,7 @@ type TestTask struct {
 	AgentName   string
 	UserMessage string
 	Task        *v1alpha1.Task
+	Labels      map[string]string
 	k8sClient   client.Client
 }
 
@@ -26,6 +27,7 @@ func (t *TestTask) Setup(ctx context.Context, k8sClient client.Client) *v1alpha1
 		ObjectMeta: v1.ObjectMeta{
 			Name:      t.Name,
 			Namespace: "default",
+			Labels:    t.Labels,
 		},
 		Spec: v1alpha1.TaskSpec{},
 	}

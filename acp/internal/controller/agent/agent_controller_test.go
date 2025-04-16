@@ -15,19 +15,21 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/test/utils"
 )
 
+const (
+	llmName   = "test-llm"
+	agentName = "test-agent"
+)
+
 var llm = utils.TestLLM{
-	Name:       "test-llm",
+	Name:       llmName,
 	SecretName: "fake-secret",
 }
 
 var _ = Describe("Agent Controller", func() {
-	const resourceName = "test-agent"
-	const llmName = "test-llm"
-
 	ctx := context.Background()
 
 	typeNamespacedName := types.NamespacedName{
-		Name:      resourceName,
+		Name:      agentName,
 		Namespace: "default",
 	}
 
@@ -55,7 +57,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("creating the test agent")
 			testAgent := &utils.TestAgent{
-				Name:                 resourceName,
+				Name:                 agentName,
 				SystemPrompt:         "Test agent",
 				LLM:                  llmName,
 				HumanContactChannels: []string{contactChannel.Name},
@@ -81,7 +83,7 @@ var _ = Describe("Agent Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedAgent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedAgent.Status.Ready).To(BeTrue())
-			Expect(updatedAgent.Status.Status).To(Equal("Ready"))
+			Expect(updatedAgent.Status.Status).To(Equal(acp.AgentStatusReady))
 			Expect(updatedAgent.Status.StatusDetail).To(Equal("All dependencies validated successfully"))
 			Expect(updatedAgent.Status.ValidHumanContactChannels).To(ContainElement(acp.ResolvedContactChannel{
 				Name: contactChannel.Name,
@@ -110,7 +112,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("creating the test agent with invalid LLM")
 			testAgent := &utils.TestAgent{
-				Name:                 resourceName,
+				Name:                 agentName,
 				SystemPrompt:         "Test agent",
 				LLM:                  "nonexistent-llm",
 				HumanContactChannels: []string{contactChannel.Name},
@@ -137,7 +139,7 @@ var _ = Describe("Agent Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedAgent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedAgent.Status.Ready).To(BeFalse())
-			Expect(updatedAgent.Status.Status).To(Equal("Error"))
+			Expect(updatedAgent.Status.Status).To(Equal(acp.AgentStatusError))
 			Expect(updatedAgent.Status.StatusDetail).To(ContainSubstring(`"nonexistent-llm" not found`))
 
 			By("checking that a failure event was created")
@@ -168,7 +170,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("creating the test agent with invalid MCP server")
 			testAgent := &utils.TestAgent{
-				Name:                 resourceName,
+				Name:                 agentName,
 				SystemPrompt:         "Test agent",
 				LLM:                  llmName,
 				HumanContactChannels: []string{contactChannel.Name},
@@ -197,7 +199,7 @@ var _ = Describe("Agent Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedAgent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedAgent.Status.Ready).To(BeFalse())
-			Expect(updatedAgent.Status.Status).To(Equal("Error"))
+			Expect(updatedAgent.Status.Status).To(Equal(acp.AgentStatusError))
 			Expect(updatedAgent.Status.StatusDetail).To(ContainSubstring(`"nonexistent-mcp-server" not found`))
 
 			By("checking that a failure event was created")
@@ -214,7 +216,7 @@ var _ = Describe("Agent Controller", func() {
 			defer llm.Teardown(ctx)
 			By("creating the test agent with invalid contact channel")
 			testAgent := &utils.TestAgent{
-				Name:                 resourceName,
+				Name:                 agentName,
 				SystemPrompt:         "Test agent",
 				LLM:                  llmName,
 				HumanContactChannels: []string{"nonexistent-humancontactchannel"},
@@ -241,7 +243,7 @@ var _ = Describe("Agent Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedAgent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedAgent.Status.Ready).To(BeFalse())
-			Expect(updatedAgent.Status.Status).To(Equal("Error"))
+			Expect(updatedAgent.Status.Status).To(Equal(acp.AgentStatusError))
 			Expect(updatedAgent.Status.StatusDetail).To(ContainSubstring(`"nonexistent-humancontactchannel" not found`))
 
 			By("checking that a failure event was created")
@@ -273,13 +275,14 @@ var _ = Describe("Agent Controller", func() {
 
 			By("creating the parent agent with a reference to the sub-agent")
 			parentAgentObj := &utils.TestAgent{
-				Name:         resourceName,
+				Name:         agentName,
 				SystemPrompt: "Parent agent",
 				LLM:          llmName,
 				SubAgents:    []string{"sub-agent"},
 				Description:  "A parent agent that delegates to sub-agents",
 			}
 			parentAgentObj.Setup(ctx, k8sClient)
+			defer parentAgentObj.Teardown(ctx)
 
 			By("reconciling the parent agent")
 			eventRecorder := record.NewFakeRecorder(10)
@@ -300,7 +303,7 @@ var _ = Describe("Agent Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedParent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedParent.Status.Ready).To(BeFalse())
-			Expect(updatedParent.Status.Status).To(Equal("Pending"))
+			Expect(updatedParent.Status.Status).To(Equal(acp.AgentStatusPending))
 			Expect(updatedParent.Status.StatusDetail).To(ContainSubstring("waiting for sub-agent"))
 			Expect(updatedParent.Status.StatusDetail).To(ContainSubstring("not ready"))
 			Expect(updatedParent.Status.ValidSubAgents).To(BeEmpty())
@@ -311,7 +314,7 @@ var _ = Describe("Agent Controller", func() {
 	})
 
 	Context("Pending:Pending -> Ready:Ready", func() {
-		FIt("moves to Ready:Ready when sub-agent becomes ready", func() {
+		It("moves to Ready:Ready when sub-agent becomes ready", func() {
 			By("creating a test LLM")
 			llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
 				Ready:        true,
@@ -334,7 +337,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("creating the parent agent with a reference to the sub-agent")
 			parentAgentObj := &utils.TestAgent{
-				Name:         resourceName,
+				Name:         agentName,
 				SystemPrompt: "Parent agent",
 				LLM:          llmName,
 				SubAgents:    []string{"sub-agent"},

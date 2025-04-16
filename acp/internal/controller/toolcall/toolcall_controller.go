@@ -272,6 +272,7 @@ func (r *ToolCallReconciler) checkCompletedOrExisting(ctx context.Context, tc *a
 
 	// Check if a child TaskRun already exists for this tool call
 	var taskList acp.TaskList
+	// todo(dex) we do not label tasks like this...
 	if err := r.List(ctx, &taskList, client.InNamespace(tc.Namespace), client.MatchingLabels{"acp.humanlayer.dev/task": tc.Name}); err != nil {
 		logger.Error(err, "Failed to list child Tasks")
 		return true, err, true
@@ -279,6 +280,7 @@ func (r *ToolCallReconciler) checkCompletedOrExisting(ctx context.Context, tc *a
 	if len(taskList.Items) > 0 {
 		logger.Info("Child Task already exists", "childTask", taskList.Items[0].Name)
 		// Optionally, sync status from child to parent.
+		// todo(dex) wtf does this mean :point_up:
 		return true, nil, true
 	}
 
@@ -747,6 +749,7 @@ func (r *ToolCallReconciler) handleMCPApprovalFlow(ctx context.Context, tc *acp.
 	}
 
 	// Handle pending approval check first
+	// todo(dex) why don't we do this way higher up? our phase checks should all be at the same level
 	if tc.Status.Phase == acp.ToolCallPhaseAwaitingHumanApproval {
 		result, err, handled := r.handlePendingApproval(ctx, tc, apiKey)
 		if handled {
@@ -927,20 +930,9 @@ func (r *ToolCallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	// 4. Check if already completed or has child TaskRun
-	done, err, handled := r.checkCompletedOrExisting(ctx, &tc)
-	if handled {
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		if done {
-			return ctrl.Result{}, nil
-		}
-	}
-
 	// 4.5. Check if we need to process a sub-agent result
 	if tc.Status.Phase == acp.ToolCallPhaseAwaitingSubAgent {
-		return r.processAwaitingSubAgent(ctx, &tc)
+		return r.checkSubAgentStatus(ctx, &tc)
 	}
 
 	// 5. Check that we're in Ready status before continuing
@@ -954,6 +946,8 @@ func (r *ToolCallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// 6. Handle MCP approval flow
+	// todo(dex) what does this method name mean!? we already do MCP things in dispatchToolExecution, so I'm not sure what this call is for
+	// without dipping into the code. whats a flow?
 	result, err, handled := r.handleMCPApprovalFlow(ctx, &tc)
 	if handled {
 		return result, err
@@ -1022,10 +1016,10 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen] + "..."
 }
 
-// processAwaitingSubAgent checks for completed child tasks and updates parent ToolCall status
-func (r *ToolCallReconciler) processAwaitingSubAgent(ctx context.Context, tc *acp.ToolCall) (ctrl.Result, error) {
+// checkSubAgentStatus checks for completed child tasks and updates parent ToolCall status
+func (r *ToolCallReconciler) checkSubAgentStatus(ctx context.Context, tc *acp.ToolCall) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Processing ToolCall awaiting sub-agent completion", "name", tc.Name)
+	logger.Info("Checking ToolCall awaiting sub-agent completion", "name", tc.Name)
 
 	// Find the child tasks for this ToolCall
 	var taskList acp.TaskList
