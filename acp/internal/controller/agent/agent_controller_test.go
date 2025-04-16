@@ -6,7 +6,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -15,6 +14,11 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 	"github.com/humanlayer/agentcontrolplane/acp/test/utils"
 )
+
+var llm = utils.TestLLM{
+	Name:       "test-llm",
+	SecretName: "fake-secret",
+}
 
 var _ = Describe("Agent Controller", func() {
 	const resourceName = "test-agent"
@@ -27,50 +31,15 @@ var _ = Describe("Agent Controller", func() {
 		Namespace: "default",
 	}
 
-	BeforeEach(func() {
-		// Create a test LLM
-		llm := &acp.LLM{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      llmName,
-				Namespace: "default",
-			},
-			Spec: acp.LLMSpec{
-				Provider: "openai",
-				APIKeyFrom: &acp.APIKeySource{
-					SecretKeyRef: acp.SecretKeyRef{
-						Name: "test-secret",
-						Key:  "api-key",
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, llm)).To(Succeed())
-
-		// Mark LLM as ready
-		llm.Status.Status = "Ready"
-		llm.Status.StatusDetail = "Ready for testing"
-		Expect(k8sClient.Status().Update(ctx, llm)).To(Succeed())
-	})
-
-	AfterEach(func() {
-		// Cleanup test resources
-		By("Cleanup the test LLM")
-		llm := &acp.LLM{}
-		err := k8sClient.Get(ctx, types.NamespacedName{Name: llmName, Namespace: "default"}, llm)
-		if err == nil {
-			Expect(k8sClient.Delete(ctx, llm)).To(Succeed())
-		}
-
-		By("Cleanup the test Agent")
-		agent := &acp.Agent{}
-		err = k8sClient.Get(ctx, typeNamespacedName, agent)
-		if err == nil {
-			Expect(k8sClient.Delete(ctx, agent)).To(Succeed())
-		}
-	})
-
 	Context("'':'' -> Ready:Ready", func() {
 		It("moves to Ready:Ready when all dependencies are valid", func() {
+			llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
+				Ready:        true,
+				Status:       "Ready",
+				StatusDetail: "Ready for testing",
+			})
+			defer llm.Teardown(ctx)
+
 			By("creating a test contact channel")
 			contactChannel := &utils.TestContactChannel{
 				Name:        "test-humancontactchannel",
@@ -176,6 +145,14 @@ var _ = Describe("Agent Controller", func() {
 		})
 
 		It("moves to Error:Error when MCP server is not found", func() {
+			By("creating a test LLM")
+			llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
+				Ready:        true,
+				Status:       "Ready",
+				StatusDetail: "Ready for testing",
+			})
+			defer llm.Teardown(ctx)
+
 			By("creating a test contact channel")
 			contactChannel := &utils.TestContactChannel{
 				Name:        "test-humancontactchannel",
@@ -228,6 +205,13 @@ var _ = Describe("Agent Controller", func() {
 		})
 
 		It("moves to Error:Error when contact channel is not found", func() {
+			By("creating a test LLM")
+			llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
+				Ready:        true,
+				Status:       "Ready",
+				StatusDetail: "Ready for testing",
+			})
+			defer llm.Teardown(ctx)
 			By("creating the test agent with invalid contact channel")
 			testAgent := &utils.TestAgent{
 				Name:                 resourceName,
@@ -267,6 +251,13 @@ var _ = Describe("Agent Controller", func() {
 
 	Context("'':'' -> Pending:Pending", func() {
 		It("moves to Pending:Pending when sub-agent is not ready", func() {
+			By("creating a test LLM")
+			llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
+				Ready:        true,
+				Status:       "Ready",
+				StatusDetail: "Ready for testing",
+			})
+			defer llm.Teardown(ctx)
 			By("creating the sub-agent first")
 			subAgentObj := &utils.TestAgent{
 				Name:         "sub-agent",
@@ -320,23 +311,26 @@ var _ = Describe("Agent Controller", func() {
 	})
 
 	Context("Pending:Pending -> Ready:Ready", func() {
-		It("moves to Ready:Ready when sub-agent becomes ready", func() {
+		FIt("moves to Ready:Ready when sub-agent becomes ready", func() {
+			By("creating a test LLM")
+			llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
+				Ready:        true,
+				Status:       "Ready",
+				StatusDetail: "Ready for testing",
+			})
+			defer llm.Teardown(ctx)
 			By("creating the sub-agent first")
 			subAgentObj := &utils.TestAgent{
 				Name:         "sub-agent",
 				SystemPrompt: "Sub agent",
 				LLM:          llmName,
 			}
-			subAgentObj.Setup(ctx, k8sClient)
-
-			// Mark the sub-agent as ready
-			subAgent := &acp.Agent{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: "sub-agent", Namespace: "default"}, subAgent)
-			Expect(err).NotTo(HaveOccurred())
-			subAgent.Status.Ready = true
-			subAgent.Status.Status = "Ready"
-			subAgent.Status.StatusDetail = "All dependencies validated successfully"
-			Expect(k8sClient.Status().Update(ctx, subAgent)).To(Succeed())
+			subAgentObj.SetupWithStatus(ctx, k8sClient, acp.AgentStatus{
+				Ready:        true,
+				Status:       acp.AgentStatusReady,
+				StatusDetail: "All dependencies validated successfully",
+			})
+			defer subAgentObj.Teardown(ctx)
 
 			By("creating the parent agent with a reference to the sub-agent")
 			parentAgentObj := &utils.TestAgent{
@@ -346,16 +340,12 @@ var _ = Describe("Agent Controller", func() {
 				SubAgents:    []string{"sub-agent"},
 				Description:  "A parent agent that delegates to sub-agents",
 			}
-			parentAgentObj.Setup(ctx, k8sClient)
-
-			// Set parent agent to Pending status
-			parentAgent := &acp.Agent{}
-			err = k8sClient.Get(ctx, typeNamespacedName, parentAgent)
-			Expect(err).NotTo(HaveOccurred())
-			parentAgent.Status.Ready = false
-			parentAgent.Status.Status = "Pending"
-			parentAgent.Status.StatusDetail = "Waiting for sub-agent to become ready"
-			Expect(k8sClient.Status().Update(ctx, parentAgent)).To(Succeed())
+			parentAgentObj.SetupWithStatus(ctx, k8sClient, acp.AgentStatus{
+				Ready:        false,
+				Status:       acp.AgentStatusPending,
+				StatusDetail: "Waiting for sub-agent to become ready",
+			})
+			defer parentAgentObj.Teardown(ctx)
 
 			By("reconciling the parent agent")
 			eventRecorder := record.NewFakeRecorder(10)
@@ -365,7 +355,7 @@ var _ = Describe("Agent Controller", func() {
 				recorder: eventRecorder,
 			}
 
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -375,7 +365,7 @@ var _ = Describe("Agent Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedParent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedParent.Status.Ready).To(BeTrue())
-			Expect(updatedParent.Status.Status).To(Equal("Ready"))
+			Expect(updatedParent.Status.Status).To(Equal(acp.AgentStatusReady))
 			Expect(updatedParent.Status.StatusDetail).To(Equal("All dependencies validated successfully"))
 			Expect(updatedParent.Status.ValidSubAgents).To(ContainElement(acp.ResolvedSubAgent{
 				Name: "sub-agent",

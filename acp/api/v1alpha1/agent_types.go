@@ -42,6 +42,14 @@ type LocalObjectReference struct {
 	Name string `json:"name"`
 }
 
+type AgentStatusType string
+
+const (
+	AgentStatusReady   AgentStatusType = "Ready"
+	AgentStatusError   AgentStatusType = "Error"
+	AgentStatusPending AgentStatusType = "Pending"
+)
+
 // AgentStatus defines the observed state of Agent
 type AgentStatus struct {
 	// Ready indicates if the agent's dependencies (LLM and Tools) are valid and ready
@@ -49,7 +57,7 @@ type AgentStatus struct {
 
 	// Status indicates the current status of the agent
 	// +kubebuilder:validation:Enum=Ready;Error;Pending
-	Status string `json:"status,omitempty"`
+	Status AgentStatusType `json:"status,omitempty"`
 
 	// StatusDetail provides additional details about the current status
 	StatusDetail string `json:"statusDetail,omitempty"`

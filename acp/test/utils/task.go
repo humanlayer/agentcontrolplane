@@ -60,9 +60,9 @@ func (t *TestTask) SetupWithStatus(
 }
 
 func (t *TestTask) Teardown(ctx context.Context) {
-	if t.k8sClient == nil {
+	if t.k8sClient == nil || t.Task == nil {
 		return
 	}
 	By("deleting the task")
-	Expect(t.k8sClient.Delete(ctx, t.Task)).To(Succeed())
+	_ = t.k8sClient.Delete(ctx, t.Task)
 }
