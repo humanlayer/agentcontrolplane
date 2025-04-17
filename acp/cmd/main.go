@@ -30,6 +30,7 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/controller/task"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/controller/toolcall"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/server"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -70,12 +71,14 @@ func main() {
 	var webhookCertPath, webhookCertName, webhookCertKey string
 	var enableLeaderElection bool
 	var probeAddr string
+	var apiAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&apiAddr, "api-bind-address", ":8082", "The address the REST API endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -307,6 +310,13 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
+
+	// Set up and add the REST API server
+	if err := server.AddToManager(mgr, apiAddr); err != nil {
+		setupLog.Error(err, "unable to set up REST API server")
+		os.Exit(1)
+	}
+	setupLog.Info("REST API server configured", "address", apiAddr)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
