@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -37,14 +38,18 @@ func NewAPIServer(client client.Client, port string) *APIServer {
 
 // registerRoutes sets up all API endpoints
 func (s *APIServer) registerRoutes() {
-	// Health check endpoint
+	// Health check endpoint (unversioned)
 	s.router.GET("/status", s.getStatus)
 
-	// Task endpoints
-	tasks := s.router.Group("/tasks")
+	// API v1 routes
+	v1 := s.router.Group("/v1")
 	{
-		tasks.GET("", s.listTasks)
-		tasks.GET("/:id", s.getTask)
+		// Task endpoints
+		tasks := v1.Group("/tasks")
+		{
+			tasks.GET("", s.listTasks)
+			tasks.GET("/:id", s.getTask)
+		}
 	}
 }
 
@@ -62,58 +67,65 @@ func (s *APIServer) Start(ctx context.Context) error {
 // Stop gracefully shuts down the server
 func (s *APIServer) Stop(ctx context.Context) error {
 	log.FromContext(ctx).Info("Stopping API server")
-	
+
 	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	
+
 	return s.httpServer.Shutdown(shutdownCtx)
 }
 
 // API handler methods
 func (s *APIServer) getStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status": "ok",
+		"status":  "ok",
 		"version": "v1alpha1",
 	})
 }
 
 func (s *APIServer) listTasks(c *gin.Context) {
-	// Using stub data
-	tasks := []gin.H{
-		{
-			"id":        "task-1",
-			"name":      "Sample Task 1",
-			"status":    "Running",
-			"createdAt": time.Now().Add(-24 * time.Hour).Format(time.RFC3339),
-		},
-		{
-			"id":        "task-2",
-			"name":      "Sample Task 2",
-			"status":    "Completed",
-			"createdAt": time.Now().Add(-48 * time.Hour).Format(time.RFC3339),
-		},
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
+
+	// Get namespace from query parameter or use default
+	namespace := c.DefaultQuery("namespace", "")
+
+	// Initialize task list
+	var taskList acp.TaskList
+
+	// List tasks
+	listOpts := []client.ListOption{}
+	if namespace != "" {
+		listOpts = append(listOpts, client.InNamespace(namespace))
 	}
-	
-	c.JSON(http.StatusOK, tasks)
+
+	if err := s.client.List(ctx, &taskList, listOpts...); err != nil {
+		logger.Error(err, "Failed to list tasks")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to list tasks: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, taskList.Items)
 }
 
 func (s *APIServer) getTask(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
 	id := c.Param("id")
-	
-	// Return stub data based on the requested ID
-	task := gin.H{
-		"id":          id,
-		"name":        "Sample Task " + id,
-		"status":      "Running",
-		"description": "This is a stub task with ID " + id,
-		"createdAt":   time.Now().Add(-24 * time.Hour).Format(time.RFC3339),
-		"details": gin.H{
-			"agent":     "agent-123",
-			"priority":  "high",
-			"attempts":  2,
-			"namespace": c.DefaultQuery("namespace", "default"),
-		},
+	namespace := c.DefaultQuery("namespace", "default")
+
+	// Initialize task
+	var task acp.Task
+
+	// Get the task
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: id}, &task); err != nil {
+		logger.Error(err, "Failed to get task", "name", id, "namespace", namespace)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Task not found: " + err.Error(),
+		})
+		return
 	}
-	
+
 	c.JSON(http.StatusOK, task)
 }
