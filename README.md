@@ -643,7 +643,7 @@ metadata:
 spec:
   agentRef:
     name: my-assistant
-  userMessage: "what is the data at https://lotrapi.co/api/characters/1? "' | kubectl apply -f -
+  userMessage: "what is the data at https://lotrapi.co/api/v1/characters/1? "' | kubectl apply -f -
 ```
 
 You should see some events in the output of
