@@ -1106,7 +1106,7 @@ metadata:
 spec:
   agentRef:
     name: agent-with-human-tool
-  userMessage: "Ask an expert what the the fastest animal on the planet is."' | kubectl apply -f -
+  userMessage: "Ask an expert what the fastest animal on the planet is."' | kubectl apply -f -
 ```
 
 Provided, you've setup your `ContactChannel` correctly, you should receive an email requesting your expertise. Feel free to respond when ready and keep an eye on how your `Task` and `ToolCall` statuses changes as the answer is picked up.
