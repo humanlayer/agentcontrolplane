@@ -982,34 +982,50 @@ spec:
 EOF
 ```
 
-The following diagram shows the relationship between Agent, SubAgent, Task, and ToolCall:
+While this is running, you can run the following a few times to see how the parent agent calls a `delegate` tool which then spawns a new task that uses the `web-fetch` agent
+
+```
+kubectl get agent,task,toolcall
+```
+
+
+
+
+The following diagram shows the relationship between Agents, subagents, and created tasks:
 
 ```mermaid
-graph TD
-    User([User])
-    ParentAgent[Parent Agent]
-    SubAgent[Sub Agent]
-    ParentTask[Parent Task]
-    SubTask[Sub Task]
-    ToolCall[ToolCall]
-    MCPServer[MCP Server]
+graph RL
     
-    User -->|submits query| ParentTask
-    ParentTask -->|uses| ParentAgent
-    ParentAgent -->|delegates to| SubAgent
-    SubAgent -->|creates| SubTask
-    SubTask -->|makes| ToolCall
-    ToolCall -->|executes on| MCPServer
-    
-    classDef agent fill:#d0e0ff,stroke:#333,stroke-width:1px
-    classDef task fill:#ffe0d0,stroke:#333,stroke-width:1px
-    classDef toolCall fill:#d0ffe0,stroke:#333,stroke-width:1px
-    classDef server fill:#f0d0ff,stroke:#333,stroke-width:1px
-    
-    class ParentAgent,SubAgent agent
-    class ParentTask,SubTask task
-    class ToolCall toolCall
-    class MCPServer server
+
+    subgraph ManagerAgent
+      subAgents
+    end
+
+    subgraph WebFetchAgent
+      MCPServers
+    end
+
+
+
+    subgraph ManagerTask
+       agentRef
+    end
+
+    subgraph DelegationTask
+      userMessage
+      agentRef2
+    end
+
+    DelegationTask --> parentTask --> ManagerTask
+    agentRef2 --> WebFetchAgent
+
+    agentRef --> ManagerAgent
+
+    subgraph MCPServer
+      fetch[fetch server]
+    end
+
+    MCPServers --> MCPServer
 ```
 
 ### Incorporating Human Approval
