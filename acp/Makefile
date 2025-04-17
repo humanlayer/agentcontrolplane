@@ -195,7 +195,7 @@ deploy: manifests docker-build kustomize ## Deploy controller to the K8s cluster
 .PHONY: deploy-local-kind
 deploy-local-kind: manifests docker-build docker-load-kind kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+	$(KUSTOMIZE) build config/localdev | $(KUBECTL) apply -f -
 
 .PHONY: deploy-samples
 deploy-samples: kustomize ## Deploy samples to the K8s cluster specified in ~/.kube/config.

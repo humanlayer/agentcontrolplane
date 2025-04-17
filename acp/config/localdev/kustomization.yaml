@@ -1,0 +1,4 @@
+namespace: default
+resources:
+  - ./service.yaml
+  - ../../config/default

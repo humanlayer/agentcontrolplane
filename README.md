@@ -127,8 +127,7 @@ This command will build the operator, create necessary CRDs, and deploy the ACP 
 1. **Define an LLM resource**
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1  
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1  
 kind: LLM
 metadata:
   name: gpt-4o
@@ -139,8 +138,7 @@ spec:
   apiKeyFrom:
     secretKeyRef:
       name: openai
-      key: OPENAI_API_KEY
-EOF
+      key: OPENAI_API_KEY' | kubectl apply -f -
 ```
 
 ```mermaid
@@ -224,8 +222,7 @@ Events:
 2. **Create an Agent resource**
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: my-assistant
@@ -233,8 +230,7 @@ spec:
   llmRef:
     name: gpt-4o
   system: |
-    You are a helpful assistant. Your job is to help the user with their tasks.
-EOF
+    You are a helpful assistant. Your job is to help the user with their tasks.' | kubectl apply -f -
 ```
 
 ```mermaid
@@ -325,16 +321,14 @@ Create a Task to interact with your agent:
 
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: hello-world-1
 spec:
   agentRef:
     name: my-assistant
-  userMessage: "What is the capital of the moon?"
-EOF
+  userMessage: "What is the capital of the moon?"' | kubectl apply -f -
 ```
 
 ```mermaid
@@ -523,16 +517,14 @@ metadata:
 Agent's aren't that interesting without tools. Let's add a basic MCP server tool to our agent:
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: MCPServer
 metadata:
   name: fetch
 spec:
   transport: "stdio"
   command: "uvx"
-  args: ["mcp-server-fetch"]
-EOF
+  args: ["mcp-server-fetch"]' | kubectl apply -f -
 ```
 
 ```bash
@@ -600,8 +592,7 @@ Events:
 Then we can update our agent in-place to give it access to the fetch tool:
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: my-assistant
@@ -611,8 +602,7 @@ spec:
   system: |
     You are a helpful assistant. Your job is to help the user with their tasks.
   mcpServers:
-    - name: fetch
-EOF
+    - name: fetch' | kubectl apply -f -
 ```
 
 ```mermaid
@@ -647,16 +637,14 @@ graph RL
 Let's make a new task that uses the fetch tool. In this case, we'll use https://swapi.dev, a public API for Star Wars data.
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: fetch-task
 spec:
   agentRef:
     name: my-assistant
-  userMessage: "what is the data at https://lotrapi.co/api/characters/1? "
-EOF
+  userMessage: "what is the data at https://lotrapi.co/api/characters/1? "' | kubectl apply -f -
 ```
 
 You should see some events in the output of
@@ -859,8 +847,7 @@ kubectl create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=$ANTHRO
 #### Create an LLM
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: LLM
 metadata:
   name: claude-3-5-sonnet
@@ -871,8 +858,7 @@ spec:
   apiKeyFrom:
     secretKeyRef:
       name: anthropic
-      key: ANTHROPIC_API_KEY
-EOF
+      key: ANTHROPIC_API_KEY' | kubectl apply -f -
 ```
 
 fetch the LLM to verify it was created:
@@ -889,8 +875,7 @@ claude-3-5-sonnet   anthropic   true    Ready
 #### Create an Agent and assign a task
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: claude
@@ -898,21 +883,18 @@ spec:
   llmRef:
     name: claude-3-5-sonnet
   system: |
-    You are a helpful assistant. Your job is to help the user with their tasks.
-EOF
+    You are a helpful assistant. Your job is to help the user with their tasks.' | kubectl apply -f -
 ```
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: claude-task
 spec:
   agentRef:
     name: claude
-  userMessage: "What is your name and primary directive?"
-EOF
+  userMessage: "What is your name and primary directive?"' | kubectl apply -f -
 ```
 
 After a few seconds, running 
@@ -1013,8 +995,7 @@ export MY_EMAIL=... # your email here
 ```
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: ContactChannel
 metadata:
   name: approval-channel 
@@ -1027,15 +1008,13 @@ spec:
   email:
     address: "$MY_EMAIL"
     subject: "Approval Request from ACP" 
-    contextAboutUser: "Primary approver for web fetch operations"
-EOF
+    contextAboutUser: "Primary approver for web fetch operations"' | kubectl apply -f -
 ```
 
 Now, let's update our MCP server from the earlier example so that it references our contact channel.
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: MCPServer
 metadata:
   name: fetch
@@ -1046,15 +1025,13 @@ spec:
   # When an approvalContactChannel is specified,
   # all tools on this MCP server will wait for human approval prior executing.
   approvalContactChannel:
-    name: approval-channel
-EOF
+    name: approval-channel' | kubectl apply -f -
 ```
 
 Be sure you have an agent that references the above `MCPServer` by running `kubectl describe agent` or create a fresh `agent` with:
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: agent-with-fetch
@@ -1064,23 +1041,20 @@ spec:
   system: |
     You are a helpful assistant. Your job is to help the user with their tasks.
   mcpServers:
-    - name: fetch
-EOF
+    - name: fetch' | kubectl apply -f -
 ```
 
 The fun part: Create a new task that uses the `fetch` tool to test the human approval workflow.
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: approved-fetch-task
 spec:
   agentRef:
     name: agent-with-fetch
-  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
-EOF
+  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"' | kubectl apply -f -
 ```
 
 Once this hits the tool call, we can check out the tool calls to see the human approval workflow in action:
@@ -1151,8 +1125,7 @@ export MY_EMAIL=... # your email here
 ```
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: ContactChannel
 metadata:
   name: human-expert
@@ -1165,15 +1138,13 @@ spec:
   email:
     address: "$MY_EMAIL"
     subject: "Request for Expertise" 
-    contextAboutUser: "A human expert that can provide a wide-range answers on a variety of topics"
-EOF
+    contextAboutUser: "A human expert that can provide a wide-range answers on a variety of topics"' | kubectl apply -f -
 ```
 
 Alright, we're ready for a brand new agent:
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Agent
 metadata:
   name: agent-with-human-tool
@@ -1185,23 +1156,20 @@ spec:
   mcpServers:
     - name: fetch
   humanContactChannels:
-    - name: human-expert
-EOF
+    - name: human-expert' | kubectl apply -f -
 ```
 
 Note the inclusion of `humanContactChannels` here, which now incorporates the `ContactChannel` we just made. Moving forward, any `Task` calls made against this `Agent` will attempt to make use of a human contact where appropriate. As an example, the following Task, _should_ (remember, "non-deterministic") reach out to our Luke Skywalker expert for more information before wrapping up the final output:
 
 ```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: acp.humanlayer.dev/v1alpha1 
+echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: Task
 metadata:
   name: human-expert-task
 spec:
   agentRef:
     name: agent-with-human-tool
-  userMessage: "Ask an expert what the the fastest animal on the planet is."
-EOF
+  userMessage: "Ask an expert what the fastest animal on the planet is."' | kubectl apply -f -
 ```
 
 Provided, you've setup your `ContactChannel` correctly, you should receive an email requesting your expertise. Feel free to respond when ready and keep an eye on how your `Task` and `ToolCall` statuses changes as the answer is picked up.
