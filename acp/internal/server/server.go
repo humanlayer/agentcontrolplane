@@ -167,7 +167,7 @@ func (s *APIServer) createTask(c *gin.Context) {
 		return
 	}
 
-	if err := validation.ValidateTaskInput(req.UserMessage, req.ContextWindow); err != nil {
+	if err := validation.ValidateTaskMessageInput(req.UserMessage, req.ContextWindow); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

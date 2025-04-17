@@ -6,9 +6,10 @@ import (
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 )
 
-// ValidateTaskInput ensures exactly one of userMessage or contextWindow is provided
-// and validates contextWindow contents if present
-func ValidateTaskInput(userMessage string, contextWindow []acp.Message) error {
+// ValidateTaskMessageInput ensures exactly one of userMessage or contextWindow is provided
+// and validates contextWindow contents if present. This function validates the input
+// mechanism used to create a Task (either through userMessage or contextWindow).
+func ValidateTaskMessageInput(userMessage string, contextWindow []acp.Message) error {
 	if userMessage != "" && len(contextWindow) > 0 {
 		return fmt.Errorf("only one of userMessage or contextWindow can be provided")
 	}

@@ -175,7 +175,7 @@ func (r *TaskReconciler) prepareForLLM(ctx context.Context, task *acp.Task, stat
 	logger := log.FromContext(ctx)
 
 	if statusUpdate.Status.Phase == acp.TaskPhaseInitializing || statusUpdate.Status.Phase == acp.TaskPhasePending {
-		if err := validation.ValidateTaskInput(task.Spec.UserMessage, task.Spec.ContextWindow); err != nil {
+		if err := validation.ValidateTaskMessageInput(task.Spec.UserMessage, task.Spec.ContextWindow); err != nil {
 			return r.setValidationError(ctx, task, statusUpdate, err)
 		}
 
