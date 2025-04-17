@@ -1,3 +1,24 @@
+### v0.5.1 (April 17, 2025)
+
+This release adds human-as-tool support and improves tool parameter handling.
+
+#### Features
+
+- Added support for using [human as tool](https://github.com/humanlayer/agentcontrolplane#incorporating-humans-as-tools) via ContactChannel resources in Agent
+- Added HTTP API endpoints for task management (/v1/tasks)
+- Improved JSON Schema support for complex tool parameters
+
+#### Improvements
+
+- Unified contact channel handling across approval and tool patterns
+- Enhanced test coverage for tool parameter validation
+
+#### Bug Fixes
+
+- Fixed toolcall name formatting to prevent collisions
+- Fixed a bug in MCPServer tool discovery and name resolution
+
+
 ### v0.5.0 (April 11, 2025) 
 
 This release simplifies tool management, enhances traceability, and strengthens human-in-the-loop execution patterns.
