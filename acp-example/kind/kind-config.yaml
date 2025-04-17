@@ -29,6 +29,11 @@ nodes:
         hostPort: 9092
         listenAddress: "0.0.0.0"
         protocol: tcp
+      # ACP Controller Manager HTTP gateway
+      - containerPort: 8082
+        hostPort: 8082
+        listenAddress: "0.0.0.0"
+        protocol: tcp
 
 kubeadmConfigPatches:
   - |
