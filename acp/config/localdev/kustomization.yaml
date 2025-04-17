@@ -1,6 +1,5 @@
 namespace: default
 resources:
-- ./service.yaml
 - ../../config/default
 images:
 - name: controller
@@ -8,3 +7,14 @@ images:
   newTag: "202504171233"
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+patches:
+- target:
+    kind: Service
+    name: controller-manager-api-service
+  patch: |-
+    - op: replace
+      path: /spec/type
+      value: NodePort
+    - op: add
+      path: /spec/ports/0/nodePort
+      value: 8082
