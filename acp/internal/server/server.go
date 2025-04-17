@@ -205,7 +205,7 @@ func (s *APIServer) createTask(c *gin.Context) {
 	}
 
 	if err := s.client.Create(ctx, task); err != nil {
-		if statusErr, ok := err.(*apierrors.StatusError); ok {
+		if statusErr := new(apierrors.StatusError); errors.As(err, &statusErr) {
 			status := statusErr.Status()
 			c.JSON(int(status.Code), gin.H{"error": status.Message})
 		} else {
