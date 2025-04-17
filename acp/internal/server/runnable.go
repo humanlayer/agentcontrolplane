@@ -8,6 +8,8 @@ import (
 )
 
 // RunnableServer implements manager.Runnable interface for starting and stopping the API server
+var _ manager.Runnable = &RunnableServer{}
+
 type RunnableServer struct {
 	server *APIServer
 }

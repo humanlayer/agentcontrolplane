@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+	"github.com/pkg/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -43,25 +44,32 @@ func (s *APIServer) registerRoutes() {
 
 	// API v1 routes
 	v1 := s.router.Group("/v1")
-	{
-		// Task endpoints
-		tasks := v1.Group("/tasks")
-		{
-			tasks.GET("", s.listTasks)
-			tasks.GET("/:id", s.getTask)
-		}
-	}
+
+	// Task endpoint
+	tasks := v1.Group("/tasks")
+	tasks.GET("", s.listTasks)
+	tasks.GET("/:id", s.getTask)
 }
 
 // Start begins listening for requests in a goroutine
 func (s *APIServer) Start(ctx context.Context) error {
+	errChan := make(chan error, 1)
+
 	go func() {
 		log.FromContext(ctx).Info("Starting API server", "port", s.httpServer.Addr)
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.FromContext(ctx).Error(err, "API server failed")
+			errChan <- err
 		}
 	}()
-	return nil
+
+	// Optional: wait for either context cancellation or server error
+	select {
+	case err := <-errChan:
+		return errors.Wrap(err, "server error")
+	case <-ctx.Done():
+		return s.httpServer.Shutdown(context.Background())
+	}
 }
 
 // Stop gracefully shuts down the server
