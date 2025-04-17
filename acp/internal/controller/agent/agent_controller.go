@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	StatusReady = "Ready"
-	StatusError = "Error"
+	StatusReady   = "Ready"
+	StatusError   = "Error"
+	StatusPending = "Pending"
 )
 
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=agents,verbs=get;list;watch;create;update;patch;delete
@@ -35,27 +36,33 @@ type AgentReconciler struct {
 }
 
 // validateLLM checks if the referenced LLM exists and is ready
-func (r *AgentReconciler) validateLLM(ctx context.Context, agent *acp.Agent) error {
+// Returns a boolean indicating if the error is due to a missing dependency (true) or other error (false)
+// and the error itself if any
+func (r *AgentReconciler) validateLLM(ctx context.Context, agent *acp.Agent) (bool, error) {
 	llm := &acp.LLM{}
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: agent.Namespace,
 		Name:      agent.Spec.LLMRef.Name,
 	}, llm)
 	if err != nil {
-		return fmt.Errorf("failed to get LLM %q: %w", agent.Spec.LLMRef.Name, err)
+		// Return true to indicate this is a dependency not found error
+		return true, fmt.Errorf("failed to get LLM %q: %w", agent.Spec.LLMRef.Name, err)
 	}
 
 	if llm.Status.Status != StatusReady {
-		return fmt.Errorf("LLM %q is not ready", agent.Spec.LLMRef.Name)
+		// LLM exists but is not ready - this is not a missing dependency
+		return false, fmt.Errorf("LLM %q is not ready", agent.Spec.LLMRef.Name)
 	}
 
-	return nil
+	return false, nil
 }
 
 // validateMCPServers checks if all referenced MCP servers exist and are connected
-func (r *AgentReconciler) validateMCPServers(ctx context.Context, agent *acp.Agent) ([]acp.ResolvedMCPServer, error) {
+// Returns the list of valid MCP servers, a boolean indicating if the error is due to a missing dependency,
+// and the error itself if any
+func (r *AgentReconciler) validateMCPServers(ctx context.Context, agent *acp.Agent) ([]acp.ResolvedMCPServer, bool, error) {
 	if r.MCPManager == nil {
-		return nil, fmt.Errorf("MCPManager is not initialized")
+		return nil, false, fmt.Errorf("MCPManager is not initialized")
 	}
 
 	validMCPServers := make([]acp.ResolvedMCPServer, 0, len(agent.Spec.MCPServers))
@@ -67,17 +74,20 @@ func (r *AgentReconciler) validateMCPServers(ctx context.Context, agent *acp.Age
 			Name:      serverRef.Name,
 		}, mcpServer)
 		if err != nil {
-			return validMCPServers, fmt.Errorf("failed to get MCPServer %q: %w", serverRef.Name, err)
+			// Return true to indicate this is a dependency not found error
+			return validMCPServers, true, fmt.Errorf("failed to get MCPServer %q: %w", serverRef.Name, err)
 		}
 
 		if !mcpServer.Status.Connected {
-			return validMCPServers, fmt.Errorf("MCPServer %q is not connected", serverRef.Name)
+			// Server exists but is not connected - this is not a missing dependency
+			return validMCPServers, false, fmt.Errorf("MCPServer %q is not connected", serverRef.Name)
 		}
 
 		// TODO(dex) why don't we just pull the tools off the MCPServer Status - Agent shouldn't know too much about mcp impl
 		tools, exists := r.MCPManager.GetTools(mcpServer.Name)
 		if !exists {
-			return validMCPServers, fmt.Errorf("failed to get tools for MCPServer %q", mcpServer.Name)
+			// Tools don't exist - this is not a missing dependency
+			return validMCPServers, false, fmt.Errorf("failed to get tools for MCPServer %q", mcpServer.Name)
 		}
 
 		// Create list of tool names
@@ -92,12 +102,14 @@ func (r *AgentReconciler) validateMCPServers(ctx context.Context, agent *acp.Age
 		})
 	}
 
-	return validMCPServers, nil
+	return validMCPServers, false, nil
 }
 
 // validateHumanContactChannels checks if all referenced contact channels exist and are ready
 // and have the required context information for the LLM
-func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agent *acp.Agent) ([]acp.ResolvedContactChannel, error) {
+// Returns the list of valid contact channels, a boolean indicating if the error is due to a missing dependency,
+// and the error itself if any
+func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agent *acp.Agent) ([]acp.ResolvedContactChannel, bool, error) {
 	validChannels := make([]acp.ResolvedContactChannel, 0, len(agent.Spec.HumanContactChannels))
 
 	for _, channelRef := range agent.Spec.HumanContactChannels {
@@ -107,31 +119,33 @@ func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agen
 			Name:      channelRef.Name,
 		}, channel)
 		if err != nil {
-			return validChannels, fmt.Errorf("failed to get ContactChannel %q: %w", channelRef.Name, err)
+			// Return true to indicate this is a dependency not found error
+			return validChannels, true, fmt.Errorf("failed to get ContactChannel %q: %w", channelRef.Name, err)
 		}
 
 		if !channel.Status.Ready {
-			return validChannels, fmt.Errorf("ContactChannel %q is not ready", channelRef.Name)
+			// Channel exists but is not ready - this is not a missing dependency
+			return validChannels, false, fmt.Errorf("ContactChannel %q is not ready", channelRef.Name)
 		}
 
 		// Check that the context about the user/channel is provided based on the channel type
 		switch channel.Spec.Type {
 		case acp.ContactChannelTypeEmail:
 			if channel.Spec.Email == nil {
-				return validChannels, fmt.Errorf("ContactChannel %q is missing Email configuration", channelRef.Name)
+				return validChannels, false, fmt.Errorf("ContactChannel %q is missing Email configuration", channelRef.Name)
 			}
 			if channel.Spec.Email.ContextAboutUser == "" {
-				return validChannels, fmt.Errorf("ContactChannel %q must have ContextAboutUser set", channelRef.Name)
+				return validChannels, false, fmt.Errorf("ContactChannel %q must have ContextAboutUser set", channelRef.Name)
 			}
 		case acp.ContactChannelTypeSlack:
 			if channel.Spec.Slack == nil {
-				return validChannels, fmt.Errorf("ContactChannel %q is missing Slack configuration", channelRef.Name)
+				return validChannels, false, fmt.Errorf("ContactChannel %q is missing Slack configuration", channelRef.Name)
 			}
 			if channel.Spec.Slack.ContextAboutChannelOrUser == "" {
-				return validChannels, fmt.Errorf("ContactChannel %q must have ContextAboutChannelOrUser set", channelRef.Name)
+				return validChannels, false, fmt.Errorf("ContactChannel %q must have ContextAboutChannelOrUser set", channelRef.Name)
 			}
 		default:
-			return validChannels, fmt.Errorf("ContactChannel %q has unsupported type %q", channelRef.Name, channel.Spec.Type)
+			return validChannels, false, fmt.Errorf("ContactChannel %q has unsupported type %q", channelRef.Name, channel.Spec.Type)
 		}
 
 		validChannels = append(validChannels, acp.ResolvedContactChannel{
@@ -140,7 +154,7 @@ func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agen
 		})
 	}
 
-	return validChannels, nil
+	return validChannels, false, nil
 }
 
 //nolint:unparam
@@ -158,6 +172,25 @@ func (r *AgentReconciler) setStatusError(ctx context.Context, agent *acp.Agent, 
 	}
 
 	return ctrl.Result{}, err
+}
+
+// setStatusPending sets the agent status to pending when upstream dependencies are not found
+// and returns a Result with Requeue set to true to enable exponential backoff
+func (r *AgentReconciler) setStatusPending(ctx context.Context, agent *acp.Agent, err error, statusUpdate *acp.Agent, reason string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	statusUpdate.Status.Ready = false
+	statusUpdate.Status.Status = StatusPending
+	statusUpdate.Status.StatusDetail = err.Error()
+	r.recorder.Event(agent, corev1.EventTypeNormal, reason, err.Error())
+
+	if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
+		logger.Error(updateErr, "Failed to update Agent status")
+		return ctrl.Result{}, fmt.Errorf("failed to update agent status: %v", err)
+	}
+
+	// Return with Requeue set to true to enable exponential backoff
+	return ctrl.Result{Requeue: true}, nil
 }
 
 // Reconcile validates the agent's LLM and Tool references
@@ -189,18 +222,26 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
 
 	// Validate LLM reference
-	if err := r.validateLLM(ctx, &agent); err != nil {
+	isMissingDep, err := r.validateLLM(ctx, &agent)
+	if err != nil {
 		logger.Error(err, "LLM validation failed")
+		if isMissingDep {
+			// If dependency is missing, set to pending state with requeue
+			return r.setStatusPending(ctx, &agent, err, statusUpdate, "DependencyNotFound")
+		}
 		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 	}
 
-	var err error
-
 	// Validate MCP server references, if any
 	if len(agent.Spec.MCPServers) > 0 && r.MCPManager != nil {
-		validMCPServers, err = r.validateMCPServers(ctx, &agent)
+		var isMissingDep bool
+		validMCPServers, isMissingDep, err = r.validateMCPServers(ctx, &agent)
 		if err != nil {
 			logger.Error(err, "MCP server validation failed")
+			if isMissingDep {
+				// If dependency is missing, set to pending state with requeue
+				return r.setStatusPending(ctx, &agent, err, statusUpdate, "DependencyNotFound")
+			}
 			return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 		}
 
@@ -209,9 +250,14 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// Validate HumanContactChannel references, if any
 	if len(agent.Spec.HumanContactChannels) > 0 {
-		validHumanContactChannels, err = r.validateHumanContactChannels(ctx, &agent)
+		var isMissingDep bool
+		validHumanContactChannels, isMissingDep, err = r.validateHumanContactChannels(ctx, &agent)
 		if err != nil {
 			logger.Error(err, "HumanContactChannel validation failed")
+			if isMissingDep {
+				// If dependency is missing, set to pending state with requeue
+				return r.setStatusPending(ctx, &agent, err, statusUpdate, "DependencyNotFound")
+			}
 			return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
 		}
 

@@ -144,7 +144,7 @@ var _ = Describe("Agent Controller", func() {
 			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationSucceeded")
 		})
 
-		It("should fail validation with non-existent LLM", func() {
+		It("should set agent to pending state with non-existent LLM", func() {
 			By("creating the test agent with invalid LLM")
 			testAgent := &utils.TestScopedAgent{
 				Name:                 resourceName,
@@ -163,25 +163,27 @@ var _ = Describe("Agent Controller", func() {
 				recorder: eventRecorder,
 			}
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring(`"nonexistent-llm" not found`))
+			
+			// With the new behavior, we should not get an error, but a requeue request
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue(), "Should requeue for exponential backoff")
 
 			By("checking the agent status")
 			updatedAgent := &acp.Agent{}
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedAgent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedAgent.Status.Ready).To(BeFalse())
-			Expect(updatedAgent.Status.Status).To(Equal("Error"))
+			Expect(updatedAgent.Status.Status).To(Equal("Pending"), "Agent should be in Pending state when LLM not found")
 			Expect(updatedAgent.Status.StatusDetail).To(ContainSubstring(`"nonexistent-llm" not found`))
 
-			By("checking that a failure event was created")
-			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationFailed")
+			By("checking that a dependency not found event was created")
+			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("DependencyNotFound")
 		})
 
-		It("should fail validation with non-existent MCP server", func() {
+		It("should set agent to pending state with non-existent MCP server", func() {
 			By("creating the test agent with invalid MCP server")
 			testAgent := &utils.TestScopedAgent{
 				Name:                 resourceName,
@@ -202,25 +204,27 @@ var _ = Describe("Agent Controller", func() {
 				MCPManager: &mcpmanager.MCPServerManager{},
 			}
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring(`"nonexistent-mcp-server" not found`))
+			
+			// With the new behavior, we should not get an error, but a requeue request
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue(), "Should requeue for exponential backoff")
 
 			By("checking the agent status")
 			updatedAgent := &acp.Agent{}
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedAgent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedAgent.Status.Ready).To(BeFalse())
-			Expect(updatedAgent.Status.Status).To(Equal("Error"))
+			Expect(updatedAgent.Status.Status).To(Equal("Pending"), "Agent should be in Pending state when MCP server not found")
 			Expect(updatedAgent.Status.StatusDetail).To(ContainSubstring(`"nonexistent-mcp-server" not found`))
 
-			By("checking that a failure event was created")
-			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationFailed")
+			By("checking that a dependency not found event was created")
+			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("DependencyNotFound")
 		})
 
-		It("should fail validation with non-existent HumanContactChannel", func() {
+		It("should set agent to pending state with non-existent HumanContactChannel", func() {
 			By("creating the test agent with invalid HumanContactChannel")
 			testAgent := &utils.TestScopedAgent{
 				Name:                 resourceName,
@@ -239,22 +243,24 @@ var _ = Describe("Agent Controller", func() {
 				recorder: eventRecorder,
 			}
 
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring(`"nonexistent-humancontactchannel" not found`))
+			
+			// With the new behavior, we should not get an error, but a requeue request
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue(), "Should requeue for exponential backoff")
 
 			By("checking the agent status")
 			updatedAgent := &acp.Agent{}
 			err = k8sClient.Get(ctx, typeNamespacedName, updatedAgent)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedAgent.Status.Ready).To(BeFalse())
-			Expect(updatedAgent.Status.Status).To(Equal("Error"))
+			Expect(updatedAgent.Status.Status).To(Equal("Pending"), "Agent should be in Pending state when HumanContactChannel not found")
 			Expect(updatedAgent.Status.StatusDetail).To(ContainSubstring(`"nonexistent-humancontactchannel" not found`))
 
-			By("checking that a failure event was created")
-			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationFailed")
+			By("checking that a dependency not found event was created")
+			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("DependencyNotFound")
 		})
 	})
 })
