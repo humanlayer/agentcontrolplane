@@ -26,9 +26,9 @@ var testLLM = &utils.TestLLM{
 
 var testAgent = &utils.TestAgent{
 	Name:         "test-agent",
-	LLMName:      testLLM.Name,
+	LLM:          testLLM.Name,
 	SystemPrompt: "you are a testing assistant",
-	MCPServers:   []acp.LocalObjectReference{},
+	MCPServers:   []string{},
 }
 
 var testTask = &utils.TestTask{

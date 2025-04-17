@@ -39,6 +39,8 @@ func (t *TestLLM) Setup(ctx context.Context, k8sClient client.Client) *v1alpha1.
 	err := k8sClient.Create(ctx, llm)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.Name, Namespace: "default"}, llm)).To(Succeed())
+
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.Name, Namespace: "default"}, llm)).To(Succeed())
 	t.LLM = llm
 	return llm
 }
@@ -56,9 +58,10 @@ func (t *TestLLM) SetupWithStatus(
 }
 
 func (t *TestLLM) Teardown(ctx context.Context) {
-	if t.k8sClient == nil {
+	if t.k8sClient == nil || t.LLM == nil {
 		return
 	}
+
 	By("deleting the llm")
-	Expect(t.k8sClient.Delete(ctx, t.LLM)).To(Succeed())
+	_ = t.k8sClient.Delete(ctx, t.LLM)
 }

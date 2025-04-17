@@ -33,6 +33,7 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
   - [Creating an Agent and Running your first task](#creating-an-agent-and-running-your-first-task)
   - [Adding Tools with MCP](#adding-tools-with-mcp)
   - [Using other language models](#using-other-language-models)
+  - [Delegating to a Sub-Agent](#delegating-to-a-sub-agent)
   - [Incorporating Human Approval](#incorporating-human-approval)
   - [Incorporating Humans as Tools](#humans-as-tools)
   - [Cleaning Up](#cleaning-up)
@@ -908,6 +909,107 @@ NAME          READY   STATUS   PHASE         PREVIEW   OUTPUT
 claude-task   true    Ready    FinalAnswer             I am Claude, an AI assistant created by Anthropic. My primary directive is to be helpful while being direct and honest in my interactions. I aim to help users with their tasks while adhering to ethical principles.
 ```
 
+### Delegating to a Sub-Agent
+
+We can compose agents together to create more complex behaviors and make longer workflows more reliable.
+
+Let's create a web search agent that can use the fetch tool we created in the previous example.
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1
+kind: Agent
+metadata:
+  name: web-search
+spec:
+  llmRef:
+    name: gpt-4o
+  system: |
+    You are a helpful assistant. Your job is to help the user with their tasks.
+  mcpServers:
+    - name: fetch
+EOF
+```
+
+next, we can create a router agent that can delegate to the web search agent.
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1
+kind: Agent
+metadata:
+  name: manager
+spec:
+  llmRef:
+    name: gpt-4o
+  system: |
+    You are a helpful assistant. Your job is to help the user with their tasks.
+  subAgents:
+    - name: web-search
+EOF
+```
+
+From here, let's create a task that uses the manager agent.
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: acp.humanlayer.dev/v1alpha1
+kind: Task
+metadata:
+  name: manager-task
+spec:
+  agentRef:
+    name: manager
+  userMessage: "what is the data at https://lotrapi.co/api/v1/characters/2?"
+EOF
+```
+
+While this is running, you can run the following a few times to see how the parent agent calls a `delegate` tool which then spawns a new task that uses the `web-fetch` agent
+
+```
+kubectl get agent,task,toolcall
+```
+
+
+
+
+The following diagram shows the relationship between Agents, subagents, and created tasks:
+
+```mermaid
+graph RL
+    
+
+    subgraph ManagerAgent
+      subAgents
+    end
+
+    subgraph WebFetchAgent
+      MCPServers
+    end
+
+
+
+    subgraph ManagerTask
+       agentRef
+    end
+
+    subgraph DelegationTask
+      userMessage
+      agentRef2
+    end
+
+    DelegationTask --> parentTask --> ManagerTask
+    agentRef2 --> WebFetchAgent
+
+    agentRef --> ManagerAgent
+
+    subgraph MCPServer
+      fetch[fetch server]
+    end
+
+    MCPServers --> MCPServer
+```
+
 ### Incorporating Human Approval
 
 For certain classes of MCP tools, you may want to incorporate human approval into an agent's workflow.
@@ -1198,7 +1300,7 @@ kind delete cluster
 | MCP stdio Support | Alpha ✅ |
 | Task Execution History via Kubernetes Events | Alpha ✅ |
 | Better MCP Scheduling | Planned 🗺️ |
-| Delegation to Sub Agents | Planned 🗺️ |
+| Delegation to Sub Agents | In Progress 🚧 |
 | Human approval for MCP Tools | Alpha ✅ |
 | Contact human as a tool | In Progress 🚧 |
 | Tiered approval (once, just for this task, or always) | Planned 🗺️ |

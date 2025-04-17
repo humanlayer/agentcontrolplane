@@ -74,7 +74,7 @@ func (t *TestContactChannel) SetupWithStatus(
 }
 
 func (t *TestContactChannel) Teardown(ctx context.Context) {
-	if t.k8sClient == nil {
+	if t.k8sClient == nil || t.ContactChannel == nil {
 		return
 	}
 

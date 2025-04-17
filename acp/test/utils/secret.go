@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -31,15 +32,16 @@ func (t *TestSecret) Setup(ctx context.Context, k8sClient client.Client) *v1.Sec
 	}
 	err := k8sClient.Create(ctx, secret)
 	Expect(err).NotTo(HaveOccurred())
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: t.Name, Namespace: "default"}, secret)).To(Succeed())
 	t.Secret = secret
 	return secret
 }
 
 func (t *TestSecret) Teardown(ctx context.Context) {
-	if t.k8sClient == nil {
+	if t.k8sClient == nil || t.Secret == nil {
 		return
 	}
 
 	By("deleting the secret")
-	Expect(t.k8sClient.Delete(ctx, t.Secret)).To(Succeed())
+	_ = t.k8sClient.Delete(ctx, t.Secret)
 }

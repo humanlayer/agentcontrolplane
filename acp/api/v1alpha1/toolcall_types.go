@@ -13,12 +13,13 @@ const (
 	ToolCallStatusTypeSucceeded ToolCallStatusType = "Succeeded"
 )
 
-// ToolType identifies the type of the tool (Standard, MCP, HumanContact)
+// ToolType identifies the type of the tool (Standard, MCP, HumanContact, DelegateToAgent)
 type ToolType string
 
 const (
-	ToolTypeMCP          ToolType = "MCP"
-	ToolTypeHumanContact ToolType = "HumanContact"
+	ToolTypeMCP             ToolType = "MCP"
+	ToolTypeHumanContact    ToolType = "HumanContact"
+	ToolTypeDelegateToAgent ToolType = "DelegateToAgent"
 )
 
 // ToolCallSpec defines the desired state of ToolCall
