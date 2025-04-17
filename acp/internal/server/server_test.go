@@ -164,7 +164,7 @@ var _ = Describe("API Server", func() {
 		It("should use a custom namespace when provided", func() {
 			// Create an agent in the custom namespace
 			customNamespace := "custom-namespace"
-			
+
 			// Create the namespace first
 			namespace := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
@@ -172,7 +172,7 @@ var _ = Describe("API Server", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
-			
+
 			agent := &acp.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "custom-agent",
@@ -204,14 +204,14 @@ var _ = Describe("API Server", func() {
 
 			// Verify the task was created in the custom namespace
 			Expect(responseTask.Namespace).To(Equal(customNamespace))
-			
+
 			// Verify task is in the Kubernetes store in the custom namespace
 			var storedTask acp.Task
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
 				Name:      responseTask.Name,
 				Namespace: customNamespace,
 			}, &storedTask)).To(Succeed())
-			
+
 			// Verify task name format (should follow the pattern {agentName}-task-{uuid[:8]})
 			Expect(responseTask.Name).To(HavePrefix("custom-agent-task-"))
 		})
@@ -237,7 +237,7 @@ var _ = Describe("API Server", func() {
 			errorServer := NewAPIServer(errorClient, ":8080")
 			errorRouter := errorServer.router
 
-			// Create an agent 
+			// Create an agent
 			agent := &acp.Agent{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-agent-error",
