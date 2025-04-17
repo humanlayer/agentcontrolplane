@@ -6,3 +6,4 @@ images:
 - name: controller
   newName: ghcr.io/humanlayer/agentcontrolplane
   newTag: v0.5.1
+

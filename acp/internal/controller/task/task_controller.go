@@ -399,11 +399,13 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *acp.Agent) []l
 				Name:        "delegate_to_agent__" + subAgent.Name,
 				Description: subAgent.Spec.Description,
 				Parameters: llmclient.ToolFunctionParameters{
-					Type: "object",
-					Properties: map[string]llmclient.ToolFunctionParameter{
-						"message": {Type: "string"},
+					"type": "object",
+					"properties": map[string]interface{}{
+						"message": map[string]interface{}{
+							"type": "string",
+						},
 					},
-					Required: []string{"message"},
+					"required": []string{"message"},
 				},
 			},
 			ACPToolType: acp.ToolTypeDelegateToAgent,

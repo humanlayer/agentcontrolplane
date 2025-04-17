@@ -964,12 +964,51 @@ spec:
 EOF
 ```
 
+While this is running, you can run the following a few times to see how the parent agent calls a `delegate` tool which then spawns a new task that uses the `web-fetch` agent
+
+```
+kubectl get agent,task,toolcall
+```
 
 
 
 
+The following diagram shows the relationship between Agents, subagents, and created tasks:
+
+```mermaid
+graph RL
+    
+
+    subgraph ManagerAgent
+      subAgents
+    end
+
+    subgraph WebFetchAgent
+      MCPServers
+    end
 
 
+
+    subgraph ManagerTask
+       agentRef
+    end
+
+    subgraph DelegationTask
+      userMessage
+      agentRef2
+    end
+
+    DelegationTask --> parentTask --> ManagerTask
+    agentRef2 --> WebFetchAgent
+
+    agentRef --> ManagerAgent
+
+    subgraph MCPServer
+      fetch[fetch server]
+    end
+
+    MCPServers --> MCPServer
+```
 
 ### Incorporating Human Approval
 
