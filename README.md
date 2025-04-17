@@ -982,12 +982,35 @@ spec:
 EOF
 ```
 
+The following diagram shows the relationship between Agent, SubAgent, Task, and ToolCall:
 
-
-
-
-
-
+```mermaid
+graph TD
+    User([User])
+    ParentAgent[Parent Agent]
+    SubAgent[Sub Agent]
+    ParentTask[Parent Task]
+    SubTask[Sub Task]
+    ToolCall[ToolCall]
+    MCPServer[MCP Server]
+    
+    User -->|submits query| ParentTask
+    ParentTask -->|uses| ParentAgent
+    ParentAgent -->|delegates to| SubAgent
+    SubAgent -->|creates| SubTask
+    SubTask -->|makes| ToolCall
+    ToolCall -->|executes on| MCPServer
+    
+    classDef agent fill:#d0e0ff,stroke:#333,stroke-width:1px
+    classDef task fill:#ffe0d0,stroke:#333,stroke-width:1px
+    classDef toolCall fill:#d0ffe0,stroke:#333,stroke-width:1px
+    classDef server fill:#f0d0ff,stroke:#333,stroke-width:1px
+    
+    class ParentAgent,SubAgent agent
+    class ParentTask,SubTask task
+    class ToolCall toolCall
+    class MCPServer server
+```
 
 ### Incorporating Human Approval
 
