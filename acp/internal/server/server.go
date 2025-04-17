@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 	"github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,9 +18,10 @@ import (
 
 // CreateTaskRequest defines the structure of the request body for creating a task
 type CreateTaskRequest struct {
-	Namespace   string `json:"namespace,omitempty"` // Optional, defaults to "default"
-	AgentName   string `json:"agentName"`           // Required
-	UserMessage string `json:"userMessage"`         // Required
+	Namespace     string        `json:"namespace,omitempty"`     // Optional, defaults to "default"
+	AgentName     string        `json:"agentName"`               // Required
+	UserMessage   string        `json:"userMessage,omitempty"`   // Optional if contextWindow is provided
+	ContextWindow []acp.Message `json:"contextWindow,omitempty"` // Optional if userMessage is provided
 }
 
 // APIServer represents the REST API server
@@ -164,8 +166,9 @@ func (s *APIServer) createTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "agentName is required"})
 		return
 	}
-	if req.UserMessage == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "userMessage is required"})
+
+	if err := validation.ValidateTaskInput(req.UserMessage, req.ContextWindow); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -199,8 +202,9 @@ func (s *APIServer) createTask(c *gin.Context) {
 			},
 		},
 		Spec: acp.TaskSpec{
-			AgentRef:    acp.LocalObjectReference{Name: req.AgentName},
-			UserMessage: req.UserMessage,
+			AgentRef:      acp.LocalObjectReference{Name: req.AgentName},
+			UserMessage:   req.UserMessage,
+			ContextWindow: req.ContextWindow,
 		},
 	}
 

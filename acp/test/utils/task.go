@@ -12,11 +12,12 @@ import (
 )
 
 type TestTask struct {
-	Name        string
-	AgentName   string
-	UserMessage string
-	Task        *v1alpha1.Task
-	k8sClient   client.Client
+	Name          string
+	AgentName     string
+	UserMessage   string
+	ContextWindow []v1alpha1.Message
+	Task          *v1alpha1.Task
+	k8sClient     client.Client
 }
 
 func (t *TestTask) Setup(ctx context.Context, k8sClient client.Client) *v1alpha1.Task {
@@ -36,6 +37,9 @@ func (t *TestTask) Setup(ctx context.Context, k8sClient client.Client) *v1alpha1
 	}
 	if t.UserMessage != "" {
 		task.Spec.UserMessage = t.UserMessage
+	}
+	if len(t.ContextWindow) > 0 {
+		task.Spec.ContextWindow = t.ContextWindow
 	}
 
 	err := k8sClient.Create(ctx, task)

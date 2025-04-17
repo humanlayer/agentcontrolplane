@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -180,6 +181,122 @@ var _ = Describe("Task Controller", func() {
 			// Note: The test previously expected the reconcile to proceed further.
 			// Now, it correctly checks the state after the first effective reconcile step.
 		})
+		It("handles task with contextWindow with system message", func() {
+			testAgent.SetupWithStatus(ctx, k8sClient, acp.AgentStatus{Ready: true})
+			defer testAgent.Teardown(ctx)
+			testTask2 := &TestTask{
+				Name:          "test-task-context-system",
+				AgentName:     testAgent.Name,
+				ContextWindow: []acp.Message{{Role: "system", Content: "Custom system"}, {Role: "user", Content: "User query"}},
+			}
+			task := testTask2.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
+				Phase:       acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{TraceID: "0af7651916cd43dd8448eb211c80319c", SpanID: "b7ad6b7169203331"},
+			})
+			defer testTask2.Teardown(ctx)
+			reconciler, recorder := reconciler()
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: testTask2.Name, Namespace: "default"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask2.Name, Namespace: "default"}, task)).To(Succeed())
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM))
+			Expect(task.Status.ContextWindow).To(HaveLen(2))
+			Expect(task.Status.ContextWindow[0].Content).To(Equal("Custom system"))
+			Expect(task.Status.UserMsgPreview).To(Equal("User query"))
+			ExpectRecorder(recorder).ToEmitEventContaining("ValidationSucceeded")
+		})
+
+		It("handles task with contextWindow without system message", func() {
+			testAgent.SetupWithStatus(ctx, k8sClient, acp.AgentStatus{Ready: true})
+			defer testAgent.Teardown(ctx)
+			testTask2 := &TestTask{
+				Name:          "test-task-context-no-system",
+				AgentName:     testAgent.Name,
+				ContextWindow: []acp.Message{{Role: "user", Content: "User query"}, {Role: "user", Content: "Follow-up"}},
+			}
+			task := testTask2.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
+				Phase:       acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{TraceID: "0af7651916cd43dd8448eb211c80319c", SpanID: "b7ad6b7169203331"},
+			})
+			defer testTask2.Teardown(ctx)
+			reconciler, recorder := reconciler()
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: testTask2.Name, Namespace: "default"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask2.Name, Namespace: "default"}, task)).To(Succeed())
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseReadyForLLM))
+			Expect(task.Status.ContextWindow).To(HaveLen(3))
+			Expect(task.Status.ContextWindow[0].Role).To(Equal("system"))
+			Expect(task.Status.UserMsgPreview).To(Equal("Follow-up"))
+			ExpectRecorder(recorder).ToEmitEventContaining("ValidationSucceeded")
+		})
+
+		It("fails if both are provided", func() {
+			testAgent.SetupWithStatus(ctx, k8sClient, acp.AgentStatus{Ready: true})
+			defer testAgent.Teardown(ctx)
+			testTask2 := &TestTask{
+				Name:          "test-task-both",
+				AgentName:     testAgent.Name,
+				UserMessage:   "User message",
+				ContextWindow: []acp.Message{{Role: "user", Content: "Query"}},
+			}
+			task := testTask2.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
+				Phase:       acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{TraceID: "0af7651916cd43dd8448eb211c80319c", SpanID: "b7ad6b7169203331"},
+			})
+			defer testTask2.Teardown(ctx)
+			reconciler, recorder := reconciler()
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: testTask2.Name, Namespace: "default"}})
+			Expect(err).To(HaveOccurred())
+			Expect(result).To(Equal(ctrl.Result{}))
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask2.Name, Namespace: "default"}, task)).To(Succeed())
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFailed))
+			Expect(task.Status.Error).To(Equal("only one of userMessage or contextWindow can be provided"))
+			ExpectRecorder(recorder).ToEmitEventContaining("ValidationFailed")
+		})
+
+		It("fails if neither is provided", func() {
+			testAgent.SetupWithStatus(ctx, k8sClient, acp.AgentStatus{Ready: true})
+			defer testAgent.Teardown(ctx)
+			testTask2 := &TestTask{Name: "test-task-neither", AgentName: testAgent.Name}
+			task := testTask2.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
+				Phase:       acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{TraceID: "0af7651916cd43dd8448eb211c80319c", SpanID: "b7ad6b7169203331"},
+			})
+			defer testTask2.Teardown(ctx)
+			reconciler, recorder := reconciler()
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: testTask2.Name, Namespace: "default"}})
+			Expect(err).To(HaveOccurred())
+			Expect(result).To(Equal(ctrl.Result{}))
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask2.Name, Namespace: "default"}, task)).To(Succeed())
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFailed))
+			Expect(task.Status.Error).To(Equal("one of userMessage or contextWindow must be provided"))
+			ExpectRecorder(recorder).ToEmitEventContaining("ValidationFailed")
+		})
+
+		It("fails if contextWindow lacks a user message", func() {
+			testAgent.SetupWithStatus(ctx, k8sClient, acp.AgentStatus{Ready: true})
+			defer testAgent.Teardown(ctx)
+			testTask2 := &TestTask{
+				Name:          "test-task-no-user",
+				AgentName:     testAgent.Name,
+				ContextWindow: []acp.Message{{Role: "system", Content: "System only"}},
+			}
+			task := testTask2.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
+				Phase:       acp.TaskPhaseInitializing,
+				SpanContext: &acp.SpanContext{TraceID: "0af7651916cd43dd8448eb211c80319c", SpanID: "b7ad6b7169203331"},
+			})
+			defer testTask2.Teardown(ctx)
+			reconciler, recorder := reconciler()
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: testTask2.Name, Namespace: "default"}})
+			Expect(err).To(HaveOccurred())
+			Expect(result).To(Equal(ctrl.Result{}))
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask2.Name, Namespace: "default"}, task)).To(Succeed())
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFailed))
+			Expect(task.Status.Error).To(ContainSubstring("contextWindow must contain at least one user message"))
+			ExpectRecorder(recorder).ToEmitEventContaining("ValidationFailed")
+		})
+
 	})
 	Context("Pending -> ReadyForLLM", func() {
 		It("moves to ReadyForLLM if upstream dependencies are ready", func() {
