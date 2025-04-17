@@ -187,8 +187,8 @@ func (s *APIServer) createTask(c *gin.Context) {
 		return
 	}
 
-	// Generate unique task name
-	generatedName := "task-" + uuid.New().String()
+	// Generate (mostly) unique task name
+	generatedName := req.AgentName + "-task-" + uuid.New().String()[:8]
 
 	task := &acp.Task{
 		ObjectMeta: metav1.ObjectMeta{
