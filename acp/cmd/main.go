@@ -110,7 +110,7 @@ func main() {
 		setupLog.Error(err, "failed to initialize opentelemetry meter")
 		os.Exit(1)
 	}
-	
+
 	// Ensure proper shutdown of OpenTelemetry providers
 	defer func() {
 		if err := acpotel.Shutdown(ctx, tracerProvider, meterProvider); err != nil {
