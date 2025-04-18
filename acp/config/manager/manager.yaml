@@ -65,7 +65,9 @@ spec:
           - --health-probe-bind-address=:8081
         image: controller:latest
         name: manager
-        ports: []
+        ports:
+        - containerPort: 8082
+          name: api
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
