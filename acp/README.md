@@ -202,7 +202,11 @@ The Tool resource defines a capability that can be used by an Agent, such as:
 
 ### Task
 
-The Task resource represents a request to an Agent, which starts a conversation.
+The Task resource represents a request to an Agent, which starts a conversation. Tasks can be created in two ways:
+- Using a simple `userMessage` for single-turn queries
+- Using a `contextWindow` containing multiple messages for multi-turn conversations or continuing previous chats
+
+Only one of these methods can be used per Task.
 
 ## License
 

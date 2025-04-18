@@ -138,7 +138,62 @@ var _ = Describe("API Server", func() {
 			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
 			err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(errorResponse["error"]).To(Equal("userMessage is required"))
+			Expect(errorResponse["error"]).To(Equal("one of userMessage or contextWindow must be provided"))
+		})
+
+		It("should create a task with only contextWindow", func() {
+			agent := &acp.Agent{ObjectMeta: metav1.ObjectMeta{Name: "test-agent", Namespace: "default"}, Spec: acp.AgentSpec{}}
+			Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+			reqBody := CreateTaskRequest{
+				AgentName:     "test-agent",
+				ContextWindow: []acp.Message{{Role: "system", Content: "System"}, {Role: "user", Content: "User query"}},
+			}
+			jsonBody, _ := json.Marshal(reqBody)
+			req := httptest.NewRequest(http.MethodPost, "/v1/tasks", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			recorder = httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+			Expect(recorder.Code).To(Equal(http.StatusCreated))
+			var task acp.Task
+			err := json.Unmarshal(recorder.Body.Bytes(), &task)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(task.Spec.UserMessage).To(BeEmpty())
+			Expect(task.Spec.ContextWindow).To(HaveLen(2))
+		})
+
+		It("should fail if both are provided", func() {
+			reqBody := CreateTaskRequest{
+				AgentName:     "test-agent",
+				UserMessage:   "Test",
+				ContextWindow: []acp.Message{{Role: "user", Content: "Query"}},
+			}
+			jsonBody, _ := json.Marshal(reqBody)
+			req := httptest.NewRequest(http.MethodPost, "/v1/tasks", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			recorder = httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+			var errorResponse map[string]string
+			err := json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(errorResponse["error"]).To(Equal("only one of userMessage or contextWindow can be provided"))
+		})
+
+		It("should fail if contextWindow has invalid roles", func() {
+			reqBody := CreateTaskRequest{
+				AgentName:     "test-agent",
+				ContextWindow: []acp.Message{{Role: "invalid", Content: "Invalid"}},
+			}
+			jsonBody, _ := json.Marshal(reqBody)
+			req := httptest.NewRequest(http.MethodPost, "/v1/tasks", bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type", "application/json")
+			recorder = httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+			var errorResponse map[string]string
+			err := json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(errorResponse["error"]).To(Equal("invalid role in contextWindow: invalid"))
 		})
 
 		It("should return 404 if the agent does not exist", func() {

@@ -156,8 +156,21 @@ See the samples file for examples of all supported providers.
 
 - **agentRef:**
   - References an existing Agent (e.g. `"calculator-agent"`)
-- **message:**
+- **userMessage:**
   - The task prompt or request (e.g. `"What is 2 + 2?"`)
+  - Used for single-turn queries
+  - Cannot be used with `contextWindow`
+
+**OR**
+
+- **contextWindow:**
+  - Array of messages representing an initial conversation
+  - Used for multi-turn conversations or continuing previous conversations
+  - Must contain at least one user message
+  - Cannot be used with `userMessage`
+  - If no system message is included, the agent's system message will be prepended
+
+**Sample with contextWindow:** `config/samples/acp_v1alpha1_context_window_task.yaml`
 
 ---
 

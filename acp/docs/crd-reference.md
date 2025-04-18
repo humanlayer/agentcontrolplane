@@ -138,7 +138,10 @@ The Task CRD represents a task instance.
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `agentRef` | LocalObjectReference | Reference to the agent to execute the task | Yes |
-| `userMessage` | string | Message to send to the agent | Yes |
+| `userMessage` | string | Message to send to the agent | No* |
+| `contextWindow` | []Message | Initial conversation context with multiple messages | No* |
+
+*Either `userMessage` or `contextWindow` must be specified, but not both.
 
 ### Status Fields
 
@@ -147,3 +150,4 @@ The Task CRD represents a task instance.
 | `phase` | string | Current phase of execution |
 | `phaseHistory` | []PhaseTransition | History of phase transitions |
 | `contextWindow` | []Message | The conversation context |
+| `userMsgPreview` | string | Preview of the user message or last user message in contextWindow |

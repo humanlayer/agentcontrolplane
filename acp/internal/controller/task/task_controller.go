@@ -22,6 +22,7 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/adapters"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -152,54 +153,63 @@ func (r *TaskReconciler) validateTaskAndAgent(ctx context.Context, task *acp.Tas
 	return &agent, ctrl.Result{}, nil
 }
 
+// Helper function for setting validation errors
+func (r *TaskReconciler) setValidationError(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, err error) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Error(err, "Validation failed")
+	statusUpdate.Status.Ready = false
+	statusUpdate.Status.Status = acp.TaskStatusTypeError
+	statusUpdate.Status.Phase = acp.TaskPhaseFailed
+	statusUpdate.Status.StatusDetail = err.Error()
+	statusUpdate.Status.Error = err.Error()
+	r.recorder.Event(task, corev1.EventTypeWarning, "ValidationFailed", err.Error())
+	if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
+		logger.Error(updateErr, "Failed to update Task status")
+		return ctrl.Result{}, updateErr
+	}
+	return ctrl.Result{}, err
+}
+
 // prepareForLLM sets up the initial state of a Task with the correct context and phase
 func (r *TaskReconciler) prepareForLLM(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, agent *acp.Agent) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// If we're in Initializing or Pending phase, transition to ReadyForLLM
 	if statusUpdate.Status.Phase == acp.TaskPhaseInitializing || statusUpdate.Status.Phase == acp.TaskPhasePending {
+		if err := validation.ValidateTaskMessageInput(task.Spec.UserMessage, task.Spec.ContextWindow); err != nil {
+			return r.setValidationError(ctx, task, statusUpdate, err)
+		}
+
+		var initialContextWindow []acp.Message
+		if len(task.Spec.ContextWindow) > 0 {
+			initialContextWindow = append([]acp.Message{}, task.Spec.ContextWindow...)
+			hasSystemMessage := false
+			for _, msg := range initialContextWindow {
+				if msg.Role == acp.MessageRoleSystem {
+					hasSystemMessage = true
+					break
+				}
+			}
+			if !hasSystemMessage {
+				initialContextWindow = append([]acp.Message{
+					{Role: acp.MessageRoleSystem, Content: agent.Spec.System},
+				}, initialContextWindow...)
+			}
+		} else {
+			initialContextWindow = []acp.Message{
+				{Role: acp.MessageRoleSystem, Content: agent.Spec.System},
+				{Role: acp.MessageRoleUser, Content: task.Spec.UserMessage},
+			}
+		}
+
+		statusUpdate.Status.UserMsgPreview = validation.GetUserMessagePreview(task.Spec.UserMessage, task.Spec.ContextWindow)
+		statusUpdate.Status.ContextWindow = initialContextWindow
 		statusUpdate.Status.Phase = acp.TaskPhaseReadyForLLM
 		statusUpdate.Status.Ready = true
-
-		if task.Spec.UserMessage == "" {
-			err := fmt.Errorf("userMessage is required")
-			logger.Error(err, "Missing message")
-			statusUpdate.Status.Ready = false
-			statusUpdate.Status.Status = acp.TaskStatusTypeError
-			statusUpdate.Status.Phase = acp.TaskPhaseFailed
-			statusUpdate.Status.StatusDetail = err.Error()
-			statusUpdate.Status.Error = err.Error()
-			r.recorder.Event(task, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-			if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
-				logger.Error(updateErr, "Failed to update Task status")
-				return ctrl.Result{}, updateErr
-			}
-			return ctrl.Result{}, err
-		}
-
-		// Set the UserMsgPreview - truncate to 50 chars if needed
-		preview := task.Spec.UserMessage
-		if len(preview) > 50 {
-			preview = preview[:47] + "..."
-		}
-		statusUpdate.Status.UserMsgPreview = preview
-
-		// Set up the context window
-		statusUpdate.Status.ContextWindow = []acp.Message{
-			{
-				Role:    "system",
-				Content: agent.Spec.System,
-			},
-			{
-				Role:    "user",
-				Content: task.Spec.UserMessage,
-			},
-		}
 		statusUpdate.Status.Status = acp.TaskStatusTypeReady
 		statusUpdate.Status.StatusDetail = "Ready to send to LLM"
-		statusUpdate.Status.Error = "" // Clear previous error
-		r.recorder.Event(task, corev1.EventTypeNormal, "ValidationSucceeded", "Task validation succeeded")
+		statusUpdate.Status.Error = ""
 
+		r.recorder.Event(task, corev1.EventTypeNormal, "ValidationSucceeded", "Task validation succeeded")
 		if err := r.Status().Update(ctx, statusUpdate); err != nil {
 			logger.Error(err, "Failed to update Task status")
 			return ctrl.Result{}, err
