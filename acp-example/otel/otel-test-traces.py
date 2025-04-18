@@ -9,7 +9,13 @@ import os
 import random
 import time
 import json
+import sys
 import requests #  type: ignore
+from requests.exceptions import ConnectionError, Timeout, RequestException
+
+# Configuration for retry mechanism
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds between retries
 
 # Current time in nanoseconds
 current_time_ns = time.time_ns()
@@ -154,20 +160,93 @@ trace_payload = {
 url_base = "http://localhost:4318/v1"
 headers = {"Content-Type": "application/json"}
 
+
+def send_telemetry(endpoint, payload, telemetry_type):
+    """
+    Send telemetry data to the OpenTelemetry endpoint with retry logic
+    
+    Args:
+        endpoint (str): The endpoint URL
+        payload (dict): The telemetry data payload
+        telemetry_type (str): Type of telemetry (logs, metrics, traces)
+        
+    Returns:
+        tuple: (success (bool), response or error message (str))
+    """
+    url = f"{url_base}/{endpoint}"
+    
+    for attempt in range(MAX_RETRIES):
+        try:
+            print(f"Sending {telemetry_type} (attempt {attempt+1}/{MAX_RETRIES})...")
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()  # Raise exception for 4XX/5XX responses
+            return True, response
+        except ConnectionError as e:
+            error_msg = f"Connection error: The OpenTelemetry endpoint at {url} is unavailable"
+            print(f"{error_msg}: {str(e)}")
+        except Timeout as e:
+            error_msg = f"Timeout error: The request to {url} timed out"
+            print(f"{error_msg}: {str(e)}")
+        except RequestException as e:
+            error_msg = f"Request error: Failed to send {telemetry_type} to {url}"
+            print(f"{error_msg}: {str(e)}")
+        
+        # Don't sleep after the last attempt
+        if attempt < MAX_RETRIES - 1:
+            print(f"Retrying in {RETRY_DELAY} seconds...")
+            time.sleep(RETRY_DELAY)
+    
+    return False, f"Failed to send {telemetry_type} after {MAX_RETRIES} attempts"
+
+# Track overall success
+success_count = 0
+total_operations = 3
+
 # Send logs
-logs_response = requests.post(f"{url_base}/logs", headers=headers, json=logs_payload)
-print("Logs Status code:", logs_response.status_code)
-print("Logs Response body:", logs_response.text)
+success, result = send_telemetry("logs", logs_payload, "logs")
+if success:
+    response = result
+    print("Logs Status code:", response.status_code)
+    print("Logs Response body:", response.text)
+    success_count += 1
+else:
+    print(f"Logs Error: {result}")
 
 # Send metrics
-metrics_response = requests.post(f"{url_base}/metrics", headers=headers, json=metrics_payload)
-print("Metrics Status code:", metrics_response.status_code)
-print("Metrics Response body:", metrics_response.text)
+success, result = send_telemetry("metrics", metrics_payload, "metrics")
+if success:
+    response = result
+    print("Metrics Status code:", response.status_code)
+    print("Metrics Response body:", response.text)
+    success_count += 1
+else:
+    print(f"Metrics Error: {result}")
 
 # Send traces
-traces_response = requests.post(f"{url_base}/traces", headers=headers, json=trace_payload)
-print("Traces Status code:", traces_response.status_code)
-print("Traces Response body:", traces_response.text)
+success, result = send_telemetry("traces", trace_payload, "traces")
+if success:
+    response = result
+    print("Traces Status code:", response.status_code)
+    print("Traces Response body:", response.text)
+    success_count += 1
+else:
+    print(f"Traces Error: {result}")
+
+# Always print the generated IDs regardless of success
 print("Generated traceId:", trace_id_hex)
 print("Generated parent spanId:", parent_span_id_hex)
 print("Generated child spanId:", child_span_id_hex)
+
+# Summary
+print(f"\nSummary: {success_count}/{total_operations} operations completed successfully")
+
+# Exit with appropriate status code
+if success_count == 0:
+    print("All telemetry operations failed. Check if the OpenTelemetry endpoint is available.")
+    sys.exit(1)
+elif success_count < total_operations:
+    print("Some telemetry operations failed. Check the logs for details.")
+    sys.exit(1)
+else:
+    print("All telemetry operations completed successfully.")
+    sys.exit(0)
