@@ -239,6 +239,13 @@ func (m *MCPServerManager) disconnectServerLocked(serverName string) {
 		}
 	}
 
+	// Explicitly terminate the process for stdio servers to avoid resource leaks
+	if conn.ServerType == "stdio" && conn.Command != nil && conn.Command.Process != nil {
+		if err := conn.Command.Process.Kill(); err != nil {
+			fmt.Printf("Error terminating stdio process for server %s: %v\n", serverName, err)
+		}
+	}
+
 	// Remove the connection from the map
 	delete(m.connections, serverName)
 }
