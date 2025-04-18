@@ -442,7 +442,7 @@ func (r *ToolCallReconciler) setStatusError(ctx context.Context, tcPhase acp.Too
 	return ctrl.Result{}, nil, true
 }
 
-func (r *ToolCallReconciler) updateTCStatus(ctx context.Context, tc *acp.ToolCall, tcStatusType acp.ToolCallStatusType, tcStatusPhase acp.ToolCallPhase, statusDetail string, result string) (ctrl.Result, error, bool) {
+func (r *ToolCallReconciler) updateTCStatusAndReturnHandled(ctx context.Context, tc *acp.ToolCall, tcStatusType acp.ToolCallStatusType, tcStatusPhase acp.ToolCallPhase, statusDetail string, result string) (ctrl.Result, error, bool) {
 	logger := log.FromContext(ctx)
 
 	tcDeepCopy := tc.DeepCopy()
@@ -541,13 +541,13 @@ func (r *ToolCallReconciler) handlePendingApproval(ctx context.Context, tc *acp.
 
 	if *approved {
 		// Approval received, update status to ReadyToExecuteApprovedTool
-		return r.updateTCStatus(ctx, tc,
+		return r.updateTCStatusAndReturnHandled(ctx, tc,
 			acp.ToolCallStatusTypeReady,
 			acp.ToolCallPhaseReadyToExecuteApprovedTool,
 			"Ready to execute approved tool", "")
 	} else {
 		// Rejection received, update status to ToolCallRejected
-		return r.updateTCStatus(ctx, tc,
+		return r.updateTCStatusAndReturnHandled(ctx, tc,
 			acp.ToolCallStatusTypeSucceeded, // Succeeded because the rejection was processed
 			acp.ToolCallPhaseToolCallRejected,
 			"Tool execution rejected", fmt.Sprintf("User denied `%s` with feedback: %s", tc.Spec.ToolRef.Name, status.GetComment()))
@@ -578,7 +578,7 @@ func (r *ToolCallReconciler) handlePendingHumanInput(ctx context.Context, tc *ac
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil, true
 	}
 
-	return r.updateTCStatus(ctx, tc,
+	return r.updateTCStatusAndReturnHandled(ctx, tc,
 		acp.ToolCallStatusTypeSucceeded,
 		acp.ToolCallPhaseSucceeded,
 		"Human response received", *response)
