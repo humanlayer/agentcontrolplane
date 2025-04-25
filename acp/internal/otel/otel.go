@@ -56,3 +56,24 @@ func InitMeter(ctx context.Context) (*sdkmetric.MeterProvider, error) {
 	otel.SetMeterProvider(mp)
 	return mp, nil
 }
+
+// Shutdown gracefully shuts down the OpenTelemetry tracer and meter providers.
+// It ensures all telemetry data is flushed before the application terminates.
+// Returns an error if either the tracer or meter provider fails to shut down properly.
+func Shutdown(ctx context.Context, tp *sdktrace.TracerProvider, mp *sdkmetric.MeterProvider) error {
+	// First shut down the tracer provider
+	if tp != nil {
+		if err := tp.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+
+	// Then shut down the meter provider
+	if mp != nil {
+		if err := mp.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
