@@ -6,11 +6,21 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/pkg/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+// CreateTaskRequest defines the structure of the request body for creating a task
+type CreateTaskRequest struct {
+	Namespace   string `json:"namespace,omitempty"` // Optional, defaults to "default"
+	AgentName   string `json:"agentName"`           // Required
+	UserMessage string `json:"userMessage"`         // Required
+}
 
 // APIServer represents the REST API server
 type APIServer struct {
@@ -45,10 +55,11 @@ func (s *APIServer) registerRoutes() {
 	// API v1 routes
 	v1 := s.router.Group("/v1")
 
-	// Task endpoint
+	// Task endpoints
 	tasks := v1.Group("/tasks")
 	tasks.GET("", s.listTasks)
 	tasks.GET("/:id", s.getTask)
+	tasks.POST("", s.createTask)
 }
 
 // Start begins listening for requests in a goroutine
@@ -136,4 +147,73 @@ func (s *APIServer) getTask(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, task)
+}
+
+// createTask handles the creation of a new task
+func (s *APIServer) createTask(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
+
+	var req CreateTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	if req.AgentName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "agentName is required"})
+		return
+	}
+	if req.UserMessage == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "userMessage is required"})
+		return
+	}
+
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	// Check if agent exists
+	var agent acp.Agent
+	err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: req.AgentName}, &agent)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+			return
+		}
+		logger.Error(err, "Failed to check agent existence")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check agent existence: " + err.Error()})
+		return
+	}
+
+	// Generate (mostly) unique task name
+	generatedName := req.AgentName + "-task-" + uuid.New().String()[:8]
+
+	task := &acp.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      generatedName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"acp.humanlayer.dev/agent": req.AgentName,
+			},
+		},
+		Spec: acp.TaskSpec{
+			AgentRef:    acp.LocalObjectReference{Name: req.AgentName},
+			UserMessage: req.UserMessage,
+		},
+	}
+
+	if err := s.client.Create(ctx, task); err != nil {
+		if statusErr := new(apierrors.StatusError); errors.As(err, &statusErr) {
+			status := statusErr.Status()
+			c.JSON(int(status.Code), gin.H{"error": status.Message})
+		} else {
+			logger.Error(err, "Failed to create task")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task: " + err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, task)
 }

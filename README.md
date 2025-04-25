@@ -644,7 +644,7 @@ metadata:
 spec:
   agentRef:
     name: my-assistant
-  userMessage: "what is the data at https://lotrapi.co/api/characters/1? "' | kubectl apply -f -
+  userMessage: "what is the data at https://lotrapi.co/api/v1/characters/1? "' | kubectl apply -f -
 ```
 
 You should see some events in the output of
@@ -1034,7 +1034,7 @@ export MY_EMAIL=... # your email here
 ```
 
 ```bash
-echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
+echo "apiVersion: acp.humanlayer.dev/v1alpha1 
 kind: ContactChannel
 metadata:
   name: approval-channel 
@@ -1045,9 +1045,9 @@ spec:
       name: humanlayer
       key: HUMANLAYER_API_KEY
   email:
-    address: "$MY_EMAIL"
-    subject: "Approval Request from ACP" 
-    contextAboutUser: "Primary approver for web fetch operations"' | kubectl apply -f -
+    address: $MY_EMAIL
+    subject: Approval Request from ACP 
+    contextAboutUser: Primary approver for web fetch operations" | kubectl apply -f -
 ```
 
 Now, let's update our MCP server from the earlier example so that it references our contact channel.
