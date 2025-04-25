@@ -15,6 +15,9 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.agentRef.name
+      name: Agent
+      type: string
     - jsonPath: .status.ready
       name: Ready
       type: boolean

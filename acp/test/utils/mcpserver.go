@@ -60,7 +60,7 @@ func (t *TestMCPServer) SetupWithStatus(
 }
 
 func (t *TestMCPServer) Teardown(ctx context.Context) {
-	if t.k8sClient == nil {
+	if t.k8sClient == nil || t.MCPServer == nil {
 		return
 	}
 	By("deleting the MCP server")
