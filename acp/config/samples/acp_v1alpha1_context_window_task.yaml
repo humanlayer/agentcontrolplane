@@ -1,0 +1,16 @@
+apiVersion: acp.humanlayer.dev/v1alpha1
+kind: Task
+metadata:
+  name: context-window-example
+spec:
+  agentRef:
+    name: web-fetch-agent
+  contextWindow:
+    - role: system
+      content: "You are a helpful web assistant."
+    - role: user
+      content: "Can you search the web for info on climate change?"
+    - role: assistant
+      content: "I'll help you research climate change. What specific aspects interest you?"
+    - role: user
+      content: "Tell me about recent developments in renewable energy."
