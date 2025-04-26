@@ -166,9 +166,12 @@ See the samples file for examples of all supported providers.
 - **contextWindow:**
   - Array of messages representing an initial conversation
   - Used for multi-turn conversations or continuing previous conversations
-  - Must contain at least one user message
+  - Must contain at least one user message (can be at any position)
   - Cannot be used with `userMessage`
   - If no system message is included, the agent's system message will be prepended
+  - Tool calls or tool messages in the contextWindow are NOT executed - they're treated purely as conversation history
+  - The last message can be any valid role (user, assistant, tool) - the controller will send the entire context to the LLM
+  - The last user message (not necessarily the last message) will be used for the UserMsgPreview field
 
 **Sample with contextWindow:** `config/samples/acp_v1alpha1_context_window_task.yaml`
 
