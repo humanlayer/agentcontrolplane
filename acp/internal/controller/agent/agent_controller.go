@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,6 +51,34 @@ func (r *AgentReconciler) validateLLM(ctx context.Context, agent *acp.Agent) err
 	}
 
 	return nil
+}
+
+// validateSubAgents checks if all referenced sub-agents exist and are ready
+// Returns three items:
+// - bool: true if all sub-agents are ready, false otherwise
+// - string: detail message if any sub-agent issues are found
+// - []acp.ResolvedSubAgent: list of valid sub-agents
+func (r *AgentReconciler) validateSubAgents(ctx context.Context, agent *acp.Agent) (bool, string, []acp.ResolvedSubAgent) {
+	validSubAgents := make([]acp.ResolvedSubAgent, 0, len(agent.Spec.SubAgents))
+
+	for _, subAgentRef := range agent.Spec.SubAgents {
+		subAgent := &acp.Agent{}
+		err := r.Get(ctx, client.ObjectKey{
+			Namespace: agent.Namespace,
+			Name:      subAgentRef.Name,
+		}, subAgent)
+		if err != nil {
+			return false, fmt.Sprintf("waiting for sub-agent %q (not found)", subAgentRef.Name), validSubAgents
+		}
+
+		if !subAgent.Status.Ready {
+			return false, fmt.Sprintf("waiting for sub-agent %q (not ready)", subAgentRef.Name), validSubAgents
+		}
+
+		validSubAgents = append(validSubAgents, acp.ResolvedSubAgent(subAgentRef))
+	}
+
+	return true, "", validSubAgents
 }
 
 // validateMCPServers checks if all referenced MCP servers exist and are connected
@@ -115,20 +144,16 @@ func (r *AgentReconciler) validateHumanContactChannels(ctx context.Context, agen
 		}
 
 		// Check that the context about the user/channel is provided based on the channel type
+		// todo(dex) why does this happen at runtime in the agent controller and not when the contact channel is created?
+		// the agent controller shouldn't have to know about this, this is a ContactChannel controller responsibility
 		switch channel.Spec.Type {
 		case acp.ContactChannelTypeEmail:
 			if channel.Spec.Email == nil {
 				return validChannels, fmt.Errorf("ContactChannel %q is missing Email configuration", channelRef.Name)
 			}
-			if channel.Spec.Email.ContextAboutUser == "" {
-				return validChannels, fmt.Errorf("ContactChannel %q must have ContextAboutUser set", channelRef.Name)
-			}
 		case acp.ContactChannelTypeSlack:
 			if channel.Spec.Slack == nil {
 				return validChannels, fmt.Errorf("ContactChannel %q is missing Slack configuration", channelRef.Name)
-			}
-			if channel.Spec.Slack.ContextAboutChannelOrUser == "" {
-				return validChannels, fmt.Errorf("ContactChannel %q must have ContextAboutChannelOrUser set", channelRef.Name)
 			}
 		default:
 			return validChannels, fmt.Errorf("ContactChannel %q has unsupported type %q", channelRef.Name, channel.Spec.Type)
@@ -184,14 +209,37 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// Initialize empty valid tools, servers, and human contact channels slices
 	validMCPServers := make([]acp.ResolvedMCPServer, 0)
 	validHumanContactChannels := make([]acp.ResolvedContactChannel, 0)
+	validSubAgents := make([]acp.ResolvedSubAgent, 0)
 
 	statusUpdate.Status.ValidMCPServers = validMCPServers
 	statusUpdate.Status.ValidHumanContactChannels = validHumanContactChannels
+	statusUpdate.Status.ValidSubAgents = validSubAgents
 
 	// Validate LLM reference
 	if err := r.validateLLM(ctx, &agent); err != nil {
 		logger.Error(err, "LLM validation failed")
 		return r.setStatusError(ctx, &agent, err, statusUpdate, "ValidationFailed")
+	}
+
+	// Validate sub-agent references, if any
+	if len(agent.Spec.SubAgents) > 0 {
+		subAgentsReady, subAgentsMessage, validSubAgents := r.validateSubAgents(ctx, &agent)
+		if !subAgentsReady {
+			// Set to Pending state when sub-agents are not ready
+			statusUpdate.Status.Ready = false
+			statusUpdate.Status.Status = "Pending"
+			statusUpdate.Status.StatusDetail = subAgentsMessage
+			r.recorder.Event(&agent, corev1.EventTypeNormal, "SubAgentsPending", subAgentsMessage)
+
+			if err := r.Status().Update(ctx, statusUpdate); err != nil {
+				logger.Error(err, "Unable to update Agent status")
+				return ctrl.Result{}, err
+			}
+
+			// Requeue to check again later
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		statusUpdate.Status.ValidSubAgents = validSubAgents
 	}
 
 	var err error

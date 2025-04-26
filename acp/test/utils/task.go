@@ -17,6 +17,7 @@ type TestTask struct {
 	UserMessage   string
 	ContextWindow []v1alpha1.Message
 	Task          *v1alpha1.Task
+	Labels        map[string]string
 	k8sClient     client.Client
 }
 
@@ -27,6 +28,7 @@ func (t *TestTask) Setup(ctx context.Context, k8sClient client.Client) *v1alpha1
 		ObjectMeta: v1.ObjectMeta{
 			Name:      t.Name,
 			Namespace: "default",
+			Labels:    t.Labels,
 		},
 		Spec: v1alpha1.TaskSpec{},
 	}
@@ -64,9 +66,9 @@ func (t *TestTask) SetupWithStatus(
 }
 
 func (t *TestTask) Teardown(ctx context.Context) {
-	if t.k8sClient == nil {
+	if t.k8sClient == nil || t.Task == nil {
 		return
 	}
 	By("deleting the task")
-	Expect(t.k8sClient.Delete(ctx, t.Task)).To(Succeed())
+	_ = t.k8sClient.Delete(ctx, t.Task)
 }

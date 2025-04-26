@@ -53,7 +53,7 @@ func (r *TaskReconciler) initializePhaseAndSpan(ctx context.Context, task *acp.T
 	spanCtx, span := r.Tracer.Start(ctx, "Task",
 		trace.WithSpanKind(trace.SpanKindServer), // optional
 	)
-	// Do NOT 'span.End()' here—this is your single “root” for the entire Task lifetime.
+	// Do NOT 'span.End()' here—this is your single "root" for the entire Task lifetime.
 
 	// Set initial phase
 	task.Status.Phase = acp.TaskPhaseInitializing
@@ -394,6 +394,36 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *acp.Agent) []l
 		logger.Info("Added human contact channel tool", "name", channel.Name, "type", channel.Spec.Type)
 	}
 
+	// Add delegate tools for sub-agents
+	for _, subAgentRef := range agent.Spec.SubAgents {
+		subAgent := &acp.Agent{}
+		if err := r.Get(ctx, client.ObjectKey{Namespace: agent.Namespace, Name: subAgentRef.Name}, subAgent); err != nil {
+			logger.Error(err, "Failed to get sub-agent", "name", subAgentRef.Name)
+			continue
+		}
+
+		// Create a delegate tool for the sub-agent
+		delegateTool := llmclient.Tool{
+			Type: "function",
+			Function: llmclient.ToolFunction{
+				Name:        "delegate_to_agent__" + subAgent.Name,
+				Description: subAgent.Spec.Description,
+				Parameters: llmclient.ToolFunctionParameters{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"message": map[string]interface{}{
+							"type": "string",
+						},
+					},
+					"required": []string{"message"},
+				},
+			},
+			ACPToolType: acp.ToolTypeDelegateToAgent,
+		}
+		tools = append(tools, delegateTool)
+		logger.Info("Added delegate tool for sub-agent", "name", subAgent.Name)
+	}
+
 	return tools
 }
 
@@ -466,6 +496,7 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 			return ctrl.Result{}, err
 		}
 
+		// todo should this technically happen before the status update? is there a chance they get dropped?
 		return r.createToolCalls(ctx, task, statusUpdate, output.ToolCalls, tools)
 	}
 	return ctrl.Result{}, nil
@@ -656,6 +687,10 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		statusUpdate.Status.Error = err.Error()
 
 		// Check for LLMRequestError with 4xx status code
+		// todo(dex) this .As() casting does not work - this error still retries forever
+		//
+		//     langchain API call failed: API returned unexpected status code: 400: An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. The following tool_call_ids did not have response messages: call_N38DB1obDYZF0yDYxZhK6lTe
+		//
 		var llmErr *llmclient.LLMRequestError
 		is4xxError := errors.As(err, &llmErr) && llmErr.StatusCode >= 400 && llmErr.StatusCode < 500
 
