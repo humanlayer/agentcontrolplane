@@ -49,11 +49,6 @@ spec:
           spec:
             description: AgentSpec defines the desired state of Agent
             properties:
-              description:
-                description: |-
-                  Description is an optional description for an agent.
-                  If present, it's included in any "delegateToAgent" tool descriptions
-                type: string
               humanContactChannels:
                 description: HumanContactChannels is a list of ContactChannel resources
                   that can be used for human interactions
@@ -81,22 +76,6 @@ spec:
                 type: object
               mcpServers:
                 description: MCPServers is a list of MCP servers this agent can use
-                items:
-                  description: LocalObjectReference contains enough information to
-                    locate the referenced resource in the same namespace
-                  properties:
-                    name:
-                      description: Name of the referent
-                      minLength: 1
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
-              subAgents:
-                description: |-
-                  SubAgents is a list of local object references to other Agents
-                  that can be delegated to as sub-agents.
                 items:
                   description: LocalObjectReference contains enough information to
                     locate the referenced resource in the same namespace
@@ -164,18 +143,6 @@ spec:
                       items:
                         type: string
                       type: array
-                  required:
-                  - name
-                  type: object
-                type: array
-              validSubAgents:
-                description: ValidSubAgents is the list of sub-agents that were successfully
-                  validated
-                items:
-                  properties:
-                    name:
-                      description: Name of the sub-agent
-                      type: string
                   required:
                   - name
                   type: object
@@ -759,9 +726,6 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.agentRef.name
-      name: Agent
-      type: string
     - jsonPath: .status.ready
       name: Ready
       type: boolean
@@ -829,81 +793,13 @@ spec:
                 required:
                 - name
                 type: object
-              contextWindow:
-                description: |-
-                  ContextWindow provides the initial conversation context when creating a Task.
-                  If provided, contextWindow will be used and userMessage must be empty.
-                  This will be copied to status.ContextWindow, which is the source of truth
-                  for the ongoing conversation.
-                items:
-                  description: Message represents a single message in the conversation
-                  properties:
-                    content:
-                      description: Content is the message content
-                      type: string
-                    name:
-                      description: Name is the name of the tool that was called
-                      type: string
-                    role:
-                      description: Role is the role of the message sender (system,
-                        user, assistant, tool)
-                      enum:
-                      - system
-                      - user
-                      - assistant
-                      - tool
-                      type: string
-                    toolCallId:
-                      description: ToolCallID is the unique identifier for this tool
-                        call
-                      type: string
-                    toolCalls:
-                      description: ToolCalls contains any tool calls requested by
-                        this message
-                      items:
-                        description: ToolCall represents a request to call a tool
-                        properties:
-                          function:
-                            description: Function contains the details of the function
-                              to call
-                            properties:
-                              arguments:
-                                description: Arguments contains the arguments to pass
-                                  to the function in JSON format
-                                type: string
-                              name:
-                                description: Name is the name of the function to call
-                                type: string
-                            required:
-                            - arguments
-                            - name
-                            type: object
-                          id:
-                            description: ID is the unique identifier for this tool
-                              call
-                            type: string
-                          type:
-                            description: Type indicates the type of tool call. Currently
-                              only "function" is supported.
-                            type: string
-                        required:
-                        - function
-                        - id
-                        - type
-                        type: object
-                      type: array
-                  required:
-                  - content
-                  - role
-                  type: object
-                type: array
               userMessage:
-                description: |-
-                  UserMessage is the message to send to the agent.
-                  If provided, userMessage will be used and contextWindow must be empty.
+                description: UserMessage is the message to send to the agent.
+                minLength: 1
                 type: string
             required:
             - agentRef
+            - userMessage
             type: object
           status:
             description: TaskStatus defines the observed state of Task
