@@ -138,7 +138,8 @@ spec:
   apiKeyFrom:
     secretKeyRef:
       name: openai
-      key: OPENAI_API_KEY' | kubectl apply -f -
+      key: OPENAI_API_KEY
+' | kubectl apply -f -
 ```
 
 ```mermaid
@@ -230,7 +231,8 @@ spec:
   llmRef:
     name: gpt-4o
   system: |
-    You are a helpful assistant. Your job is to help the user with their tasks.' | kubectl apply -f -
+    You are a helpful assistant. Your job is to help the user with their tasks.
+' | kubectl apply -f -
 ```
 
 ```mermaid
@@ -328,7 +330,8 @@ metadata:
 spec:
   agentRef:
     name: my-assistant
-  userMessage: "What is the capital of the moon?"' | kubectl apply -f -
+  userMessage: "What is the capital of the moon?"
+' | kubectl apply -f -
 ```
 
 ```mermaid
@@ -524,7 +527,8 @@ metadata:
 spec:
   transport: "stdio"
   command: "uvx"
-  args: ["mcp-server-fetch"]' | kubectl apply -f -
+  args: ["mcp-server-fetch"]
+' | kubectl apply -f -
 ```
 
 ```bash
@@ -602,7 +606,8 @@ spec:
   system: |
     You are a helpful assistant. Your job is to help the user with their tasks.
   mcpServers:
-    - name: fetch' | kubectl apply -f -
+    - name: fetch
+' | kubectl apply -f -
 ```
 
 ```mermaid
@@ -644,7 +649,8 @@ metadata:
 spec:
   agentRef:
     name: my-assistant
-  userMessage: "what is the data at https://lotrapi.co/api/v1/characters/1? "' | kubectl apply -f -
+  userMessage: "what is the data at https://lotrapi.co/api/v1/characters/1? "
+' | kubectl apply -f -
 ```
 
 You should see some events in the output of
@@ -858,7 +864,8 @@ spec:
   apiKeyFrom:
     secretKeyRef:
       name: anthropic
-      key: ANTHROPIC_API_KEY' | kubectl apply -f -
+      key: ANTHROPIC_API_KEY
+' | kubectl apply -f -
 ```
 
 fetch the LLM to verify it was created:
@@ -883,7 +890,8 @@ spec:
   llmRef:
     name: claude-3-5-sonnet
   system: |
-    You are a helpful assistant. Your job is to help the user with their tasks.' | kubectl apply -f -
+    You are a helpful assistant. Your job is to help the user with their tasks.
+' | kubectl apply -f -
 ```
 
 ```bash
@@ -894,7 +902,8 @@ metadata:
 spec:
   agentRef:
     name: claude
-  userMessage: "What is your name and primary directive?"' | kubectl apply -f -
+  userMessage: "What is your name and primary directive?"
+' | kubectl apply -f -
 ```
 
 After a few seconds, running 
@@ -916,7 +925,7 @@ We can compose agents together to create more complex behaviors and make longer 
 Let's create a web search agent that can use the fetch tool we created in the previous example.
 
 ```bash
-cat <<EOF | kubectl apply -f -
+echo '
 apiVersion: acp.humanlayer.dev/v1alpha1
 kind: Agent
 metadata:
@@ -928,13 +937,13 @@ spec:
     You are a helpful assistant. Your job is to help the user with their tasks.
   mcpServers:
     - name: fetch
-EOF
+' | kubectl apply -f -
 ```
 
 next, we can create a router agent that can delegate to the web search agent.
 
 ```bash
-cat <<EOF | kubectl apply -f -
+echo '
 apiVersion: acp.humanlayer.dev/v1alpha1
 kind: Agent
 metadata:
@@ -946,13 +955,13 @@ spec:
     You are a helpful assistant. Your job is to help the user with their tasks.
   subAgents:
     - name: web-search
-EOF
+' | kubectl apply -f -
 ```
 
 From here, let's create a task that uses the manager agent.
 
 ```bash
-cat <<EOF | kubectl apply -f -
+echo '
 apiVersion: acp.humanlayer.dev/v1alpha1
 kind: Task
 metadata:
@@ -961,7 +970,7 @@ spec:
   agentRef:
     name: manager
   userMessage: "what is the data at https://lotrapi.co/api/v1/characters/2?"
-EOF
+' | kubectl apply -f -
 ```
 
 While this is running, you can run the following a few times to see how the parent agent calls a `delegate` tool which then spawns a new task that uses the `web-fetch` agent
@@ -1064,7 +1073,8 @@ spec:
   # When an approvalContactChannel is specified,
   # all tools on this MCP server will wait for human approval prior executing.
   approvalContactChannel:
-    name: approval-channel' | kubectl apply -f -
+    name: approval-channel
+' | kubectl apply -f -
 ```
 
 Be sure you have an agent that references the above `MCPServer` by running `kubectl describe agent` or create a fresh `agent` with:
@@ -1080,7 +1090,8 @@ spec:
   system: |
     You are a helpful assistant. Your job is to help the user with their tasks.
   mcpServers:
-    - name: fetch' | kubectl apply -f -
+    - name: fetch
+' | kubectl apply -f -
 ```
 
 The fun part: Create a new task that uses the `fetch` tool to test the human approval workflow.
@@ -1093,7 +1104,8 @@ metadata:
 spec:
   agentRef:
     name: agent-with-fetch
-  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"' | kubectl apply -f -
+  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
+' | kubectl apply -f -
 ```
 
 Once this hits the tool call, we can check out the tool calls to see the human approval workflow in action:
@@ -1177,7 +1189,8 @@ spec:
   email:
     address: "$MY_EMAIL"
     subject: "Request for Expertise" 
-    contextAboutUser: "A human expert that can provide a wide-range answers on a variety of topics"' | kubectl apply -f -
+    contextAboutUser: "A human expert that can provide a wide-range answers on a variety of topics"
+' | kubectl apply -f -
 ```
 
 Alright, we're ready for a brand new agent:
@@ -1195,7 +1208,8 @@ spec:
   mcpServers:
     - name: fetch
   humanContactChannels:
-    - name: human-expert' | kubectl apply -f -
+    - name: human-expert
+' | kubectl apply -f -
 ```
 
 Note the inclusion of `humanContactChannels` here, which now incorporates the `ContactChannel` we just made. Moving forward, any `Task` calls made against this `Agent` will attempt to make use of a human contact where appropriate. As an example, the following Task, _should_ (remember, "non-deterministic") reach out to our Luke Skywalker expert for more information before wrapping up the final output:
@@ -1208,7 +1222,8 @@ metadata:
 spec:
   agentRef:
     name: agent-with-human-tool
-  userMessage: "Ask an expert what the fastest animal on the planet is."' | kubectl apply -f -
+  userMessage: "Ask an expert what the fastest animal on the planet is."
+' | kubectl apply -f -
 ```
 
 Provided, you've setup your `ContactChannel` correctly, you should receive an email requesting your expertise. Feel free to respond when ready and keep an eye on how your `Task` and `ToolCall` statuses changes as the answer is picked up.
