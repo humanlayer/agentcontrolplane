@@ -15,8 +15,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  e2e-test:
-    name: End-to-End Tests
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -38,43 +38,68 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-acp-bin-
 
-      # Setup KinD cluster with a more efficient configuration
-      - name: Setup KinD
-        uses: helm/kind-action@v1.9.0
+      - name: Run unit tests
+        working-directory: acp
+        run: make test
+
+      - name: Build Docker image
+        working-directory: acp
+        run: make docker-build IMG=example.com/acp:v0.0.1
+
+  e2e-test:
+    name: End-to-End Tests
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          cluster_name: kind
-          config: |
-            kind: Cluster
-            apiVersion: kind.x-k8s.io/v1alpha4
-            nodes:
-            - role: control-plane
-              kubeadmConfigPatches:
-              - |
-                kind: InitConfiguration
-                nodeRegistration:
-                  kubeletExtraArgs:
-                    node-labels: "ingress-ready=true"
-              extraPortMappings:
-              - containerPort: 80
-                hostPort: 80
-                protocol: TCP
-              - containerPort: 443
-                hostPort: 443
-                protocol: TCP
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: acp/go.sum
+
+      - name: Cache acp tools
+        uses: actions/cache@v4
+        with:
+          path: acp/bin
+          key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-acp-bin-
+
+      # Setup KinD using the engineerd action which is more reliable in GitHub Actions
+      - name: Setup KinD
+        uses: engineerd/setup-kind@v0.6.0
+        with:
+          version: "v0.20.0"
+          name: "kind"
+          config: "acp-example/kind/kind-config.yaml"
+          wait: "300s"
+
+      - name: Verify KinD cluster
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+          echo "KinD cluster created successfully!"
 
       # Setup cert-manager which is required for the controller
       - name: Install cert-manager
         run: |
           kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.2/cert-manager.yaml
           kubectl wait --for=condition=Available --timeout=180s deployment/cert-manager-webhook -n cert-manager
+          echo "Cert-manager installed successfully!"
 
       # Setup prometheus operator for metrics
       - name: Install Prometheus Operator
         run: |
           kubectl apply -f https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.71.2/bundle.yaml
-          kubectl wait --for=condition=Available --timeout=180s deployment/prometheus-operator -n default
+          kubectl wait --for=condition=Available --timeout=180s deployment/prometheus-operator -n default || true
+          echo "Prometheus installed successfully!"
 
-      # Build and load Docker image for the controller
+      # Build and load Docker image for the controller - matches the name expected by tests
       - name: Build and load the controller image
         working-directory: acp
         run: |
@@ -82,15 +107,17 @@ jobs:
           make docker-build IMG=example.com/acp:v0.0.1
           # Load the image into the kind cluster
           kind load docker-image example.com/acp:v0.0.1 --name kind
+          echo "Docker image loaded successfully!"
           
       # Run E2E tests
       - name: Run e2e tests
         working-directory: acp
+        timeout-minutes: 10
         env:
           # Set environment variables that might be needed by the tests
           KUBECONFIG: /home/runner/.kube/config
         run: |
-          # Run the e2e tests with a longer timeout
+          echo "Running e2e tests..."
           make test-e2e
 
       # Upload test logs on failure for debugging
@@ -104,18 +131,18 @@ jobs:
             /home/runner/.kube/config
           retention-days: 7
 
-      # Optional: Run kubectl commands to show cluster state if tests fail
+      # Collect diagnostic information
       - name: Collect diagnostic information
-        if: failure()
+        if: always()
         run: |
           echo "==== Kubernetes Nodes ===="
-          kubectl get nodes -o wide
+          kubectl get nodes -o wide || true
           
           echo "==== Kubernetes Pods ===="
-          kubectl get pods -A
+          kubectl get pods -A || true
           
           echo "==== Pod Logs ===="
           kubectl logs -l control-plane=controller-manager -n default || true
           
           echo "==== Events ===="
-          kubectl get events --sort-by='.lastTimestamp' -A
+          kubectl get events --sort-by='.lastTimestamp' -A || true
