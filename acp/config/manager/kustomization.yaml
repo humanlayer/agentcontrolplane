@@ -6,4 +6,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/humanlayer/agentcontrolplane
-  newTag: v0.6.0
+  newTag: v0.6.1
