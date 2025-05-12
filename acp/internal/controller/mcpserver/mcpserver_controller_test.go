@@ -78,25 +78,23 @@ var _ = Describe("MCPServer Controller", func() {
 		It("Should validate and connect to the MCP server", func() {
 			ctx := context.Background()
 
-			// Use a unique name for the MCPServer
-			testName := "test-mcpserver-fix"
+			// Create a test with a command that exists to avoid the command-not-found error
+			testName := "test-mcpserver-echo"
 
-			By("Creating a new MCPServer")
+			By("Creating a new MCPServer with a valid command")
 			mcpServer := &acp.MCPServer{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testName,
 					Namespace: MCPServerNamespace,
+					// Add labels to identify this as our test server
+					Labels: map[string]string{
+						"test": "true",
+					},
 				},
 				Spec: acp.MCPServerSpec{
 					Transport: "stdio",
-					Command:   "echo", // Use a command that exists to avoid system errors
-					Args:      []string{"--arg1", "value1"},
-					Env: []acp.EnvVar{
-						{
-							Name:  "TEST_ENV",
-							Value: "test-value",
-						},
-					},
+					Command:   "sh", // This command exists
+					Args:      []string{"-c", "echo test"},
 				},
 			}
 
@@ -104,43 +102,94 @@ var _ = Describe("MCPServer Controller", func() {
 			defer teardownMCPServer(ctx, mcpServer)
 
 			lookupKey := types.NamespacedName{Name: testName, Namespace: MCPServerNamespace}
-			createdServer := &acp.MCPServer{}
 
-			By("Verifying the MCPServer was created")
+			By("Setting up a mock MCPServer manager")
+			mockManager := &MockMCPServerManager{
+				ConnectServerFunc: func(ctx context.Context, mcpServer *acp.MCPServer) error {
+					return nil // Return success
+				},
+				GetToolsFunc: func(serverName string) ([]acp.MCPTool, bool) {
+					return []acp.MCPTool{
+						{
+							Name:        "test-tool",
+							Description: "A test tool for validation",
+						},
+					}, true
+				},
+			}
+
+			By("Creating a new test reconciler with our mock manager")
+			reconciler := &MCPServerReconciler{
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				recorder:   record.NewFakeRecorder(10),
+				MCPManager: mockManager,
+			}
+
+			By("Performing reconciliation with our mock manager")
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: lookupKey,
+			})
+
+			// This should succeed since our mock returns success
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Minute * 10)) // Successful requeue after 10 minutes
+
+			// Create a validation test that uses the simpler approach - directly updating status
+			testName2 := "test-mcpserver-direct"
+
+			By("Creating a second MCPServer to test direct status updates")
+			mcpServer2 := &acp.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testName2,
+					Namespace: MCPServerNamespace,
+				},
+				Spec: acp.MCPServerSpec{
+					Transport: "stdio",
+					Command:   "sh",
+					Args:      []string{"-c", "echo test"},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, mcpServer2)).To(Succeed())
+			defer teardownMCPServer(ctx, mcpServer2)
+
+			lookupKey2 := types.NamespacedName{Name: testName2, Namespace: MCPServerNamespace}
+
+			// Wait for it to be created
+			createdServer := &acp.MCPServer{}
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, lookupKey, createdServer)
+				err := k8sClient.Get(ctx, lookupKey2, createdServer)
 				return err == nil
 			}, time.Second*10, time.Millisecond*250).Should(BeTrue())
 
-			// Wait for the background controller to process
-			time.Sleep(time.Second * 2)
-
-			// Skip creating a mock manager since we're directly updating the status
-
-			By("Manually updating the status to verify the test")
-			err := k8sClient.Get(ctx, lookupKey, createdServer)
-			Expect(err).NotTo(HaveOccurred())
-
+			By("Directly updating the status")
 			createdServer.Status.Connected = true
 			createdServer.Status.Status = "Ready"
+			createdServer.Status.StatusDetail = "Manually set status"
 			createdServer.Status.Tools = []acp.MCPTool{
 				{
-					Name:        "test-tool",
-					Description: "A test tool",
+					Name:        "manual-tool",
+					Description: "A tool for testing",
 				},
 			}
 
 			err = k8sClient.Status().Update(ctx, createdServer)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Checking that the status was updated correctly")
+			// Verify the direct update worked
+			By("Verifying the status was properly updated")
 			updatedServer := &acp.MCPServer{}
-			err = k8sClient.Get(ctx, lookupKey, updatedServer)
-			Expect(err).NotTo(HaveOccurred())
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, lookupKey2, updatedServer); err != nil {
+					return false
+				}
+				return updatedServer.Status.Connected &&
+					updatedServer.Status.Status == "Ready" &&
+					len(updatedServer.Status.Tools) == 1
+			}, time.Second*10, time.Millisecond*250).Should(BeTrue())
 
-			Expect(updatedServer.Status.Connected).To(BeTrue())
-			Expect(updatedServer.Status.Status).To(Equal("Ready"))
-			Expect(updatedServer.Status.Tools).To(HaveLen(1))
+			Expect(updatedServer.Status.Tools[0].Name).To(Equal("manual-tool"))
 		})
 
 		It("Should handle invalid MCP server specs", func() {
