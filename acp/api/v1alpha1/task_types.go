@@ -4,6 +4,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Message roles
+const (
+	MessageRoleSystem    = "system"
+	MessageRoleUser      = "user"
+	MessageRoleAssistant = "assistant"
+	MessageRoleTool      = "tool"
+)
+
+// ValidMessageRoles provides a map of valid message roles for validation
+var ValidMessageRoles = map[string]bool{
+	MessageRoleSystem:    true,
+	MessageRoleUser:      true,
+	MessageRoleAssistant: true,
+	MessageRoleTool:      true,
+}
+
 // TaskSpec defines the desired state of Task
 type TaskSpec struct {
 	// AgentRef references the agent that will execute this Task.
@@ -11,9 +27,16 @@ type TaskSpec struct {
 	AgentRef LocalObjectReference `json:"agentRef"`
 
 	// UserMessage is the message to send to the agent.
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	UserMessage string `json:"userMessage"`
+	// If provided, userMessage will be used and contextWindow must be empty.
+	// +optional
+	UserMessage string `json:"userMessage,omitempty"`
+
+	// ContextWindow provides the initial conversation context when creating a Task.
+	// If provided, contextWindow will be used and userMessage must be empty.
+	// This will be copied to status.ContextWindow, which is the source of truth
+	// for the ongoing conversation.
+	// +optional
+	ContextWindow []Message `json:"contextWindow,omitempty"`
 }
 
 // Message represents a single message in the conversation
@@ -157,6 +180,7 @@ const (
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Agent",type="string",JSONPath=".spec.agentRef.name"
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.status"
 // +kubebuilder:printcolumn:name="Detail",type="string",JSONPath=".status.statusDetail",priority=1

@@ -68,12 +68,19 @@ func ToolFromContactChannel(channel acp.ContactChannel) *Tool {
 	// Customize based on channel type
 	switch channel.Spec.Type {
 	case acp.ContactChannelTypeEmail:
+
 		name = fmt.Sprintf("%s__human_contact_email", channel.Name)
 		description = channel.Spec.Email.ContextAboutUser
+		if description == "" {
+			description = "Contact a human via email"
+		}
 
 	case acp.ContactChannelTypeSlack:
 		name = fmt.Sprintf("%s__human_contact_slack", channel.Name)
 		description = channel.Spec.Slack.ContextAboutChannelOrUser
+		if description == "" {
+			description = "Contact a human via Slack"
+		}
 
 	default:
 		name = fmt.Sprintf("%s__human_contact", channel.Name)

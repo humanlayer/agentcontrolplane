@@ -22,6 +22,7 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/adapters"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -52,7 +53,7 @@ func (r *TaskReconciler) initializePhaseAndSpan(ctx context.Context, task *acp.T
 	spanCtx, span := r.Tracer.Start(ctx, "Task",
 		trace.WithSpanKind(trace.SpanKindServer), // optional
 	)
-	// Do NOT 'span.End()' here—this is your single “root” for the entire Task lifetime.
+	// Do NOT 'span.End()' here—this is your single "root" for the entire Task lifetime.
 
 	// Set initial phase
 	task.Status.Phase = acp.TaskPhaseInitializing
@@ -152,54 +153,63 @@ func (r *TaskReconciler) validateTaskAndAgent(ctx context.Context, task *acp.Tas
 	return &agent, ctrl.Result{}, nil
 }
 
+// Helper function for setting validation errors
+func (r *TaskReconciler) setValidationError(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, err error) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Error(err, "Validation failed")
+	statusUpdate.Status.Ready = false
+	statusUpdate.Status.Status = acp.TaskStatusTypeError
+	statusUpdate.Status.Phase = acp.TaskPhaseFailed
+	statusUpdate.Status.StatusDetail = err.Error()
+	statusUpdate.Status.Error = err.Error()
+	r.recorder.Event(task, corev1.EventTypeWarning, "ValidationFailed", err.Error())
+	if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
+		logger.Error(updateErr, "Failed to update Task status")
+		return ctrl.Result{}, updateErr
+	}
+	return ctrl.Result{}, err
+}
+
 // prepareForLLM sets up the initial state of a Task with the correct context and phase
 func (r *TaskReconciler) prepareForLLM(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, agent *acp.Agent) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// If we're in Initializing or Pending phase, transition to ReadyForLLM
 	if statusUpdate.Status.Phase == acp.TaskPhaseInitializing || statusUpdate.Status.Phase == acp.TaskPhasePending {
+		if err := validation.ValidateTaskMessageInput(task.Spec.UserMessage, task.Spec.ContextWindow); err != nil {
+			return r.setValidationError(ctx, task, statusUpdate, err)
+		}
+
+		var initialContextWindow []acp.Message
+		if len(task.Spec.ContextWindow) > 0 {
+			initialContextWindow = append([]acp.Message{}, task.Spec.ContextWindow...)
+			hasSystemMessage := false
+			for _, msg := range initialContextWindow {
+				if msg.Role == acp.MessageRoleSystem {
+					hasSystemMessage = true
+					break
+				}
+			}
+			if !hasSystemMessage {
+				initialContextWindow = append([]acp.Message{
+					{Role: acp.MessageRoleSystem, Content: agent.Spec.System},
+				}, initialContextWindow...)
+			}
+		} else {
+			initialContextWindow = []acp.Message{
+				{Role: acp.MessageRoleSystem, Content: agent.Spec.System},
+				{Role: acp.MessageRoleUser, Content: task.Spec.UserMessage},
+			}
+		}
+
+		statusUpdate.Status.UserMsgPreview = validation.GetUserMessagePreview(task.Spec.UserMessage, task.Spec.ContextWindow)
+		statusUpdate.Status.ContextWindow = initialContextWindow
 		statusUpdate.Status.Phase = acp.TaskPhaseReadyForLLM
 		statusUpdate.Status.Ready = true
-
-		if task.Spec.UserMessage == "" {
-			err := fmt.Errorf("userMessage is required")
-			logger.Error(err, "Missing message")
-			statusUpdate.Status.Ready = false
-			statusUpdate.Status.Status = acp.TaskStatusTypeError
-			statusUpdate.Status.Phase = acp.TaskPhaseFailed
-			statusUpdate.Status.StatusDetail = err.Error()
-			statusUpdate.Status.Error = err.Error()
-			r.recorder.Event(task, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-			if updateErr := r.Status().Update(ctx, statusUpdate); updateErr != nil {
-				logger.Error(updateErr, "Failed to update Task status")
-				return ctrl.Result{}, updateErr
-			}
-			return ctrl.Result{}, err
-		}
-
-		// Set the UserMsgPreview - truncate to 50 chars if needed
-		preview := task.Spec.UserMessage
-		if len(preview) > 50 {
-			preview = preview[:47] + "..."
-		}
-		statusUpdate.Status.UserMsgPreview = preview
-
-		// Set up the context window
-		statusUpdate.Status.ContextWindow = []acp.Message{
-			{
-				Role:    "system",
-				Content: agent.Spec.System,
-			},
-			{
-				Role:    "user",
-				Content: task.Spec.UserMessage,
-			},
-		}
 		statusUpdate.Status.Status = acp.TaskStatusTypeReady
 		statusUpdate.Status.StatusDetail = "Ready to send to LLM"
-		statusUpdate.Status.Error = "" // Clear previous error
-		r.recorder.Event(task, corev1.EventTypeNormal, "ValidationSucceeded", "Task validation succeeded")
+		statusUpdate.Status.Error = ""
 
+		r.recorder.Event(task, corev1.EventTypeNormal, "ValidationSucceeded", "Task validation succeeded")
 		if err := r.Status().Update(ctx, statusUpdate); err != nil {
 			logger.Error(err, "Failed to update Task status")
 			return ctrl.Result{}, err
@@ -384,6 +394,36 @@ func (r *TaskReconciler) collectTools(ctx context.Context, agent *acp.Agent) []l
 		logger.Info("Added human contact channel tool", "name", channel.Name, "type", channel.Spec.Type)
 	}
 
+	// Add delegate tools for sub-agents
+	for _, subAgentRef := range agent.Spec.SubAgents {
+		subAgent := &acp.Agent{}
+		if err := r.Get(ctx, client.ObjectKey{Namespace: agent.Namespace, Name: subAgentRef.Name}, subAgent); err != nil {
+			logger.Error(err, "Failed to get sub-agent", "name", subAgentRef.Name)
+			continue
+		}
+
+		// Create a delegate tool for the sub-agent
+		delegateTool := llmclient.Tool{
+			Type: "function",
+			Function: llmclient.ToolFunction{
+				Name:        "delegate_to_agent__" + subAgent.Name,
+				Description: subAgent.Spec.Description,
+				Parameters: llmclient.ToolFunctionParameters{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"message": map[string]interface{}{
+							"type": "string",
+						},
+					},
+					"required": []string{"message"},
+				},
+			},
+			ACPToolType: acp.ToolTypeDelegateToAgent,
+		}
+		tools = append(tools, delegateTool)
+		logger.Info("Added delegate tool for sub-agent", "name", subAgent.Name)
+	}
+
 	return tools
 }
 
@@ -456,6 +496,7 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 			return ctrl.Result{}, err
 		}
 
+		// todo should this technically happen before the status update? is there a chance they get dropped?
 		return r.createToolCalls(ctx, task, statusUpdate, output.ToolCalls, tools)
 	}
 	return ctrl.Result{}, nil
@@ -646,6 +687,10 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		statusUpdate.Status.Error = err.Error()
 
 		// Check for LLMRequestError with 4xx status code
+		// todo(dex) this .As() casting does not work - this error still retries forever
+		//
+		//     langchain API call failed: API returned unexpected status code: 400: An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. The following tool_call_ids did not have response messages: call_N38DB1obDYZF0yDYxZhK6lTe
+		//
 		var llmErr *llmclient.LLMRequestError
 		is4xxError := errors.As(err, &llmErr) && llmErr.StatusCode >= 400 && llmErr.StatusCode < 500
 
