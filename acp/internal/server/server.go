@@ -158,11 +158,19 @@ func (s *APIServer) createTask(c *gin.Context) {
 
 	var req CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error(err, "Failed to bind request body")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
 		return
 	}
 
+	logger.Info("Received task creation request",
+		"agentName", req.AgentName,
+		"namespace", req.Namespace,
+		"hasUserMessage", req.UserMessage != "",
+		"contextWindowSize", len(req.ContextWindow))
+
 	if req.AgentName == "" {
+		logger.Error(nil, "Missing required field: agentName")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "agentName is required"})
 		return
 	}
@@ -192,6 +200,7 @@ func (s *APIServer) createTask(c *gin.Context) {
 
 	// Generate (mostly) unique task name
 	generatedName := req.AgentName + "-task-" + uuid.New().String()[:8]
+	logger.Info("Generated task name", "name", generatedName)
 
 	task := &acp.Task{
 		ObjectMeta: metav1.ObjectMeta{
@@ -211,13 +220,20 @@ func (s *APIServer) createTask(c *gin.Context) {
 	if err := s.client.Create(ctx, task); err != nil {
 		if statusErr := new(apierrors.StatusError); errors.As(err, &statusErr) {
 			status := statusErr.Status()
+			logger.Error(err, "Failed to create task - status error",
+				"code", status.Code,
+				"message", status.Message)
 			c.JSON(int(status.Code), gin.H{"error": status.Message})
 		} else {
-			logger.Error(err, "Failed to create task")
+			logger.Error(err, "Failed to create task - unexpected error")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task: " + err.Error()})
 		}
 		return
 	}
 
+	logger.Info("Successfully created task",
+		"name", generatedName,
+		"namespace", namespace,
+		"agent", req.AgentName)
 	c.JSON(http.StatusCreated, task)
 }
