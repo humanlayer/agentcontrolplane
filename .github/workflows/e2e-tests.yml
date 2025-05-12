@@ -70,9 +70,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-acp-bin-
 
-      # Setup KinD using the engineerd action which is more reliable in GitHub Actions
+      # Setup KinD using the engineerd action with updated version
       - name: Setup KinD
-        uses: engineerd/setup-kind@v0.6.0
+        uses: engineerd/setup-kind@v0.5.0
         with:
           version: "v0.20.0"
           name: "kind"
