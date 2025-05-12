@@ -26,4 +26,4 @@ patches:
 images:
 - name: controller
   newName: controller
-  newTag: "202504181049"
+  newTag: "202505121346"

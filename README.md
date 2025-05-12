@@ -29,7 +29,7 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Setting Up a Local Cluster](#setting-up-a-local-cluster)
-  - [Deploying ACP](#deploying-acp) 
+  - [Deploying ACP](#deploying-acp)
   - [Creating an Agent and Running your first task](#creating-an-agent-and-running-your-first-task)
   - [Adding Tools with MCP](#adding-tools-with-mcp)
   - [Using other language models](#using-other-language-models)
@@ -38,6 +38,7 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
   - [Incorporating Humans as Tools](#humans-as-tools)
   - [Cleaning Up](#cleaning-up)
 - [Design Principles](#design-principles)
+- [End-to-End Testing](#end-to-end-testing)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -1286,6 +1287,34 @@ kind delete cluster
 - **Durability**: Resilient to failures as a distributed system.
 
 - **Extensibility**: Because agents are YAML, it's easy to build and share agents, tools, and tasks.
+
+## End-to-End Testing
+
+The project includes comprehensive end-to-end tests that validate the full workflow described in this README. These tests:
+
+1. Create a Kind cluster
+2. Deploy the ACP operator
+3. Deploy sample resources (LLMs, MCP Servers, Agents, Tasks)
+4. Deploy the observability stack
+5. Verify all components are running correctly
+6. Test the complete workflow with Task execution
+
+To run the e2e tests that validate the README workflow:
+
+```bash
+make test-e2e
+```
+
+This command:
+- Builds the controller Docker image
+- Loads it into Kind
+- Sets up necessary components (Prometheus, cert-manager if not present)
+- Runs the e2e test suite
+- Verifies resources are created and functioning correctly
+
+The tests can be found in the `acp/test/e2e` directory, with `workflow_test.go` containing the tests that validate the workflow described in this README.
+
+These tests serve as both validation of the codebase and as a working example of how to programmatically deploy and verify the ACP system.
 
 ## Roadmap
 
