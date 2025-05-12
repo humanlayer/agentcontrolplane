@@ -1299,7 +1299,9 @@ The project includes comprehensive end-to-end tests that validate the full workf
 5. Verify all components are running correctly
 6. Test the complete workflow with Task execution
 
-To run the e2e tests that validate the README workflow:
+### Running E2E Tests Locally
+
+To run the e2e tests that validate the README workflow locally:
 
 ```bash
 make test-e2e
@@ -1312,7 +1314,23 @@ This command:
 - Runs the e2e test suite
 - Verifies resources are created and functioning correctly
 
-The tests can be found in the `acp/test/e2e` directory, with `workflow_test.go` containing the tests that validate the workflow described in this README.
+### Continuous Integration
+
+The E2E tests automatically run in our CI pipeline for all pull requests to ensure that the system continues to work as described in this README. The CI workflow:
+
+- Builds and tests the ACP system in a clean environment
+- Sets up a dedicated Kubernetes cluster using Kind
+- Deploys all necessary components, including cert-manager and Prometheus
+- Runs the full E2E test suite to verify the entire workflow functions correctly
+- Collects and reports detailed diagnostic information for troubleshooting
+
+This ensures that any changes to the codebase do not break the documented workflow.
+
+### Test Structure
+
+The tests can be found in the `acp/test/e2e` directory:
+- `workflow_test.go` - Contains tests that validate the workflow described in this README
+- `e2e_test.go` - Contains tests for controller metrics and other functionality
 
 These tests serve as both validation of the codebase and as a working example of how to programmatically deploy and verify the ACP system.
 

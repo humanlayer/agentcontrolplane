@@ -1,0 +1,121 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "acp/**"
+      - ".github/workflows/e2e-tests.yml"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "acp/**"
+      - ".github/workflows/e2e-tests.yml"
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  e2e-test:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: acp/go.sum
+
+      - name: Cache acp tools
+        uses: actions/cache@v4
+        with:
+          path: acp/bin
+          key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-acp-bin-
+
+      # Setup KinD cluster with a more efficient configuration
+      - name: Setup KinD
+        uses: helm/kind-action@v1.9.0
+        with:
+          cluster_name: kind
+          config: |
+            kind: Cluster
+            apiVersion: kind.x-k8s.io/v1alpha4
+            nodes:
+            - role: control-plane
+              kubeadmConfigPatches:
+              - |
+                kind: InitConfiguration
+                nodeRegistration:
+                  kubeletExtraArgs:
+                    node-labels: "ingress-ready=true"
+              extraPortMappings:
+              - containerPort: 80
+                hostPort: 80
+                protocol: TCP
+              - containerPort: 443
+                hostPort: 443
+                protocol: TCP
+
+      # Setup cert-manager which is required for the controller
+      - name: Install cert-manager
+        run: |
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.2/cert-manager.yaml
+          kubectl wait --for=condition=Available --timeout=180s deployment/cert-manager-webhook -n cert-manager
+
+      # Setup prometheus operator for metrics
+      - name: Install Prometheus Operator
+        run: |
+          kubectl apply -f https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.71.2/bundle.yaml
+          kubectl wait --for=condition=Available --timeout=180s deployment/prometheus-operator -n default
+
+      # Build and load Docker image for the controller
+      - name: Build and load the controller image
+        working-directory: acp
+        run: |
+          # Build the docker image with specific tag to match e2e tests
+          make docker-build IMG=example.com/acp:v0.0.1
+          # Load the image into the kind cluster
+          kind load docker-image example.com/acp:v0.0.1 --name kind
+          
+      # Run E2E tests
+      - name: Run e2e tests
+        working-directory: acp
+        env:
+          # Set environment variables that might be needed by the tests
+          KUBECONFIG: /home/runner/.kube/config
+        run: |
+          # Run the e2e tests with a longer timeout
+          make test-e2e
+
+      # Upload test logs on failure for debugging
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-logs
+          path: |
+            /tmp/*.log
+            /home/runner/.kube/config
+          retention-days: 7
+
+      # Optional: Run kubectl commands to show cluster state if tests fail
+      - name: Collect diagnostic information
+        if: failure()
+        run: |
+          echo "==== Kubernetes Nodes ===="
+          kubectl get nodes -o wide
+          
+          echo "==== Kubernetes Pods ===="
+          kubectl get pods -A
+          
+          echo "==== Pod Logs ===="
+          kubectl logs -l control-plane=controller-manager -n default || true
+          
+          echo "==== Events ===="
+          kubectl get events --sort-by='.lastTimestamp' -A
