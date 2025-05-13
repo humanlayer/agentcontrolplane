@@ -110,7 +110,7 @@ var _ = Describe("ResponseURL Functionality", func() {
 
 			// Should return an error due to non-200 response
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("server error from responseURL (status 500)"))
+			Expect(err.Error()).To(ContainSubstring("HTTP error from responseURL (status 500)"))
 		})
 
 		It("handles connection errors appropriately", func() {
