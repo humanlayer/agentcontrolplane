@@ -54,7 +54,7 @@ var _ = Describe("README Workflow", Ordered, func() {
 	const pollingInterval = 2 * time.Second
 
 	// Whether to use real credentials from environment variables
-	var useRealCredentials = os.Getenv("E2E_USE_REAL_CREDENTIALS") == "true"
+	var useRealCredentials = getEnvBool("E2E_USE_REAL_CREDENTIALS")
 
 	// Define expected resources based on what's in the README and config/samples
 	// These sample resources are defined in the config/samples directory
@@ -175,7 +175,7 @@ var _ = Describe("README Workflow", Ordered, func() {
 	// Test the OpenTelemetry integration described in the README.md
 	Context("Setting up the OpenTelemetry observability stack", func() {
 		It("should deploy and verify Prometheus, Grafana, and OpenTelemetry components", func() {
-			skipObservability := os.Getenv("E2E_SKIP_OBSERVABILITY") == "true"
+			skipObservability := getEnvBool("E2E_SKIP_OBSERVABILITY")
 
 			if skipObservability {
 				By("Skipping observability stack tests (E2E_SKIP_OBSERVABILITY=true)")
@@ -199,7 +199,7 @@ var _ = Describe("README Workflow", Ordered, func() {
 			// If we get here, the observability stack was deployed
 			By("Verifying Prometheus deployment")
 			cmd = exec.Command("kubectl", "get", "deployment", "prometheus-operator",
-							   "-n", "default", "--ignore-not-found")
+				"-n", "default", "--ignore-not-found")
 			_, _ = utils.Run(cmd)
 
 			By("Note: Full observability stack verification would include:")
@@ -215,7 +215,7 @@ var _ = Describe("README Workflow", Ordered, func() {
 // Uses real credentials from environment variables if available (when E2E_USE_REAL_CREDENTIALS=true)
 // Otherwise, falls back to mock credentials
 func createMockSecrets() {
-	useRealCredentials := os.Getenv("E2E_USE_REAL_CREDENTIALS") == "true"
+	useRealCredentials := getEnvBool("E2E_USE_REAL_CREDENTIALS")
 
 	// Initialize secrets map
 	secrets := map[string]map[string]string{
