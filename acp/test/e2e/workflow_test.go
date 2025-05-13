@@ -188,7 +188,8 @@ func cleanupMockSecrets() {
 }
 
 // verifyResources checks that the expected resources are created
-func verifyResources(resourceType string, expectedResources []string, timeout, interval time.Duration) {
+// nolint:unparam
+func verifyResources(resourceType string, expectedResources []string, _ /* timeout */, interval time.Duration) {
 	verifyResourcesFunc := func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", resourceType, "-n", workflowNamespace, "-o", "json")
 		output, err := utils.Run(cmd)
@@ -222,10 +223,13 @@ func verifyResources(resourceType string, expectedResources []string, timeout, i
 		}
 	}
 
-	Eventually(verifyResourcesFunc, timeout, interval).Should(Succeed())
+	// We use a constant timeout value for all resource checks
+	const defaultTimeout = 5 * time.Minute
+	Eventually(verifyResourcesFunc, defaultTimeout, interval).Should(Succeed())
 }
 
-// verifyTaskStatus checks that the task transitions to a successful state
+// verifyTaskStatus checks that a task transitions to the Ready status
+// nolint:unused
 func verifyTaskStatus(taskName string, timeout time.Duration) {
 	verifyTaskStatusFunc := func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "tasks.acp.humanlayer.dev", taskName,
@@ -270,7 +274,8 @@ func verifyTasksExist(timeout time.Duration) {
 	Eventually(verifyTasksExistFunc, timeout, 5*time.Second).Should(Succeed())
 }
 
-// verifyDeployment checks that a deployment is running
+// verifyDeployment checks that a deployment is running with ready replicas
+// nolint:unused
 func verifyDeployment(deploymentName, namespace string, timeout, interval time.Duration) {
 	verifyDeploymentFunc := func(g Gomega) {
 		cmd := exec.Command("kubectl", "get", "deployment", deploymentName,

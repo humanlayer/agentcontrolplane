@@ -170,7 +170,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Update status with tools
 	statusUpdate.Status.Connected = true
-	statusUpdate.Status.Status = "Ready"
+	statusUpdate.Status.Status = StatusReady
 	statusUpdate.Status.StatusDetail = fmt.Sprintf("Connected successfully with %d tools", len(tools))
 	statusUpdate.Status.Tools = tools
 	r.recorder.Event(&mcpServer, corev1.EventTypeNormal, "Connected", "MCP server connected successfully")
