@@ -3,10 +3,12 @@ package task
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"time"
 
@@ -787,7 +789,6 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
 // notifyResponseURLAsync sends the final task result to the response URL asynchronously
 func (r *TaskReconciler) notifyResponseURLAsync(task *acp.Task, result string) {
 	go func() {
@@ -797,7 +798,7 @@ func (r *TaskReconciler) notifyResponseURLAsync(task *acp.Task, result string) {
 		logger := log.FromContext(ctx)
 		taskCopy := task.DeepCopy()
 
-		err := r.sendFinalResultToResponseURL(ctx, task.Spec.ResponseURL, result)
+		err := r.sendFinalResultToResponseURL(ctx, task, result)
 		if err != nil {
 			logger.Error(err, "Failed to send final result to responseURL",
 				"responseURL", task.Spec.ResponseURL,
@@ -815,12 +816,43 @@ func (r *TaskReconciler) notifyResponseURLAsync(task *acp.Task, result string) {
 	}()
 }
 
+// assertAvailablePRNG ensures that a cryptographically secure PRNG is available
+func assertAvailablePRNG() {
+	buf := make([]byte, 1)
+	_, err := io.ReadFull(rand.Reader, buf)
+	if err != nil {
+		panic(fmt.Sprintf("crypto/rand is unavailable: Read() failed with %#v", err))
+	}
+}
+
+// init ensures that a cryptographically secure PRNG is available when the package is loaded
+func init() {
+	assertAvailablePRNG()
+}
+
+// generateRandomString returns a securely generated random string
+func generateRandomString(n int) (string, error) {
+	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+	ret := make([]byte, n)
+	for i := 0; i < n; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			return "", err
+		}
+		ret[i] = letters[num.Int64()]
+	}
+	return string(ret), nil
+}
+
 // createHumanContactRequest builds the request payload for sending to a response URL
-func createHumanContactRequest(result string) ([]byte, error) {
-	// Make runId be agent name
-	runID := "test"
-	// Make random but half as long
-	callID := uuid.New().String()[:7]
+func createHumanContactRequest(agentName string, result string) ([]byte, error) {
+	// Use agent name as runId
+	runID := agentName
+	// Generate a secure random string for callId
+	callID, err := generateRandomString(7)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate secure random string: %w", err)
+	}
 	spec := humanlayerapi.NewHumanContactSpecInput(result)
 	input := humanlayerapi.NewHumanContactInput(runID, callID, *spec)
 	return json.Marshal(input)
@@ -833,12 +865,12 @@ func isRetryableStatusCode(statusCode int) bool {
 
 // sendFinalResultToResponseURL sends the final task result to the specified URL
 // It includes retry logic for transient errors and better error categorization
-func (r *TaskReconciler) sendFinalResultToResponseURL(ctx context.Context, responseURL string, result string) error {
+func (r *TaskReconciler) sendFinalResultToResponseURL(ctx context.Context, task *acp.Task, result string) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Sending final result to responseURL", "responseURL", responseURL)
+	logger.Info("Sending final result to responseURL", "responseURL", task.Spec.ResponseURL)
 
 	// Create the request body
-	jsonData, err := createHumanContactRequest(result)
+	jsonData, err := createHumanContactRequest(task.Spec.AgentRef.Name, result)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request body: %w", err)
 	}
@@ -848,9 +880,9 @@ func (r *TaskReconciler) sendFinalResultToResponseURL(ctx context.Context, respo
 	initialDelay := 1 * time.Second
 
 	// Retry the operation with exponential backoff
-	return retryWithBackoff(ctx, maxRetries, initialDelay, responseURL, func() (bool, error) {
+	return retryWithBackoff(ctx, maxRetries, initialDelay, task.Spec.ResponseURL, func() (bool, error) {
 		// Create the HTTP request
-		req, err := http.NewRequestWithContext(ctx, "POST", responseURL, bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", task.Spec.ResponseURL, bytes.NewBuffer(jsonData))
 		if err != nil {
 			return false, fmt.Errorf("failed to create HTTP request: %w", err) // Non-retryable
 		}
@@ -895,7 +927,7 @@ func (r *TaskReconciler) sendFinalResultToResponseURL(ctx context.Context, respo
 		// Success case
 		logger.Info("Successfully sent final result to responseURL",
 			"statusCode", resp.StatusCode,
-			"responseURL", responseURL)
+			"responseURL", task.Spec.ResponseURL)
 		return false, nil
 	})
 }
