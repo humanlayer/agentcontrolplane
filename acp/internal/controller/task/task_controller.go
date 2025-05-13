@@ -817,8 +817,10 @@ func (r *TaskReconciler) notifyResponseURLAsync(task *acp.Task, result string) {
 
 // createHumanContactRequest builds the request payload for sending to a response URL
 func createHumanContactRequest(result string) ([]byte, error) {
-	runID := uuid.New().String()
-	callID := uuid.New().String()
+	// Make runId be agent name
+	runID := "test"
+	// Make random but half as long
+	callID := uuid.New().String()[:7]
 	spec := humanlayerapi.NewHumanContactSpecInput(result)
 	input := humanlayerapi.NewHumanContactInput(runID, callID, *spec)
 	return json.Marshal(input)
@@ -900,8 +902,8 @@ func (r *TaskReconciler) sendFinalResultToResponseURL(ctx context.Context, respo
 
 // retryWithBackoff executes an operation with exponential backoff
 func retryWithBackoff(ctx context.Context, maxRetries int, initialDelay time.Duration,
-	responseURL string, operation func() (bool, error)) error {
-
+	responseURL string, operation func() (bool, error),
+) error {
 	logger := log.FromContext(ctx)
 	var lastErr error
 	delay := initialDelay
