@@ -1,4 +1,4 @@
-name: E2E Tests # Trigger workflow
+name: E2E Tests
 
 on:
   push:
@@ -15,8 +15,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-test:
-    name: Build and Test
+  # E2E tests don't need to run unit tests again, those are run in the Go CI workflow
+  # We only need to build a Docker image for E2E tests
+  docker-build:
+    name: Build Docker Image
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -38,17 +40,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-acp-bin-
 
-      - name: Run unit tests
-        working-directory: acp
-        run: make test
-
       - name: Build Docker image
         working-directory: acp
         run: make docker-build IMG=example.com/acp:v0.0.1
 
   e2e-test:
     name: End-to-End Tests
-    needs: build-and-test
+    needs: docker-build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -101,12 +99,12 @@ jobs:
           kubectl wait --for=condition=Available --timeout=300s deployment/prometheus-operator -n default || true
           echo "Prometheus operator installation attempted - continuing regardless of outcome"
 
-      # Build and load Docker image for the controller - matches the name expected by tests
-      - name: Build and load the controller image
-        working-directory: acp
+      # Load Docker image into the kind cluster for the controller
+      - name: Load the controller image
         run: |
-          # Build the docker image with specific tag to match e2e tests
-          make docker-build IMG=example.com/acp:v0.0.1
+          # The image was already built in the previous job, now just load it into kind
+          # First check if image exists
+          docker image inspect example.com/acp:v0.0.1 || docker pull example.com/acp:v0.0.1 || (cd acp && make docker-build IMG=example.com/acp:v0.0.1)
           # Load the image into the kind cluster
           kind load docker-image example.com/acp:v0.0.1 --name kind
           echo "Docker image loaded successfully!"
