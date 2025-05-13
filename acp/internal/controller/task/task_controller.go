@@ -1,9 +1,13 @@
 package task
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/humanlayer/agentcontrolplane/acp/internal/adapters"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
@@ -466,6 +471,11 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 		statusUpdate.Status.Error = ""
 		r.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
 
+		// If task has a responseURL, send the final result to that URL
+		if task.Spec.ResponseURL != "" {
+			r.notifyResponseURLAsync(task, output.Content)
+		}
+
 		// End the task trace with OK status since we have a final answer.
 		// The context passed here should ideally be the one from Reconcile after attachRootSpan.
 		// r.endTaskTrace(ctx, task, codes.Ok, "Task completed successfully with final answer")
@@ -778,6 +788,154 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 // SetupWithManager sets up the controller with the Manager.
+// notifyResponseURLAsync sends the final task result to the response URL asynchronously
+func (r *TaskReconciler) notifyResponseURLAsync(task *acp.Task, result string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		logger := log.FromContext(ctx)
+		taskCopy := task.DeepCopy()
+
+		err := r.sendFinalResultToResponseURL(ctx, task.Spec.ResponseURL, result)
+		if err != nil {
+			logger.Error(err, "Failed to send final result to responseURL",
+				"responseURL", task.Spec.ResponseURL,
+				"task", fmt.Sprintf("%s/%s", task.Namespace, task.Name))
+
+			r.recorder.Event(taskCopy, corev1.EventTypeWarning, "ResponseURLError",
+				fmt.Sprintf("Failed to send result to response URL: %v", err))
+		} else {
+			logger.Info("Successfully sent final result to responseURL",
+				"responseURL", task.Spec.ResponseURL)
+
+			r.recorder.Event(taskCopy, corev1.EventTypeNormal, "ResponseURLSent",
+				"Successfully sent result to response URL")
+		}
+	}()
+}
+
+// createHumanContactRequest builds the request payload for sending to a response URL
+func createHumanContactRequest(result string) ([]byte, error) {
+	runID := uuid.New().String()
+	callID := uuid.New().String()
+	spec := humanlayerapi.NewHumanContactSpecInput(result)
+	input := humanlayerapi.NewHumanContactInput(runID, callID, *spec)
+	return json.Marshal(input)
+}
+
+// isRetryableStatusCode determines if an HTTP status code should trigger a retry
+func isRetryableStatusCode(statusCode int) bool {
+	return statusCode >= 500 || statusCode == 429
+}
+
+// sendFinalResultToResponseURL sends the final task result to the specified URL
+// It includes retry logic for transient errors and better error categorization
+func (r *TaskReconciler) sendFinalResultToResponseURL(ctx context.Context, responseURL string, result string) error {
+	logger := log.FromContext(ctx)
+	logger.Info("Sending final result to responseURL", "responseURL", responseURL)
+
+	// Create the request body
+	jsonData, err := createHumanContactRequest(result)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	// Define retry parameters
+	maxRetries := 3
+	initialDelay := 1 * time.Second
+
+	// Retry the operation with exponential backoff
+	return retryWithBackoff(ctx, maxRetries, initialDelay, responseURL, func() (bool, error) {
+		// Create the HTTP request
+		req, err := http.NewRequestWithContext(ctx, "POST", responseURL, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return false, fmt.Errorf("failed to create HTTP request: %w", err) // Non-retryable
+		}
+
+		// Set headers
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "ACP-Task-Controller")
+
+		// Send the request
+		client := &http.Client{
+			Timeout: 5 * time.Second,
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return true, fmt.Errorf("failed to send HTTP request: %w", err) // Retryable
+		}
+
+		// Ensure we close the response body
+		defer func() {
+			if resp != nil && resp.Body != nil {
+				if err := resp.Body.Close(); err != nil {
+					logger.Error(err, "Failed to close response body")
+				}
+			}
+		}()
+
+		// Check response status
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			body, readErr := io.ReadAll(resp.Body)
+			bodyStr := ""
+			if readErr != nil {
+				bodyStr = fmt.Sprintf("[error reading response body: %v]", readErr)
+			} else {
+				bodyStr = string(body)
+			}
+
+			// Return whether this error is retryable
+			retryable := isRetryableStatusCode(resp.StatusCode)
+			return retryable, fmt.Errorf("HTTP error from responseURL (status %d): %s", resp.StatusCode, bodyStr)
+		}
+
+		// Success case
+		logger.Info("Successfully sent final result to responseURL",
+			"statusCode", resp.StatusCode,
+			"responseURL", responseURL)
+		return false, nil
+	})
+}
+
+// retryWithBackoff executes an operation with exponential backoff
+func retryWithBackoff(ctx context.Context, maxRetries int, initialDelay time.Duration,
+	responseURL string, operation func() (bool, error)) error {
+
+	logger := log.FromContext(ctx)
+	var lastErr error
+	delay := initialDelay
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			logger.Info("Retrying request to responseURL",
+				"responseURL", responseURL,
+				"attempt", attempt+1,
+				"maxRetries", maxRetries)
+
+			// Wait before retrying, with exponential backoff
+			select {
+			case <-time.After(delay):
+				delay *= 2 // Exponential backoff
+			case <-ctx.Done():
+				return fmt.Errorf("context cancelled during retry: %w", ctx.Err())
+			}
+		}
+
+		shouldRetry, err := operation()
+		if err == nil {
+			return nil // Success
+		}
+
+		lastErr = err
+		if !shouldRetry {
+			return err // Non-retryable error
+		}
+	}
+
+	return fmt.Errorf("failed after %d attempts: %w", maxRetries, lastErr)
+}
+
 func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("task-controller")
 	if r.newLLMClient == nil {
