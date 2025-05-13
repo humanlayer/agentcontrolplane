@@ -59,7 +59,7 @@ var _ = Describe("README Workflow", Ordered, func() {
 	// Define expected resources based on what's in the README and config/samples
 	// These sample resources are defined in the config/samples directory
 	var expectedLLMs = []string{"gpt-4o"}
-	var expectedMCPServers = []string{"fetch"}
+	var expectedMCPServers = []string{"fetch-server"} // Using the name from the deployed samples
 	var expectedAgents = []string{"my-assistant"}
 	var expectedTasks = []string{"hello-world-1"}
 
