@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +25,8 @@ type CreateTaskRequest struct {
 	AgentName     string        `json:"agentName"`               // Required
 	UserMessage   string        `json:"userMessage,omitempty"`   // Optional if contextWindow is provided
 	ContextWindow []acp.Message `json:"contextWindow,omitempty"` // Optional if userMessage is provided
+	ResponseURL   string        `json:"responseURL,omitempty"`   // Optional, URL for receiving task results
+	ResponseUrl   string        `json:"responseUrl,omitempty"`   // Alternative casing for responseURL (deprecated)
 }
 
 // APIServer represents the REST API server
@@ -156,9 +161,33 @@ func (s *APIServer) createTask(c *gin.Context) {
 	ctx := c.Request.Context()
 	logger := log.FromContext(ctx)
 
+	// First, read the raw data and store it for validation
+	var rawData []byte
+	if data, err := c.GetRawData(); err == nil {
+		rawData = data
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body: " + err.Error()})
+		return
+	}
+
+	// First parse to basic binding
 	var req CreateTaskRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(rawData, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Then check for unknown fields with a more strict decoder
+	decoder := json.NewDecoder(bytes.NewReader(rawData))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		// Check if it's an unknown field error
+		if strings.Contains(err.Error(), "unknown field") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown field in request: " + err.Error()})
+			return
+		}
+		// For other JSON errors
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON format: " + err.Error()})
 		return
 	}
 
@@ -175,6 +204,14 @@ func (s *APIServer) createTask(c *gin.Context) {
 	namespace := req.Namespace
 	if namespace == "" {
 		namespace = "default"
+	}
+
+	// Handle both responseURL and responseUrl fields (with responseURL taking precedence)
+	responseURL := req.ResponseURL
+	if responseURL == "" && req.ResponseUrl != "" {
+		responseURL = req.ResponseUrl
+		logger.Info("Using deprecated 'responseUrl' field, please use 'responseURL' instead",
+			"responseUrl", req.ResponseUrl)
 	}
 
 	// Check if agent exists
@@ -205,6 +242,7 @@ func (s *APIServer) createTask(c *gin.Context) {
 			AgentRef:      acp.LocalObjectReference{Name: req.AgentName},
 			UserMessage:   req.UserMessage,
 			ContextWindow: req.ContextWindow,
+			ResponseURL:   responseURL,
 		},
 	}
 
