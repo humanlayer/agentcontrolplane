@@ -153,6 +153,11 @@ spec:
                   - role
                   type: object
                 type: array
+              responseUrl:
+                description: |-
+                  ResponseUrl specifies a pre-generated URL that will be used for human contact responses.
+                  This allows the system to direct responses to a specific endpoint.
+                type: string
               userMessage:
                 description: |-
                   UserMessage is the message to send to the agent.

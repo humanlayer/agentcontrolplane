@@ -1,9 +1,13 @@
 package task
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/humanlayer/agentcontrolplane/acp/internal/adapters"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
@@ -466,6 +471,25 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 		statusUpdate.Status.Error = ""
 		r.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
 
+		// If task has a responseUrl, send the final result to that URL
+		if task.Spec.ResponseUrl != "" {
+			go func() {
+				// Use a background context since we don't want this to block task completion
+				sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+
+				err := r.sendFinalResultToResponseUrl(sendCtx, task.Spec.ResponseUrl, output.Content)
+				if err != nil {
+					// Just log error, don't fail the task
+					logger.Error(err, "Failed to send final result to responseUrl",
+						"responseUrl", task.Spec.ResponseUrl)
+				} else {
+					logger.Info("Successfully sent final result to responseUrl",
+						"responseUrl", task.Spec.ResponseUrl)
+				}
+			}()
+		}
+
 		// End the task trace with OK status since we have a final answer.
 		// The context passed here should ideally be the one from Reconcile after attachRootSpan.
 		// r.endTaskTrace(ctx, task, codes.Ok, "Task completed successfully with final answer")
@@ -778,6 +802,56 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 // SetupWithManager sets up the controller with the Manager.
+func (r *TaskReconciler) sendFinalResultToResponseUrl(ctx context.Context, responseUrl string, result string) error {
+	logger := log.FromContext(ctx)
+	logger.Info("Sending final result to responseUrl", "responseUrl", responseUrl)
+
+	// Create the request body using the existing HumanLayerAPI types
+	runID := uuid.New().String()
+	callID := uuid.New().String()
+
+	// Create the spec with the final result as the message
+	spec := humanlayerapi.NewHumanContactSpecInput(result)
+
+	// Create the human contact input
+	humanContactInput := humanlayerapi.NewHumanContactInput(runID, callID, *spec)
+
+	// Marshal the request body to JSON
+	jsonData, err := json.Marshal(humanContactInput)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	// Create the HTTP request
+	req, err := http.NewRequestWithContext(ctx, "POST", responseUrl, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	// Set content type header
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("received non-success status code: %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	logger.Info("Successfully sent final result to responseUrl",
+		"statusCode", resp.StatusCode,
+		"responseUrl", responseUrl)
+	return nil
+}
+
+
 func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("task-controller")
 	if r.newLLMClient == nil {
