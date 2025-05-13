@@ -6,3 +6,6 @@
 .DS_Store
 **/.DS_Store
 
+# Generated files
+acp_commands.sh
+
