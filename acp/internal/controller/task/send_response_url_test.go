@@ -6,12 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
-	"testing"
-	"time"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	humanlayerapi "github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi"
-	"github.com/stretchr/testify/assert"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -19,7 +18,7 @@ import (
 )
 
 // initTestReconciler creates a minimal TaskReconciler for testing
-func initTestReconciler(t *testing.T) (*TaskReconciler, context.Context) {
+func initTestReconciler() (*TaskReconciler, context.Context) {
 	// Initialize logger
 	logger := zap.New(zap.UseDevMode(true))
 	ctx := context.Background()
@@ -28,7 +27,7 @@ func initTestReconciler(t *testing.T) (*TaskReconciler, context.Context) {
 	// Create a reconciler
 	scheme := runtime.NewScheme()
 	err := acp.AddToScheme(scheme)
-	assert.NoError(t, err, "Failed to add API schema")
+	Expect(err).NotTo(HaveOccurred(), "Failed to add API schema")
 
 	return &TaskReconciler{
 		Scheme:   scheme,
@@ -36,97 +35,94 @@ func initTestReconciler(t *testing.T) (*TaskReconciler, context.Context) {
 	}, ctx
 }
 
-func TestSendFinalResultToResponseUrl(t *testing.T) {
-	// Create a channel to synchronize between test and handler
-	requestReceived := make(chan struct{})
+var _ = Describe("ResponseUrl Functionality", func() {
+	Context("when sending results to responseUrl", func() {
+		It("successfully sends the result and verifies content", func() {
+			// Create a channel to synchronize between test and handler
+			requestReceived := make(chan struct{})
 
-	// Track the received request for verification
-	var receivedRequest humanlayerapi.HumanContactInput
-	var receivedMutex sync.Mutex
+			// Track the received request for verification
+			var receivedRequest humanlayerapi.HumanContactInput
+			var receivedMutex sync.Mutex
 
-	// Create a test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify method and content type
-		assert.Equal(t, "POST", r.Method)
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			// Create a test server
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Verify method and content type
+				Expect(r.Method).To(Equal("POST"))
+				Expect(r.Header.Get("Content-Type")).To(Equal("application/json"))
 
-		// Decode the request body
-		decoder := json.NewDecoder(r.Body)
-		var req humanlayerapi.HumanContactInput
-		err := decoder.Decode(&req)
-		assert.NoError(t, err)
+				// Decode the request body
+				decoder := json.NewDecoder(r.Body)
+				var req humanlayerapi.HumanContactInput
+				err := decoder.Decode(&req)
+				Expect(err).NotTo(HaveOccurred())
 
-		// Store the request for later verification
-		receivedMutex.Lock()
-		receivedRequest = req
-		receivedMutex.Unlock()
+				// Store the request for later verification
+				receivedMutex.Lock()
+				receivedRequest = req
+				receivedMutex.Unlock()
 
-		// Send a success response
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success"}`))
+				// Send a success response
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"success"}`))
 
-		// Notify that request was received
-		close(requestReceived)
-	}))
-	defer server.Close()
+				// Notify that request was received
+				close(requestReceived)
+			}))
+			defer server.Close()
 
-	// Create a reconciler
-	reconciler, ctx := initTestReconciler(t)
+			// Create a reconciler
+			reconciler, ctx := initTestReconciler()
 
-	// Test sending result
-	testMsg := "This is the final task result"
-	err := reconciler.sendFinalResultToResponseUrl(ctx, server.URL, testMsg)
-	assert.NoError(t, err)
+			// Test sending result
+			testMsg := "This is the final task result"
+			err := reconciler.sendFinalResultToResponseUrl(ctx, server.URL, testMsg)
+			Expect(err).NotTo(HaveOccurred())
 
-	// Wait for the request to be processed with a timeout
-	select {
-	case <-requestReceived:
-		// Request was received, continue with assertions
-	case <-time.After(2 * time.Second):
-		t.Fatal("Timed out waiting for request to be received")
-	}
+			// Wait for the request to be processed with a timeout
+			Eventually(requestReceived).Should(BeClosed(), "Timed out waiting for request to be received")
 
-	// Verify the request content
-	receivedMutex.Lock()
-	defer receivedMutex.Unlock()
+			// Verify the request content
+			receivedMutex.Lock()
+			defer receivedMutex.Unlock()
 
-	// Verify run_id and call_id are set
-	assert.NotEmpty(t, receivedRequest.GetRunId())
-	assert.NotEmpty(t, receivedRequest.GetCallId())
+			// Verify run_id and call_id are set
+			Expect(receivedRequest.GetRunId()).NotTo(BeEmpty())
+			Expect(receivedRequest.GetCallId()).NotTo(BeEmpty())
 
-	// Verify the message content
-	assert.Equal(t, testMsg, receivedRequest.Spec.Msg)
-}
+			// Verify the message content
+			Expect(receivedRequest.Spec.Msg).To(Equal(testMsg))
+		})
 
-// Test handling of error responses
-func TestSendFinalResultToResponseUrl_ErrorResponse(t *testing.T) {
-	// Create a test server that returns an error
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":"something went wrong"}`))
-	}))
-	defer server.Close()
+		It("handles error responses appropriately", func() {
+			// Create a test server that returns an error
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"error":"something went wrong"}`))
+			}))
+			defer server.Close()
 
-	// Create a reconciler
-	reconciler, ctx := initTestReconciler(t)
+			// Create a reconciler
+			reconciler, ctx := initTestReconciler()
 
-	// Test sending result
-	err := reconciler.sendFinalResultToResponseUrl(ctx, server.URL, "test message")
+			// Test sending result
+			err := reconciler.sendFinalResultToResponseUrl(ctx, server.URL, "test message")
 
-	// Should return an error due to non-200 response
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "received non-success status code: 500")
-}
+			// Should return an error due to non-200 response
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("received non-success status code: 500"))
+		})
 
-// Test handling of connection errors
-func TestSendFinalResultToResponseUrl_ConnectionError(t *testing.T) {
-	// Create a reconciler
-	reconciler, ctx := initTestReconciler(t)
+		It("handles connection errors appropriately", func() {
+			// Create a reconciler
+			reconciler, ctx := initTestReconciler()
 
-	// Use an invalid URL to cause a connection error
-	err := reconciler.sendFinalResultToResponseUrl(ctx, "http://localhost:1", "test message")
+			// Use an invalid URL to cause a connection error
+			err := reconciler.sendFinalResultToResponseUrl(ctx, "http://localhost:1", "test message")
 
-	// Should return an error due to connection failure
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to send HTTP request")
-}
+			// Should return an error due to connection failure
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to send HTTP request"))
+		})
+	})
+})
