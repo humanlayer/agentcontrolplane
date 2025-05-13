@@ -837,7 +837,11 @@ func (r *TaskReconciler) sendFinalResultToResponseUrl(ctx context.Context, respo
 	if err != nil {
 		return fmt.Errorf("failed to send HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err, "Failed to close response body")
+		}
+	}()
 
 	// Check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -850,7 +854,6 @@ func (r *TaskReconciler) sendFinalResultToResponseUrl(ctx context.Context, respo
 		"responseUrl", responseUrl)
 	return nil
 }
-
 
 func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("task-controller")

@@ -29,7 +29,7 @@ func initTestReconciler(t *testing.T) (*TaskReconciler, context.Context) {
 	scheme := runtime.NewScheme()
 	err := acp.AddToScheme(scheme)
 	assert.NoError(t, err, "Failed to add API schema")
-	
+
 	return &TaskReconciler{
 		Scheme:   scheme,
 		recorder: record.NewFakeRecorder(10),
@@ -39,7 +39,7 @@ func initTestReconciler(t *testing.T) (*TaskReconciler, context.Context) {
 func TestSendFinalResultToResponseUrl(t *testing.T) {
 	// Create a channel to synchronize between test and handler
 	requestReceived := make(chan struct{})
-	
+
 	// Track the received request for verification
 	var receivedRequest humanlayerapi.HumanContactInput
 	var receivedMutex sync.Mutex
@@ -63,7 +63,7 @@ func TestSendFinalResultToResponseUrl(t *testing.T) {
 
 		// Send a success response
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"success"}`))
+		_, _ = w.Write([]byte(`{"status":"success"}`))
 
 		// Notify that request was received
 		close(requestReceived)
@@ -103,7 +103,7 @@ func TestSendFinalResultToResponseUrl_ErrorResponse(t *testing.T) {
 	// Create a test server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"something went wrong"}`))
+		_, _ = w.Write([]byte(`{"error":"something went wrong"}`))
 	}))
 	defer server.Close()
 
@@ -112,7 +112,7 @@ func TestSendFinalResultToResponseUrl_ErrorResponse(t *testing.T) {
 
 	// Test sending result
 	err := reconciler.sendFinalResultToResponseUrl(ctx, server.URL, "test message")
-	
+
 	// Should return an error due to non-200 response
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "received non-success status code: 500")
@@ -125,7 +125,7 @@ func TestSendFinalResultToResponseUrl_ConnectionError(t *testing.T) {
 
 	// Use an invalid URL to cause a connection error
 	err := reconciler.sendFinalResultToResponseUrl(ctx, "http://localhost:1", "test message")
-	
+
 	// Should return an error due to connection failure
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send HTTP request")

@@ -13,11 +13,11 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.opentelemetry.io/otel/trace/noop"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // MockLLMClient for testing
@@ -34,7 +34,7 @@ func (m *MockLLMClient) SendRequest(ctx context.Context, messages []acp.Message,
 func reconcilerWithMockLLM(newLLMClient func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error)) (*TaskReconciler, *record.FakeRecorder) {
 	recorder := record.NewFakeRecorder(10)
 	tracer := noop.NewTracerProvider().Tracer("test")
-	
+
 	r := &TaskReconciler{
 		Client:       k8sClient,
 		Scheme:       k8sClient.Scheme(),
@@ -48,11 +48,11 @@ func reconcilerWithMockLLM(newLLMClient func(ctx context.Context, llm acp.LLM, a
 var _ = Describe("Task Controller with ResponseUrl", func() {
 	Context("when Task has responseUrl", func() {
 		var (
-			server            *httptest.Server
-			requestReceived   chan struct{}
-			receivedRequest   humanlayerapi.HumanContactInput
-			receivedMutex     sync.Mutex
-			mockLLMClient     *MockLLMClient
+			server          *httptest.Server
+			requestReceived chan struct{}
+			receivedRequest humanlayerapi.HumanContactInput
+			receivedMutex   sync.Mutex
+			mockLLMClient   *MockLLMClient
 		)
 
 		BeforeEach(func() {
@@ -82,7 +82,7 @@ var _ = Describe("Task Controller with ResponseUrl", func() {
 
 				// Send a success response
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"status":"success"}`))
+				_, _ = w.Write([]byte(`{"status":"success"}`))
 
 				// Notify that request was received
 				close(requestReceived)
