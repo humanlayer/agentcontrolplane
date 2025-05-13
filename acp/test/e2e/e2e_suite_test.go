@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -28,14 +29,20 @@ import (
 	"github.com/humanlayer/agentcontrolplane/acp/test/utils"
 )
 
+// getEnvBool returns true if the environment variable is set to "true"
+func getEnvBool(name string) bool {
+	val := os.Getenv(name)
+	return strings.ToLower(val) == "true"
+}
+
 var (
 	// Optional Environment Variables:
 	// - PROMETHEUS_INSTALL_SKIP=true: Skips Prometheus Operator installation during test setup.
 	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
 	// These variables are useful if Prometheus or CertManager is already installed, avoiding
 	// re-installation and conflicts.
-	skipPrometheusInstall  = os.Getenv("PROMETHEUS_INSTALL_SKIP") == "true"
-	skipCertManagerInstall = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
+	skipPrometheusInstall  = getEnvBool("PROMETHEUS_INSTALL_SKIP")
+	skipCertManagerInstall = getEnvBool("CERT_MANAGER_INSTALL_SKIP")
 	// isPrometheusOperatorAlreadyInstalled will be set true when prometheus CRDs be found on the cluster
 	isPrometheusOperatorAlreadyInstalled = false
 	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster
