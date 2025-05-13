@@ -45,8 +45,8 @@ func reconcilerWithMockLLM(newLLMClient func(ctx context.Context, llm acp.LLM, a
 	return r, recorder
 }
 
-var _ = Describe("Task Controller with ResponseUrl", func() {
-	Context("when Task has responseUrl", func() {
+var _ = Describe("Task Controller with ResponseURL", func() {
+	Context("when Task has ResponseURL", func() {
 		var (
 			server          *httptest.Server
 			requestReceived chan struct{}
@@ -90,9 +90,9 @@ var _ = Describe("Task Controller with ResponseUrl", func() {
 			DeferCleanup(server.Close)
 		})
 
-		It("sends the final result to the responseUrl", func() {
-			By("creating a task with responseUrl")
-			// Create a task with responseUrl
+		It("sends the final result to the ResponseURL", func() {
+			By("creating a task with ResponseURL")
+			// Create a task with ResponseURL
 			customTask := &acp.Task{
 				ObjectMeta: v1.ObjectMeta{
 					Name:      "task-with-responseurl",
@@ -103,7 +103,7 @@ var _ = Describe("Task Controller with ResponseUrl", func() {
 						Name: testAgent.Name,
 					},
 					UserMessage: "What is the capital of France?",
-					ResponseUrl: server.URL,
+					ResponseURL: server.URL,
 				},
 			}
 			Expect(k8sClient.Create(ctx, customTask)).To(Succeed())
@@ -163,7 +163,7 @@ var _ = Describe("Task Controller with ResponseUrl", func() {
 			case <-requestReceived:
 				// Request was received, continue with assertions
 			case <-time.After(5 * time.Second):
-				Fail("Timed out waiting for responseUrl request")
+				Fail("Timed out waiting for ResponseURL request")
 			}
 
 			By("verifying request content")

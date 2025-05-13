@@ -471,21 +471,38 @@ func (r *TaskReconciler) processLLMResponse(ctx context.Context, output *acp.Mes
 		statusUpdate.Status.Error = ""
 		r.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
 
-		// If task has a responseUrl, send the final result to that URL
-		if task.Spec.ResponseUrl != "" {
+		// If task has a responseURL, send the final result to that URL
+		if task.Spec.ResponseURL != "" {
+			// Create a separate goroutine to handle the HTTP request asynchronously
 			go func() {
 				// Use a background context since we don't want this to block task completion
 				sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 
-				err := r.sendFinalResultToResponseUrl(sendCtx, task.Spec.ResponseUrl, output.Content)
+				// Use a copy of the task for recording events from the goroutine
+				taskCopy := task.DeepCopy()
+
+				err := r.sendFinalResultToResponseURL(sendCtx, task.Spec.ResponseURL, output.Content)
 				if err != nil {
-					// Just log error, don't fail the task
-					logger.Error(err, "Failed to send final result to responseUrl",
-						"responseUrl", task.Spec.ResponseUrl)
+					// Log detailed error information
+					logger.Error(err, "Failed to send final result to responseURL",
+						"responseURL", task.Spec.ResponseURL,
+						"task", fmt.Sprintf("%s/%s", task.Namespace, task.Name))
+
+					// Record a warning event on the task
+					r.recorder.Event(taskCopy, corev1.EventTypeWarning, "ResponseURLError",
+						fmt.Sprintf("Failed to send result to response URL: %v", err))
+
+					// We could update the task status with the error, but we don't want to
+					// mark the task as failed just because the responseURL notification failed.
+					// The task itself was successful, the notification was the only failure.
 				} else {
-					logger.Info("Successfully sent final result to responseUrl",
-						"responseUrl", task.Spec.ResponseUrl)
+					logger.Info("Successfully sent final result to responseURL",
+						"responseURL", task.Spec.ResponseURL)
+
+					// Record a normal event for the successful notification
+					r.recorder.Event(taskCopy, corev1.EventTypeNormal, "ResponseURLSent",
+						"Successfully sent result to response URL")
 				}
 			}()
 		}
@@ -802,9 +819,11 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *TaskReconciler) sendFinalResultToResponseUrl(ctx context.Context, responseUrl string, result string) error {
+// sendFinalResultToResponseURL sends the final task result to the specified URL
+// It includes retry logic for transient errors and better error categorization
+func (r *TaskReconciler) sendFinalResultToResponseURL(ctx context.Context, responseURL string, result string) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Sending final result to responseUrl", "responseUrl", responseUrl)
+	logger.Info("Sending final result to responseURL", "responseURL", responseURL)
 
 	// Create the request body using the existing HumanLayerAPI types
 	runID := uuid.New().String()
@@ -822,37 +841,96 @@ func (r *TaskReconciler) sendFinalResultToResponseUrl(ctx context.Context, respo
 		return fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	// Create the HTTP request
-	req, err := http.NewRequestWithContext(ctx, "POST", responseUrl, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create HTTP request: %w", err)
-	}
+	// Define retry parameters
+	maxRetries := 3
+	retryDelay := 1 * time.Second
+	var lastErr error
 
-	// Set content type header
-	req.Header.Set("Content-Type", "application/json")
+	// Attempt to send the request with retries for transient errors
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			logger.Info("Retrying request to responseURL",
+				"responseURL", responseURL,
+				"attempt", attempt+1,
+				"maxRetries", maxRetries)
 
-	// Send the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send HTTP request: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.Error(err, "Failed to close response body")
+			// Wait before retrying, with exponential backoff
+			select {
+			case <-time.After(retryDelay):
+				retryDelay *= 2 // Exponential backoff
+			case <-ctx.Done():
+				return fmt.Errorf("context cancelled during retry delay: %w", ctx.Err())
+			}
 		}
-	}()
 
-	// Check response status
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("received non-success status code: %d, body: %s", resp.StatusCode, string(body))
+		// Create the HTTP request
+		req, err := http.NewRequestWithContext(ctx, "POST", responseURL, bytes.NewBuffer(jsonData))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create HTTP request: %w", err)
+			// Don't retry for request creation errors - they're not likely to be transient
+			return lastErr
+		}
+
+		// Set content type header
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "ACP-Task-Controller")
+
+		// Send the request with timeout
+		client := &http.Client{
+			Timeout: 5 * time.Second,
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to send HTTP request: %w", err)
+			// Network errors are often transient, continue to retry
+			continue
+		}
+
+		// Ensure we close the response body
+		defer func() {
+			if resp != nil && resp.Body != nil {
+				if err := resp.Body.Close(); err != nil {
+					logger.Error(err, "Failed to close response body")
+				}
+			}
+		}()
+
+		// Check response status
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			body, readErr := io.ReadAll(resp.Body)
+			bodyStr := ""
+			if readErr != nil {
+				bodyStr = fmt.Sprintf("[error reading response body: %v]", readErr)
+			} else {
+				bodyStr = string(body)
+			}
+
+			// Categorize the error based on status code
+			switch {
+			case resp.StatusCode >= 500:
+				// Server errors (5xx) may be transient, retry
+				lastErr = fmt.Errorf("server error from responseURL (status %d): %s", resp.StatusCode, bodyStr)
+				continue
+			case resp.StatusCode == 429:
+				// Rate limiting (429) - retry with backoff
+				lastErr = fmt.Errorf("rate limited by responseURL (status 429): %s", bodyStr)
+				continue
+			default:
+				// Client errors (4xx) other than 429 are likely permanent, don't retry
+				return fmt.Errorf("client error from responseURL (status %d): %s", resp.StatusCode, bodyStr)
+			}
+		}
+
+		// Success case
+		logger.Info("Successfully sent final result to responseURL",
+			"statusCode", resp.StatusCode,
+			"responseURL", responseURL,
+			"attempts", attempt+1)
+		return nil
 	}
 
-	logger.Info("Successfully sent final result to responseUrl",
-		"statusCode", resp.StatusCode,
-		"responseUrl", responseUrl)
-	return nil
+	// If we got here, we exhausted all retries
+	return fmt.Errorf("failed to send result after %d attempts: %w", maxRetries, lastErr)
 }
 
 func (r *TaskReconciler) SetupWithManager(mgr ctrl.Manager) error {

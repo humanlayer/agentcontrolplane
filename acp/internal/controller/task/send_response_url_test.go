@@ -35,8 +35,8 @@ func initTestReconciler() (*TaskReconciler, context.Context) {
 	}, ctx
 }
 
-var _ = Describe("ResponseUrl Functionality", func() {
-	Context("when sending results to responseUrl", func() {
+var _ = Describe("ResponseURL Functionality", func() {
+	Context("when sending results to responseURL", func() {
 		It("successfully sends the result and verifies content", func() {
 			// Create a channel to synchronize between test and handler
 			requestReceived := make(chan struct{})
@@ -76,7 +76,7 @@ var _ = Describe("ResponseUrl Functionality", func() {
 
 			// Test sending result
 			testMsg := "This is the final task result"
-			err := reconciler.sendFinalResultToResponseUrl(ctx, server.URL, testMsg)
+			err := reconciler.sendFinalResultToResponseURL(ctx, server.URL, testMsg)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Wait for the request to be processed with a timeout
@@ -106,11 +106,11 @@ var _ = Describe("ResponseUrl Functionality", func() {
 			reconciler, ctx := initTestReconciler()
 
 			// Test sending result
-			err := reconciler.sendFinalResultToResponseUrl(ctx, server.URL, "test message")
+			err := reconciler.sendFinalResultToResponseURL(ctx, server.URL, "test message")
 
 			// Should return an error due to non-200 response
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("received non-success status code: 500"))
+			Expect(err.Error()).To(ContainSubstring("server error from responseURL (status 500)"))
 		})
 
 		It("handles connection errors appropriately", func() {
@@ -118,7 +118,7 @@ var _ = Describe("ResponseUrl Functionality", func() {
 			reconciler, ctx := initTestReconciler()
 
 			// Use an invalid URL to cause a connection error
-			err := reconciler.sendFinalResultToResponseUrl(ctx, "http://localhost:1", "test message")
+			err := reconciler.sendFinalResultToResponseURL(ctx, "http://localhost:1", "test message")
 
 			// Should return an error due to connection failure
 			Expect(err).To(HaveOccurred())

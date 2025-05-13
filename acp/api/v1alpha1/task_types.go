@@ -38,10 +38,10 @@ type TaskSpec struct {
 	// +optional
 	ContextWindow []Message `json:"contextWindow,omitempty"`
 
-	// ResponseUrl specifies a pre-generated URL that will be used for human contact responses.
+	// ResponseURL specifies a pre-generated URL that will be used for human contact responses.
 	// This allows the system to direct responses to a specific endpoint.
 	// +optional
-	ResponseUrl string `json:"responseUrl,omitempty"`
+	ResponseURL string `json:"responseURL,omitempty"`
 }
 
 // Message represents a single message in the conversation
