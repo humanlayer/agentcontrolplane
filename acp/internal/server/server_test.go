@@ -1065,7 +1065,7 @@ var _ = Describe("Agent API", func() {
 				}, &updatedAgent)).To(Succeed())
 
 				Expect(updatedAgent.Spec.System).To(Equal("Updated prompt"))
-				Expect(len(updatedAgent.Spec.MCPServers)).To(Equal(2))
+				Expect(updatedAgent.Spec.MCPServers).To(HaveLen(2))
 
 				// Extract MCP server names from the updated agent
 				mcpServerNames := []string{}
@@ -1369,7 +1369,7 @@ var _ = Describe("Namespace Auto-Creation", func() {
 		// Confirm a task was created
 		var taskList acp.TaskList
 		Expect(k8sClient.List(ctx, &taskList, client.InNamespace("task-namespace"))).To(Succeed())
-		Expect(len(taskList.Items)).To(Equal(1))
+		Expect(taskList.Items).To(HaveLen(1))
 	})
 
 	It("should handle namespace creation errors", func() {

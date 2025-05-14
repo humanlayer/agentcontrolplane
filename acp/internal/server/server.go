@@ -21,6 +21,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	transportTypeStdio = "stdio"
+	transportTypeHTTP  = "http"
+)
+
 // CreateTaskRequest defines the structure of the request body for creating a task
 type CreateTaskRequest struct {
 	Namespace     string        `json:"namespace,omitempty"`     // Optional, defaults to "default"
@@ -492,19 +497,19 @@ func validateMCPConfig(config MCPServerConfig) error {
 	// Default to stdio transport if not specified
 	transport := config.Transport
 	if transport == "" {
-		transport = "stdio"
+		transport = transportTypeStdio
 	}
 
 	// Validate the transport type
-	if transport != "stdio" && transport != "http" {
+	if transport != transportTypeStdio && transport != transportTypeHTTP {
 		return fmt.Errorf("invalid transport: %s", transport)
 	}
 
 	// Validate transport-specific requirements
-	if transport == "stdio" && (config.Command == "" || len(config.Args) == 0) {
+	if transport == transportTypeStdio && (config.Command == "" || len(config.Args) == 0) {
 		return fmt.Errorf("command and args required for stdio transport")
 	}
-	if transport == "http" && config.URL == "" {
+	if transport == transportTypeHTTP && config.URL == "" {
 		return fmt.Errorf("url required for http transport")
 	}
 
