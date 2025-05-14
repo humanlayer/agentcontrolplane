@@ -53,6 +53,57 @@ var _ = Describe("API Server", func() {
 		recorder = httptest.NewRecorder()
 	})
 
+	Describe("ensureNamespaceExists", func() {
+		It("should do nothing if namespace already exists", func() {
+			// Create a namespace
+			namespace := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "existing-namespace",
+				},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+
+			// Call ensureNamespaceExists
+			err := server.ensureNamespaceExists(ctx, "existing-namespace")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify no new namespace was created (count should still be 1)
+			var namespaceList corev1.NamespaceList
+			Expect(k8sClient.List(ctx, &namespaceList)).To(Succeed())
+			count := 0
+			for _, ns := range namespaceList.Items {
+				if ns.Name == "existing-namespace" {
+					count++
+				}
+			}
+			Expect(count).To(Equal(1))
+		})
+
+		It("should create a namespace if it doesn't exist", func() {
+			// Call ensureNamespaceExists for a new namespace
+			err := server.ensureNamespaceExists(ctx, "new-namespace")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify namespace was created
+			var namespace corev1.Namespace
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "new-namespace"}, &namespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(namespace.Name).To(Equal("new-namespace"))
+		})
+
+		It("should handle Kubernetes API errors", func() {
+			// Create a client that returns an error for Get operations
+			errorClient := &errorK8sClient{Client: k8sClient}
+			errorClient.returnErrorOnGetNamespace = true
+			errorServer := NewAPIServer(errorClient, ":8080")
+
+			// Call ensureNamespaceExists
+			err := errorServer.ensureNamespaceExists(ctx, "error-namespace")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to check namespace existence"))
+		})
+	})
+
 	Describe("POST /v1/tasks", func() {
 		It("should create a new task with valid input", func() {
 			// Create an agent first
@@ -323,6 +374,7 @@ var _ = Describe("API Server", func() {
 // Custom client that forces an error on Create
 type errorK8sClient struct {
 	client.Client
+	returnErrorOnGetNamespace bool
 }
 
 func (e *errorK8sClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
@@ -337,10 +389,33 @@ func (e *errorK8sClient) Create(ctx context.Context, obj client.Object, opts ...
 			},
 		}
 	}
+	// Return an error for Namespace objects if specified
+	if _, ok := obj.(*corev1.Namespace); ok && e.returnErrorOnGetNamespace {
+		return &errors.StatusError{
+			ErrStatus: metav1.Status{
+				Status:  "Failure",
+				Message: "Simulated internal server error",
+				Reason:  "InternalError",
+				Code:    http.StatusInternalServerError,
+			},
+		}
+	}
 	return e.Client.Create(ctx, obj, opts...)
 }
 
 func (e *errorK8sClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	if e.returnErrorOnGetNamespace && key.Name != "" {
+		if _, ok := obj.(*corev1.Namespace); ok {
+			return &errors.StatusError{
+				ErrStatus: metav1.Status{
+					Status:  "Failure",
+					Message: "Simulated get namespace error",
+					Reason:  "InternalError",
+					Code:    http.StatusInternalServerError,
+				},
+			}
+		}
+	}
 	return e.Client.Get(ctx, key, obj, opts...)
 }
 
@@ -990,7 +1065,7 @@ var _ = Describe("Agent API", func() {
 				}, &updatedAgent)).To(Succeed())
 
 				Expect(updatedAgent.Spec.System).To(Equal("Updated prompt"))
-				Expect(len(updatedAgent.Spec.MCPServers)).To(Equal(2))
+				Expect(updatedAgent.Spec.MCPServers).To(HaveLen(2))
 
 				// Extract MCP server names from the updated agent
 				mcpServerNames := []string{}
@@ -1355,5 +1430,152 @@ var _ = Describe("Agent API", func() {
 				})
 			})
 		})
+	})
+})
+
+var _ = Describe("Namespace Auto-Creation", func() {
+	var (
+		ctx       context.Context
+		k8sClient client.Client
+		server    *APIServer
+		router    *gin.Engine
+		recorder  *httptest.ResponseRecorder
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		// Create a scheme with our API types registered
+		scheme := runtime.NewScheme()
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+		Expect(acp.AddToScheme(scheme)).To(Succeed())
+
+		// Create a fake client
+		k8sClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		// Create the API server with the client
+		server = NewAPIServer(k8sClient, ":8080")
+		router = server.router
+		recorder = httptest.NewRecorder()
+	})
+
+	It("should automatically create a non-existent namespace for agent creation", func() {
+		// Create an LLM in the namespace we'll use
+		llm := &acp.LLM{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "auto-ns-llm",
+				Namespace: "auto-created-namespace",
+			},
+			Spec: acp.LLMSpec{
+				Provider: "test-provider",
+				Parameters: acp.BaseConfig{
+					Model: "test-model",
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, llm)).To(Succeed())
+
+		// Create agent in a namespace that doesn't exist yet
+		reqBody := CreateAgentRequest{
+			Namespace:    "auto-created-namespace",
+			Name:         "auto-ns-agent",
+			LLM:          "auto-ns-llm",
+			SystemPrompt: "Testing auto namespace creation",
+		}
+		jsonBody, err := json.Marshal(reqBody)
+		Expect(err).NotTo(HaveOccurred())
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/agents", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		recorder = httptest.NewRecorder()
+		router.ServeHTTP(recorder, req)
+
+		// Verify the agent was created successfully
+		Expect(recorder.Code).To(Equal(http.StatusCreated))
+
+		// Verify the namespace exists
+		var namespace corev1.Namespace
+		err = k8sClient.Get(ctx, client.ObjectKey{Name: "auto-created-namespace"}, &namespace)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(namespace.Name).To(Equal("auto-created-namespace"))
+
+		// Verify the agent was created in the namespace
+		var agent acp.Agent
+		err = k8sClient.Get(ctx, client.ObjectKey{
+			Namespace: "auto-created-namespace",
+			Name:      "auto-ns-agent",
+		}, &agent)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(agent.Namespace).To(Equal("auto-created-namespace"))
+	})
+
+	It("should automatically create a non-existent namespace for task creation", func() {
+		// Create an agent first
+		agent := &acp.Agent{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "task-test-agent",
+				Namespace: "task-namespace",
+			},
+			Spec: acp.AgentSpec{},
+		}
+
+		// Create the task namespace
+		taskNs := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "task-namespace",
+			},
+		}
+		Expect(k8sClient.Create(ctx, taskNs)).To(Succeed())
+		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+
+		// Create a task in a namespace that doesn't exist yet
+		reqBody := CreateTaskRequest{
+			Namespace:   "task-namespace",
+			AgentName:   "task-test-agent",
+			UserMessage: "Testing auto namespace creation for tasks",
+		}
+		jsonBody, err := json.Marshal(reqBody)
+		Expect(err).NotTo(HaveOccurred())
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/tasks", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		recorder = httptest.NewRecorder()
+		router.ServeHTTP(recorder, req)
+
+		// Verify the task was created successfully
+		Expect(recorder.Code).To(Equal(http.StatusCreated))
+
+		// Confirm a task was created
+		var taskList acp.TaskList
+		Expect(k8sClient.List(ctx, &taskList, client.InNamespace("task-namespace"))).To(Succeed())
+		Expect(taskList.Items).To(HaveLen(1))
+	})
+
+	It("should handle namespace creation errors", func() {
+		// Create an error client that fails on namespace operations
+		errorClient := &errorK8sClient{Client: k8sClient, returnErrorOnGetNamespace: true}
+		errorServer := NewAPIServer(errorClient, ":8080")
+		errorRouter := errorServer.router
+
+		// Create the request body
+		reqBody := CreateAgentRequest{
+			Namespace:    "error-namespace",
+			Name:         "error-ns-agent",
+			LLM:          "test-llm",
+			SystemPrompt: "Testing namespace error handling",
+		}
+		jsonBody, err := json.Marshal(reqBody)
+		Expect(err).NotTo(HaveOccurred())
+
+		req := httptest.NewRequest(http.MethodPost, "/v1/agents", bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		recorder = httptest.NewRecorder()
+		errorRouter.ServeHTTP(recorder, req)
+
+		// Verify we get an internal server error
+		Expect(recorder.Code).To(Equal(http.StatusInternalServerError))
+		var errorResponse map[string]string
+		err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(errorResponse["error"]).To(ContainSubstring("Failed to ensure namespace exists"))
 	})
 })

@@ -123,11 +123,20 @@ func TestAgentEndpointStatus(t *testing.T) {
 			t.Error("Expected ready to be true")
 		}
 
-		mcpStatus, ok := response.MCPStatus["mcp1"]
+		// Verify MCP server status is embedded in the MCPServer config
+		mcpServer, ok := response.MCPServers["mcp1"]
 		if !ok {
-			t.Error("Expected MCPStatus to have key 'mcp1'")
-		} else if mcpStatus != "Ready" {
-			t.Errorf("Expected MCP status %q, got %q", "Ready", mcpStatus)
+			t.Error("Expected MCPServers to have key 'mcp1'")
+		} else {
+			if mcpServer.Status != "Ready" {
+				t.Errorf("Expected MCP status %q, got %q", "Ready", mcpServer.Status)
+			}
+			if mcpServer.StatusDetail != "Connected to MCP server" {
+				t.Errorf("Expected MCP status detail %q, got %q", "Connected to MCP server", mcpServer.StatusDetail)
+			}
+			if !mcpServer.Ready {
+				t.Error("Expected MCP ready to be true")
+			}
 		}
 	})
 
@@ -178,11 +187,20 @@ func TestAgentEndpointStatus(t *testing.T) {
 			t.Error("Expected ready to be true")
 		}
 
-		mcpStatus, ok := testAgentResponse.MCPStatus["mcp1"]
+		// Verify MCP server status is embedded in the MCPServer config
+		mcpServer, ok := testAgentResponse.MCPServers["mcp1"]
 		if !ok {
-			t.Error("Expected MCPStatus to have key 'mcp1'")
-		} else if mcpStatus != "Ready" {
-			t.Errorf("Expected MCP status %q, got %q", "Ready", mcpStatus)
+			t.Error("Expected MCPServers to have key 'mcp1'")
+		} else {
+			if mcpServer.Status != "Ready" {
+				t.Errorf("Expected MCP status %q, got %q", "Ready", mcpServer.Status)
+			}
+			if mcpServer.StatusDetail != "Connected to MCP server" {
+				t.Errorf("Expected MCP status detail %q, got %q", "Connected to MCP server", mcpServer.StatusDetail)
+			}
+			if !mcpServer.Ready {
+				t.Error("Expected MCP ready to be true")
+			}
 		}
 	})
 }
