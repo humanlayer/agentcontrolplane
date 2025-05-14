@@ -670,7 +670,7 @@ var _ = Describe("Agent API", func() {
 				Name: "test-agent-invalid-mcp",
 				LLM: LLMDefinition{
 					Name:     "test-llm-4",
-					Provider: "openai", 
+					Provider: "openai",
 					Model:    "gpt-4",
 					APIKey:   "sk-test-key-4",
 				},

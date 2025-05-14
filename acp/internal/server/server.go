@@ -261,7 +261,7 @@ func (s *APIServer) createAgent(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check LLM existence: " + err.Error()})
 		return
 	}
-	
+
 	// Skip LLM creation if it already exists
 	var llmExists bool = exists
 
@@ -271,7 +271,7 @@ func (s *APIServer) createAgent(c *gin.Context) {
 	var llmResource *acp.LLM
 	var llmCreated bool
 	secretName := fmt.Sprintf("%s-secret", req.LLM.Name)
-	
+
 	// Only create the LLM and secret if they don't already exist
 	if !llmExists {
 		// Create secret for the API key
@@ -317,7 +317,7 @@ func (s *APIServer) createAgent(c *gin.Context) {
 			return
 		}
 		llmCreated = true
-		
+
 		logger.Info("Created new LLM resource", "name", req.LLM.Name, "namespace", namespace)
 	} else {
 		logger.Info("Using existing LLM resource", "name", req.LLM.Name, "namespace", namespace)
