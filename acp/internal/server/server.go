@@ -64,6 +64,10 @@ type AgentResponse struct {
 	LLM          string                     `json:"llm"`
 	SystemPrompt string                     `json:"systemPrompt"`
 	MCPServers   map[string]MCPServerConfig `json:"mcpServers,omitempty"`
+	Status       string                     `json:"status,omitempty"`       // e.g., "Ready", "Error", "Pending"
+	StatusDetail string                     `json:"statusDetail,omitempty"` // Additional status details
+	Ready        bool                       `json:"ready,omitempty"`        // Indicates if agent is ready
+	MCPStatus    map[string]string          `json:"mcpStatus,omitempty"`    // Status of each MCP server
 }
 
 // APIServer represents the REST API server
@@ -111,6 +115,7 @@ func (s *APIServer) registerRoutes() {
 	agents.GET("/:name", s.getAgent)
 	agents.POST("", s.createAgent)
 	agents.PUT("/:name", s.updateAgent)
+	agents.DELETE("/:name", s.deleteAgent)
 }
 
 // processMCPServers creates MCP servers and their secrets based on the given configuration
@@ -318,12 +323,28 @@ func (s *APIServer) listAgents(c *gin.Context) {
 			return
 		}
 
+		// Fetch MCP server statuses
+		mcpStatus := make(map[string]string)
+		for _, mcpRef := range agent.Spec.MCPServers {
+			var mcpServer acp.MCPServer
+			if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: mcpRef.Name}, &mcpServer); err == nil {
+				// Extract key from MCP server name (assuming it follows the pattern: {agent-name}-{key})
+				parts := strings.Split(mcpRef.Name, "-")
+				key := parts[len(parts)-1]
+				mcpStatus[key] = mcpServer.Status.Status
+			}
+		}
+
 		response = append(response, AgentResponse{
 			Namespace:    namespace,
 			Name:         agent.Name,
 			LLM:          agent.Spec.LLMRef.Name,
 			SystemPrompt: agent.Spec.System,
 			MCPServers:   mcpServers,
+			Status:       string(agent.Status.Status),
+			StatusDetail: agent.Status.StatusDetail,
+			Ready:        agent.Status.Ready,
+			MCPStatus:    mcpStatus,
 		})
 	}
 
@@ -369,6 +390,18 @@ func (s *APIServer) getAgent(c *gin.Context) {
 		return
 	}
 
+	// Fetch MCP server statuses
+	mcpStatus := make(map[string]string)
+	for _, mcpRef := range agent.Spec.MCPServers {
+		var mcpServer acp.MCPServer
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: mcpRef.Name}, &mcpServer); err == nil {
+			// Extract key from MCP server name (assuming it follows the pattern: {agent-name}-{key})
+			parts := strings.Split(mcpRef.Name, "-")
+			key := parts[len(parts)-1]
+			mcpStatus[key] = mcpServer.Status.Status
+		}
+	}
+
 	// Return the response
 	c.JSON(http.StatusOK, AgentResponse{
 		Namespace:    namespace,
@@ -376,7 +409,16 @@ func (s *APIServer) getAgent(c *gin.Context) {
 		LLM:          agent.Spec.LLMRef.Name,
 		SystemPrompt: agent.Spec.System,
 		MCPServers:   mcpServers,
+		Status:       string(agent.Status.Status),
+		StatusDetail: agent.Status.StatusDetail,
+		Ready:        agent.Status.Ready,
+		MCPStatus:    mcpStatus,
 	})
+}
+
+// Router returns the gin router for testing
+func (s *APIServer) Router() *gin.Engine {
+	return s.router
 }
 
 // Start begins listening for requests in a goroutine
@@ -624,6 +666,84 @@ func defaultIfEmpty(val, defaultVal string) string {
 		return defaultVal
 	}
 	return val
+}
+
+// deleteAgent handles the DELETE /agents/:name endpoint to delete an agent and its associated resources
+func (s *APIServer) deleteAgent(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
+
+	// Get namespace from query parameter (required)
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "namespace query parameter is required"})
+		return
+	}
+
+	// Get agent name from path parameter
+	name := c.Param("name")
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "agent name is required"})
+		return
+	}
+
+	// Get the agent
+	var agent acp.Agent
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &agent); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+			return
+		}
+		logger.Error(err, "Failed to get agent", "name", name, "namespace", namespace)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agent: " + err.Error()})
+		return
+	}
+
+	// Delete MCP servers and secrets
+	for _, mcpRef := range agent.Spec.MCPServers {
+		mcpName := mcpRef.Name
+		secretName := fmt.Sprintf("%s-secrets", mcpName)
+
+		// Delete MCP server
+		var mcp acp.MCPServer
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: mcpName}, &mcp); err == nil {
+			if err := s.client.Delete(ctx, &mcp); err != nil {
+				logger.Error(err, "Failed to delete MCP server", "name", mcpName)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete MCP server %s: %s", mcpName, err.Error())})
+				return
+			}
+		} else if !apierrors.IsNotFound(err) {
+			// Only return error if it's not a NotFound error (we don't care if the MCP server doesn't exist)
+			logger.Error(err, "Failed to get MCP server", "name", mcpName)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get MCP server %s: %s", mcpName, err.Error())})
+			return
+		}
+
+		// Delete secret
+		var secret corev1.Secret
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, &secret); err == nil {
+			if err := s.client.Delete(ctx, &secret); err != nil {
+				logger.Error(err, "Failed to delete secret", "name", secretName)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete secret %s: %s", secretName, err.Error())})
+				return
+			}
+		} else if !apierrors.IsNotFound(err) {
+			// Only return error if it's not a NotFound error (we don't care if the secret doesn't exist)
+			logger.Error(err, "Failed to get secret", "name", secretName)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get secret %s: %s", secretName, err.Error())})
+			return
+		}
+	}
+
+	// Delete the agent
+	if err := s.client.Delete(ctx, &agent); err != nil {
+		logger.Error(err, "Failed to delete agent", "name", name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete agent: %s", err.Error())})
+		return
+	}
+
+	// Return success with no content
+	c.Status(http.StatusNoContent)
 }
 
 // updateAgent handles updating an existing agent and its associated MCP servers

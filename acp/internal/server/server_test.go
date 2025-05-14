@@ -1176,6 +1176,184 @@ var _ = Describe("Agent API", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(errorResponse["error"]).To(Equal("namespace query parameter is required"))
 			})
+
+			Describe("DELETE /v1/agents/:name", func() {
+				It("should delete an agent and its associated resources", func() {
+					// Create namespace
+					namespace := &corev1.Namespace{
+						ObjectMeta: metav1.ObjectMeta{Name: "delete-namespace"},
+					}
+					Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+
+					// Create an LLM
+					createTestLLM("delete-llm", "delete-namespace")
+
+					// Create an agent with MCP servers
+					agent := &acp.Agent{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "delete-agent",
+							Namespace: "delete-namespace",
+						},
+						Spec: acp.AgentSpec{
+							LLMRef: acp.LocalObjectReference{Name: "delete-llm"},
+							System: "Agent to be deleted",
+						},
+					}
+					Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+
+					// Create MCP servers and secrets for this agent
+					mcpServer1 := &acp.MCPServer{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "delete-agent-mcp1",
+							Namespace: "delete-namespace",
+						},
+						Spec: acp.MCPServerSpec{
+							Transport: "stdio",
+							Command:   "python",
+							Args:      []string{"-m", "script.py"},
+						},
+					}
+					Expect(k8sClient.Create(ctx, mcpServer1)).To(Succeed())
+
+					mcpServer2 := &acp.MCPServer{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "delete-agent-mcp2",
+							Namespace: "delete-namespace",
+						},
+						Spec: acp.MCPServerSpec{
+							Transport: "http",
+							URL:       "http://localhost:8000",
+						},
+					}
+					Expect(k8sClient.Create(ctx, mcpServer2)).To(Succeed())
+
+					// Create secrets
+					secret1 := &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "delete-agent-mcp1-secrets",
+							Namespace: "delete-namespace",
+						},
+						Data: map[string][]byte{
+							"API_KEY": []byte("test-secret"),
+						},
+					}
+					Expect(k8sClient.Create(ctx, secret1)).To(Succeed())
+
+					// Update agent to reference the MCP servers
+					agent.Spec.MCPServers = []acp.LocalObjectReference{
+						{Name: "delete-agent-mcp1"},
+						{Name: "delete-agent-mcp2"},
+					}
+					Expect(k8sClient.Update(ctx, agent)).To(Succeed())
+
+					// Make the delete request
+					req := httptest.NewRequest(http.MethodDelete, "/v1/agents/delete-agent?namespace=delete-namespace", nil)
+					recorder = httptest.NewRecorder()
+					router.ServeHTTP(recorder, req)
+
+					// Verify the response
+					Expect(recorder.Code).To(Equal(http.StatusNoContent))
+					Expect(recorder.Body.String()).To(BeEmpty())
+
+					// Verify agent was deleted
+					var deletedAgent acp.Agent
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      "delete-agent",
+						Namespace: "delete-namespace",
+					}, &deletedAgent)
+					Expect(apierrors.IsNotFound(err)).To(BeTrue())
+
+					// Verify MCP servers were deleted
+					var deletedMCP1 acp.MCPServer
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      "delete-agent-mcp1",
+						Namespace: "delete-namespace",
+					}, &deletedMCP1)
+					Expect(apierrors.IsNotFound(err)).To(BeTrue())
+
+					var deletedMCP2 acp.MCPServer
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      "delete-agent-mcp2",
+						Namespace: "delete-namespace",
+					}, &deletedMCP2)
+					Expect(apierrors.IsNotFound(err)).To(BeTrue())
+
+					// Verify secrets were deleted
+					var deletedSecret corev1.Secret
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      "delete-agent-mcp1-secrets",
+						Namespace: "delete-namespace",
+					}, &deletedSecret)
+					Expect(apierrors.IsNotFound(err)).To(BeTrue())
+				})
+
+				It("should return 404 if agent doesn't exist", func() {
+					req := httptest.NewRequest(http.MethodDelete, "/v1/agents/non-existent-agent?namespace=default", nil)
+					recorder = httptest.NewRecorder()
+					router.ServeHTTP(recorder, req)
+
+					Expect(recorder.Code).To(Equal(http.StatusNotFound))
+					var errorResponse map[string]string
+					err := json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(errorResponse["error"]).To(Equal("Agent not found"))
+				})
+
+				It("should require a namespace parameter", func() {
+					req := httptest.NewRequest(http.MethodDelete, "/v1/agents/some-agent", nil)
+					recorder = httptest.NewRecorder()
+					router.ServeHTTP(recorder, req)
+
+					Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+					var errorResponse map[string]string
+					err := json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(errorResponse["error"]).To(Equal("namespace query parameter is required"))
+				})
+
+				It("should be idempotent when MCP servers or secrets are already deleted", func() {
+					// Create namespace
+					namespace := &corev1.Namespace{
+						ObjectMeta: metav1.ObjectMeta{Name: "idempotent-namespace"},
+					}
+					Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+
+					// Create an LLM
+					createTestLLM("idempotent-llm", "idempotent-namespace")
+
+					// Create an agent with MCP server references
+					agent := &acp.Agent{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "idempotent-agent",
+							Namespace: "idempotent-namespace",
+						},
+						Spec: acp.AgentSpec{
+							LLMRef: acp.LocalObjectReference{Name: "idempotent-llm"},
+							System: "Agent for idempotent test",
+							MCPServers: []acp.LocalObjectReference{
+								{Name: "idempotent-agent-mcp1"}, // This MCP server doesn't actually exist
+							},
+						},
+					}
+					Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+
+					// Make the delete request
+					req := httptest.NewRequest(http.MethodDelete, "/v1/agents/idempotent-agent?namespace=idempotent-namespace", nil)
+					recorder = httptest.NewRecorder()
+					router.ServeHTTP(recorder, req)
+
+					// Should succeed even though MCP servers don't exist
+					Expect(recorder.Code).To(Equal(http.StatusNoContent))
+
+					// Verify agent was deleted
+					var deletedAgent acp.Agent
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      "idempotent-agent",
+						Namespace: "idempotent-namespace",
+					}, &deletedAgent)
+					Expect(apierrors.IsNotFound(err)).To(BeTrue())
+				})
+			})
 		})
 	})
 })
