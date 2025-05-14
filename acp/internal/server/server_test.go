@@ -52,24 +52,6 @@ var _ = Describe("API Server", func() {
 		recorder = httptest.NewRecorder()
 	})
 
-	// Helper function to create an LLM for tests
-	createTestLLM := func(name, namespace string) *acp.LLM {
-		llm := &acp.LLM{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
-			},
-			Spec: acp.LLMSpec{
-				Provider: "test-provider",
-				Parameters: acp.BaseConfig{
-					Model: "test-model",
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, llm)).To(Succeed())
-		return llm
-	}
-
 	Describe("POST /v1/tasks", func() {
 		It("should create a new task with valid input", func() {
 			// Create an agent first
