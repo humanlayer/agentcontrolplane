@@ -594,7 +594,7 @@ func createMCPServer(name, namespace string, config MCPServerConfig, secretName 
 	if transport == "" {
 		transport = transportTypeStdio
 	}
-	
+
 	mcpServer := &acp.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
