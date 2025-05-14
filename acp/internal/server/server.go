@@ -636,7 +636,7 @@ func defaultIfEmpty(val, defaultVal string) string {
 // ensureNamespaceExists checks if a namespace exists and creates it if it doesn't
 func (s *APIServer) ensureNamespaceExists(ctx context.Context, namespaceName string) error {
 	logger := log.FromContext(ctx)
-	
+
 	// Check if namespace exists
 	var namespace corev1.Namespace
 	err := s.client.Get(ctx, client.ObjectKey{Name: namespaceName}, &namespace)
@@ -644,25 +644,25 @@ func (s *APIServer) ensureNamespaceExists(ctx context.Context, namespaceName str
 		// Namespace exists, nothing to do
 		return nil
 	}
-	
+
 	if !apierrors.IsNotFound(err) {
 		// Error other than "not found" occurred
 		logger.Error(err, "Failed to check namespace existence", "namespace", namespaceName)
 		return fmt.Errorf("failed to check namespace existence: %w", err)
 	}
-	
+
 	// Namespace doesn't exist, create it
 	namespace = corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: namespaceName,
 		},
 	}
-	
+
 	if err := s.client.Create(ctx, &namespace); err != nil {
 		logger.Error(err, "Failed to create namespace", "namespace", namespaceName)
 		return fmt.Errorf("failed to create namespace: %w", err)
 	}
-	
+
 	logger.Info("Created namespace", "namespace", namespaceName)
 	return nil
 }
