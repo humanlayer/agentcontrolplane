@@ -14,8 +14,8 @@ import (
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 	"github.com/pkg/errors"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -33,30 +33,30 @@ type CreateTaskRequest struct {
 
 // CreateAgentRequest defines the structure of the request body for creating an agent
 type CreateAgentRequest struct {
-	Namespace     string                     `json:"namespace,omitempty"` // Optional, defaults to "default"
-	Name          string                     `json:"name"`                // Required
-	LLM           string                     `json:"llm"`                 // Required
-	SystemPrompt  string                     `json:"systemPrompt"`        // Required
-	MCPServers    map[string]MCPServerConfig `json:"mcpServers,omitempty"` // Optional
+	Namespace    string                     `json:"namespace,omitempty"`  // Optional, defaults to "default"
+	Name         string                     `json:"name"`                 // Required
+	LLM          string                     `json:"llm"`                  // Required
+	SystemPrompt string                     `json:"systemPrompt"`         // Required
+	MCPServers   map[string]MCPServerConfig `json:"mcpServers,omitempty"` // Optional
 }
 
 // MCPServerConfig defines the configuration for an MCP server
 type MCPServerConfig struct {
-	Transport string            `json:"transport"`           // Required: "stdio" or "http"
-	Command   string            `json:"command,omitempty"`   // Required for stdio transport
-	Args      []string          `json:"args,omitempty"`      // Required for stdio transport
-	URL       string            `json:"url,omitempty"`       // Required for http transport
-	Env       map[string]string `json:"env,omitempty"`       // Optional environment variables
-	Secrets   map[string]string `json:"secrets,omitempty"`   // Optional secrets
+	Transport string            `json:"transport"`         // Required: "stdio" or "http"
+	Command   string            `json:"command,omitempty"` // Required for stdio transport
+	Args      []string          `json:"args,omitempty"`    // Required for stdio transport
+	URL       string            `json:"url,omitempty"`     // Required for http transport
+	Env       map[string]string `json:"env,omitempty"`     // Optional environment variables
+	Secrets   map[string]string `json:"secrets,omitempty"` // Optional secrets
 }
 
 // AgentResponse defines the structure of the response body for agent endpoints
 type AgentResponse struct {
-	Namespace     string                     `json:"namespace"`
-	Name          string                     `json:"name"`
-	LLM           string                     `json:"llm"`
-	SystemPrompt  string                     `json:"systemPrompt"`
-	MCPServers    map[string]MCPServerConfig `json:"mcpServers,omitempty"`
+	Namespace    string                     `json:"namespace"`
+	Name         string                     `json:"name"`
+	LLM          string                     `json:"llm"`
+	SystemPrompt string                     `json:"systemPrompt"`
+	MCPServers   map[string]MCPServerConfig `json:"mcpServers,omitempty"`
 }
 
 // APIServer represents the REST API server
@@ -479,12 +479,12 @@ func validateMCPConfig(config MCPServerConfig) error {
 	if transport == "" {
 		transport = "stdio"
 	}
-	
+
 	// Validate the transport type
 	if transport != "stdio" && transport != "http" {
 		return fmt.Errorf("invalid transport: %s", transport)
 	}
-	
+
 	// Validate transport-specific requirements
 	if transport == "stdio" && (config.Command == "" || len(config.Args) == 0) {
 		return fmt.Errorf("command and args required for stdio transport")
@@ -492,7 +492,7 @@ func validateMCPConfig(config MCPServerConfig) error {
 	if transport == "http" && config.URL == "" {
 		return fmt.Errorf("url required for http transport")
 	}
-	
+
 	return nil
 }
 
@@ -515,7 +515,7 @@ func createSecret(name, namespace string, secrets map[string]string) *corev1.Sec
 // Defaults to "stdio" transport if not specified
 func createMCPServer(name, namespace string, config MCPServerConfig, secretName string) *acp.MCPServer {
 	env := []acp.EnvVar{}
-	
+
 	// Add regular environment variables
 	for k, v := range config.Env {
 		env = append(env, acp.EnvVar{
@@ -523,7 +523,7 @@ func createMCPServer(name, namespace string, config MCPServerConfig, secretName 
 			Value: v,
 		})
 	}
-	
+
 	// Add secret references
 	for k := range config.Secrets {
 		env = append(env, acp.EnvVar{
@@ -536,13 +536,13 @@ func createMCPServer(name, namespace string, config MCPServerConfig, secretName 
 			},
 		})
 	}
-	
+
 	// Default to stdio transport if not specified
 	transport := config.Transport
 	if transport == "" {
 		transport = "stdio"
 	}
-	
+
 	return &acp.MCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -561,17 +561,17 @@ func createMCPServer(name, namespace string, config MCPServerConfig, secretName 
 // fetchMCPServers retrieves MCP servers and their configurations
 func (s *APIServer) fetchMCPServers(ctx context.Context, namespace string, refs []acp.LocalObjectReference) (map[string]MCPServerConfig, error) {
 	result := make(map[string]MCPServerConfig)
-	
+
 	for _, ref := range refs {
 		var mcpServer acp.MCPServer
 		if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, &mcpServer); err != nil {
 			return nil, err
 		}
-		
+
 		// Extract key from MCP server name (assuming it follows the pattern: {agent-name}-{key})
 		parts := strings.Split(ref.Name, "-")
 		key := parts[len(parts)-1]
-		
+
 		// Initialize config
 		config := MCPServerConfig{
 			Transport: mcpServer.Spec.Transport,
@@ -581,7 +581,7 @@ func (s *APIServer) fetchMCPServers(ctx context.Context, namespace string, refs 
 			Env:       map[string]string{},
 			Secrets:   map[string]string{},
 		}
-		
+
 		// Process environment variables and secrets
 		for _, envVar := range mcpServer.Spec.Env {
 			if envVar.Value != "" {
@@ -597,16 +597,16 @@ func (s *APIServer) fetchMCPServers(ctx context.Context, namespace string, refs 
 				}, &secret); err != nil {
 					return nil, err
 				}
-				
+
 				if val, ok := secret.Data[secretRef.Key]; ok {
 					config.Secrets[envVar.Name] = string(val)
 				}
 			}
 		}
-		
+
 		result[key] = config
 	}
-	
+
 	return result, nil
 }
 
