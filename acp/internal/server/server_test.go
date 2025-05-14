@@ -470,8 +470,13 @@ var _ = Describe("Agent API", func() {
 
 			// Create the request body
 			reqBody := CreateAgentRequest{
-				Name:         "test-agent",
-				LLM:          "test-llm",
+				Name: "test-agent",
+				LLM: LLMDefinition{
+					Name:     "test-llm",
+					Provider: "openai",
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key",
+				},
 				SystemPrompt: "You are a test agent",
 			}
 			jsonBody, err := json.Marshal(reqBody)
@@ -512,8 +517,13 @@ var _ = Describe("Agent API", func() {
 
 			// Create the request body with MCP servers
 			reqBody := CreateAgentRequest{
-				Name:         "test-agent-mcp",
-				LLM:          "test-llm-2",
+				Name: "test-agent-mcp",
+				LLM: LLMDefinition{
+					Name:     "test-llm-2",
+					Provider: "anthropic",
+					Model:    "claude-3",
+					APIKey:   "sk-test-key-2",
+				},
 				SystemPrompt: "You are a test agent with MCP servers",
 				MCPServers: map[string]MCPServerConfig{
 					"stdio": {
@@ -579,7 +589,11 @@ var _ = Describe("Agent API", func() {
 		It("should validate required fields", func() {
 			// Missing name
 			reqBody := CreateAgentRequest{
-				LLM:          "test-llm",
+				LLM: LLMDefinition{
+					Provider: "openai",
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key",
+				},
 				SystemPrompt: "Test prompt",
 			}
 			jsonBody, err := json.Marshal(reqBody)
@@ -594,11 +608,17 @@ var _ = Describe("Agent API", func() {
 			var errorResponse map[string]string
 			err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(errorResponse["error"]).To(Equal("name, llm, and systemPrompt are required"))
+			Expect(errorResponse["error"]).To(Equal("llm fields (name, provider, model, apiKey) are required"))
 
 			// Missing LLM
 			reqBody = CreateAgentRequest{
-				Name:         "test-agent",
+				Name: "test-agent",
+				LLM: LLMDefinition{
+					Name:     "", // Missing name
+					Provider: "openai",
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key",
+				},
 				SystemPrompt: "Test prompt",
 			}
 			jsonBody, err = json.Marshal(reqBody)
@@ -612,13 +632,18 @@ var _ = Describe("Agent API", func() {
 			Expect(recorder.Code).To(Equal(http.StatusBadRequest))
 			err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(errorResponse["error"]).To(Equal("name, llm, and systemPrompt are required"))
+			Expect(errorResponse["error"]).To(Equal("llm fields (name, provider, model, apiKey) are required"))
 		})
 
 		It("should return 404 if the LLM does not exist", func() {
 			reqBody := CreateAgentRequest{
-				Name:         "test-agent",
-				LLM:          "non-existent-llm",
+				Name: "test-agent",
+				LLM: LLMDefinition{
+					Name:     "non-existent-llm",
+					Provider: "openai",
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key",
+				},
 				SystemPrompt: "Test prompt",
 			}
 			jsonBody, err := json.Marshal(reqBody)
@@ -642,8 +667,13 @@ var _ = Describe("Agent API", func() {
 
 			// Test with invalid transport type
 			reqBody := CreateAgentRequest{
-				Name:         "test-agent-invalid-mcp",
-				LLM:          "test-llm-4",
+				Name: "test-agent-invalid-mcp",
+				LLM: LLMDefinition{
+					Name:     "test-llm-4",
+					Provider: "openai", 
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key-4",
+				},
 				SystemPrompt: "Test agent",
 				MCPServers: map[string]MCPServerConfig{
 					"invalid": {
@@ -669,8 +699,13 @@ var _ = Describe("Agent API", func() {
 
 			// Test without transport (should default to stdio)
 			reqBody = CreateAgentRequest{
-				Name:         "test-agent-default-transport",
-				LLM:          "test-llm-4",
+				Name: "test-agent-default-transport",
+				LLM: LLMDefinition{
+					Name:     "test-llm-4b",
+					Provider: "openai",
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key-4b",
+				},
 				SystemPrompt: "Test agent",
 				MCPServers: map[string]MCPServerConfig{
 					"default": {
@@ -701,8 +736,13 @@ var _ = Describe("Agent API", func() {
 
 			// Test missing command for stdio transport
 			reqBody = CreateAgentRequest{
-				Name:         "test-agent-missing-command",
-				LLM:          "test-llm-4",
+				Name: "test-agent-missing-command",
+				LLM: LLMDefinition{
+					Name:     "test-llm-4c",
+					Provider: "openai",
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key-4c",
+				},
 				SystemPrompt: "Test agent",
 				MCPServers: map[string]MCPServerConfig{
 					"stdio": {
@@ -726,8 +766,13 @@ var _ = Describe("Agent API", func() {
 
 			// Test missing URL for http transport
 			reqBody = CreateAgentRequest{
-				Name:         "test-agent-missing-url",
-				LLM:          "test-llm-4",
+				Name: "test-agent-missing-url",
+				LLM: LLMDefinition{
+					Name:     "test-llm-4d",
+					Provider: "openai",
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key-4d",
+				},
 				SystemPrompt: "Test agent",
 				MCPServers: map[string]MCPServerConfig{
 					"http": {
@@ -769,8 +814,13 @@ var _ = Describe("Agent API", func() {
 
 			// Try to create the same agent again
 			reqBody := CreateAgentRequest{
-				Name:         "existing-agent",
-				LLM:          "test-llm-3",
+				Name: "existing-agent",
+				LLM: LLMDefinition{
+					Name:     "test-llm-3",
+					Provider: "openai",
+					Model:    "gpt-4",
+					APIKey:   "sk-test-key-3",
+				},
 				SystemPrompt: "Test prompt",
 			}
 			jsonBody, err := json.Marshal(reqBody)
@@ -1298,9 +1348,14 @@ var _ = Describe("Namespace Auto-Creation", func() {
 
 		// Create agent in a namespace that doesn't exist yet
 		reqBody := CreateAgentRequest{
-			Namespace:    "auto-created-namespace",
-			Name:         "auto-ns-agent",
-			LLM:          "auto-ns-llm",
+			Namespace: "auto-created-namespace",
+			Name:      "auto-ns-agent",
+			LLM: LLMDefinition{
+				Name:     "auto-ns-llm",
+				Provider: "openai",
+				Model:    "gpt-4",
+				APIKey:   "sk-test-key-auto",
+			},
 			SystemPrompt: "Testing auto namespace creation",
 		}
 		jsonBody, err := json.Marshal(reqBody)
@@ -1380,9 +1435,14 @@ var _ = Describe("Namespace Auto-Creation", func() {
 
 		// Create the request body
 		reqBody := CreateAgentRequest{
-			Namespace:    "error-namespace",
-			Name:         "error-ns-agent",
-			LLM:          "test-llm",
+			Namespace: "error-namespace",
+			Name:      "error-ns-agent",
+			LLM: LLMDefinition{
+				Name:     "error-llm",
+				Provider: "openai",
+				Model:    "gpt-4",
+				APIKey:   "sk-test-key-error",
+			},
 			SystemPrompt: "Testing namespace error handling",
 		}
 		jsonBody, err := json.Marshal(reqBody)
