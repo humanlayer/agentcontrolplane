@@ -51,7 +51,7 @@ var _ = Describe("API Server", func() {
 		router = server.router
 		recorder = httptest.NewRecorder()
 	})
-	
+
 	// Helper function to create an LLM for tests
 	createTestLLM := func(name, namespace string) *acp.LLM {
 		llm := &acp.LLM{
@@ -61,7 +61,9 @@ var _ = Describe("API Server", func() {
 			},
 			Spec: acp.LLMSpec{
 				Provider: "test-provider",
-				Model:    "test-model",
+				Parameters: acp.BaseConfig{
+					Model: "test-model",
+				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, llm)).To(Succeed())
@@ -394,7 +396,9 @@ var _ = Describe("Agent API", func() {
 			},
 			Spec: acp.LLMSpec{
 				Provider: "test-provider",
-				Model:    "test-model",
+				Parameters: acp.BaseConfig{
+					Model: "test-model",
+				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, llm)).To(Succeed())
@@ -577,7 +581,7 @@ var _ = Describe("Agent API", func() {
 		It("should validate MCP server configurations", func() {
 			// Create an LLM first
 			createTestLLM("test-llm-4", "default")
-			
+
 			// Test with invalid transport type
 			reqBody := CreateAgentRequest{
 				Name:         "test-agent-invalid-mcp",
@@ -585,7 +589,7 @@ var _ = Describe("Agent API", func() {
 				SystemPrompt: "Test agent",
 				MCPServers: map[string]MCPServerConfig{
 					"invalid": {
-						Transport: "invalid-transport",  // Not "stdio" or "http"
+						Transport: "invalid-transport", // Not "stdio" or "http"
 						Command:   "python",
 						Args:      []string{"-m", "script.py"},
 					},
@@ -604,7 +608,7 @@ var _ = Describe("Agent API", func() {
 			err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(errorResponse["error"]).To(ContainSubstring("invalid transport"))
-			
+
 			// Test without transport (should default to stdio)
 			reqBody = CreateAgentRequest{
 				Name:         "test-agent-default-transport",
@@ -628,7 +632,7 @@ var _ = Describe("Agent API", func() {
 
 			// Should succeed with default stdio transport
 			Expect(recorder.Code).To(Equal(http.StatusCreated))
-			
+
 			// Verify MCP server is in Kubernetes with stdio transport
 			var mcpServer acp.MCPServer
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -636,7 +640,7 @@ var _ = Describe("Agent API", func() {
 				Namespace: "default",
 			}, &mcpServer)).To(Succeed())
 			Expect(mcpServer.Spec.Transport).To(Equal("stdio"))
-			
+
 			// Test missing command for stdio transport
 			reqBody = CreateAgentRequest{
 				Name:         "test-agent-missing-command",
@@ -661,7 +665,7 @@ var _ = Describe("Agent API", func() {
 			err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(errorResponse["error"]).To(ContainSubstring("command and args required"))
-			
+
 			// Test missing URL for http transport
 			reqBody = CreateAgentRequest{
 				Name:         "test-agent-missing-url",
@@ -687,7 +691,7 @@ var _ = Describe("Agent API", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(errorResponse["error"]).To(ContainSubstring("url required"))
 		})
-		
+
 		It("should return 409 if the agent already exists", func() {
 			// Create an LLM
 			createTestLLM("test-llm-3", "default")
