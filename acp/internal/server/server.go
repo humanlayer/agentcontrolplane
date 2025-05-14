@@ -261,55 +261,66 @@ func (s *APIServer) createAgent(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check LLM existence: " + err.Error()})
 		return
 	}
-	if exists {
-		c.JSON(http.StatusConflict, gin.H{"error": "LLM with this name already exists"})
-		return
-	}
+	
+	// Skip LLM creation if it already exists
+	var llmExists bool = exists
 
-	// Create secret for the API key
+	// Variables to track created resources for cleanup in case of failures
+	var secret *corev1.Secret
+	var secretCreated bool
+	var llmResource *acp.LLM
+	var llmCreated bool
 	secretName := fmt.Sprintf("%s-secret", req.LLM.Name)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: namespace,
-		},
-		StringData: map[string]string{
-			"api-key": req.LLM.APIKey,
-		},
-	}
-	if err := s.client.Create(ctx, secret); err != nil {
-		logger.Error(err, "Failed to create secret", "name", secretName)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create secret: " + err.Error()})
-		return
-	}
-
-	// Create LLM resource
-	llmResource := &acp.LLM{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      req.LLM.Name,
-			Namespace: namespace,
-		},
-		Spec: acp.LLMSpec{
-			Provider: req.LLM.Provider,
-			Parameters: acp.BaseConfig{
-				Model: req.LLM.Model,
+	
+	// Only create the LLM and secret if they don't already exist
+	if !llmExists {
+		// Create secret for the API key
+		secret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      secretName,
+				Namespace: namespace,
 			},
-			APIKeyFrom: &acp.APIKeySource{
-				SecretKeyRef: acp.SecretKeyRef{
-					Name: secretName,
-					Key:  "api-key",
+			StringData: map[string]string{
+				"api-key": req.LLM.APIKey,
+			},
+		}
+		if err := s.client.Create(ctx, secret); err != nil {
+			logger.Error(err, "Failed to create secret", "name", secretName)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create secret: " + err.Error()})
+			return
+		}
+		secretCreated = true
+
+		// Create LLM resource
+		llmResource = &acp.LLM{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      req.LLM.Name,
+				Namespace: namespace,
+			},
+			Spec: acp.LLMSpec{
+				Provider: req.LLM.Provider,
+				Parameters: acp.BaseConfig{
+					Model: req.LLM.Model,
+				},
+				APIKeyFrom: &acp.APIKeySource{
+					SecretKeyRef: acp.SecretKeyRef{
+						Name: secretName,
+						Key:  "api-key",
+					},
 				},
 			},
-		},
-	}
-	if err := s.client.Create(ctx, llmResource); err != nil {
-		// Clean up secret if LLM creation fails
-		if deleteErr := s.client.Delete(ctx, secret); deleteErr != nil {
-			logger.Error(deleteErr, "Failed to delete secret after LLM creation failure", "name", secretName)
 		}
-		logger.Error(err, "Failed to create LLM", "name", req.LLM.Name)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create LLM: " + err.Error()})
-		return
+		if err := s.client.Create(ctx, llmResource); err != nil {
+			// We don't clean up the secret even if LLM creation fails, as it might be used by other LLMs
+			logger.Error(err, "Failed to create LLM", "name", req.LLM.Name)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create LLM: " + err.Error()})
+			return
+		}
+		llmCreated = true
+		
+		logger.Info("Created new LLM resource", "name", req.LLM.Name, "namespace", namespace)
+	} else {
+		logger.Info("Using existing LLM resource", "name", req.LLM.Name, "namespace", namespace)
 	}
 
 	// Process MCP servers if provided
@@ -317,13 +328,7 @@ func (s *APIServer) createAgent(c *gin.Context) {
 	if len(req.MCPServers) > 0 {
 		mcpServerRefs, err = s.processMCPServers(ctx, req.Name, namespace, req.MCPServers)
 		if err != nil {
-			// Clean up created resources if MCP server creation fails
-			if deleteErr := s.client.Delete(ctx, llmResource); deleteErr != nil {
-				logger.Error(deleteErr, "Failed to delete LLM after MCP server creation failure", "name", req.LLM.Name)
-			}
-			if deleteErr := s.client.Delete(ctx, secret); deleteErr != nil {
-				logger.Error(deleteErr, "Failed to delete secret after MCP server creation failure", "name", secretName)
-			}
+			// We don't clean up the LLM or secret since they might be reused by other agents
 
 			// Return appropriate error response
 			if strings.Contains(err.Error(), "invalid MCP server configuration") {
@@ -376,12 +381,7 @@ func (s *APIServer) createAgent(c *gin.Context) {
 				logger.Error(deleteErr, "Failed to delete MCP server secret after agent creation failure", "name", secretName)
 			}
 		}
-		if deleteErr := s.client.Delete(ctx, llmResource); deleteErr != nil {
-			logger.Error(deleteErr, "Failed to delete LLM after agent creation failure", "name", req.LLM.Name)
-		}
-		if deleteErr := s.client.Delete(ctx, secret); deleteErr != nil {
-			logger.Error(deleteErr, "Failed to delete secret after agent creation failure", "name", secretName)
-		}
+		// We don't clean up the LLM or secret since they might be reused by other agents
 
 		logger.Error(err, "Failed to create agent", "name", req.Name)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create agent: " + err.Error()})
