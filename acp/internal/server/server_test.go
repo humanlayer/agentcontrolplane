@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -847,6 +848,334 @@ var _ = Describe("Agent API", func() {
 			err := json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(errorResponse["error"]).To(Equal("namespace query parameter is required"))
+		})
+
+		Describe("PUT /v1/agents/:name", func() {
+			It("should update an existing agent", func() {
+				// Create an LLM
+				createTestLLM("test-llm-update", "default")
+
+				// Create an agent first
+				agent := &acp.Agent{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "update-agent",
+						Namespace: "default",
+					},
+					Spec: acp.AgentSpec{
+						LLMRef: acp.LocalObjectReference{Name: "test-llm-update"},
+						System: "Old prompt",
+					},
+				}
+				Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+
+				// Prepare the update request
+				reqBody := UpdateAgentRequest{
+					LLM:          "test-llm-update",
+					SystemPrompt: "New prompt",
+				}
+				jsonBody, err := json.Marshal(reqBody)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Create a test request
+				req := httptest.NewRequest(http.MethodPut, "/v1/agents/update-agent?namespace=default", bytes.NewBuffer(jsonBody))
+				req.Header.Set("Content-Type", "application/json")
+				recorder = httptest.NewRecorder()
+
+				// Serve the request
+				router.ServeHTTP(recorder, req)
+
+				// Verify the response
+				Expect(recorder.Code).To(Equal(http.StatusOK))
+
+				// Parse the response
+				var response AgentResponse
+				err = json.Unmarshal(recorder.Body.Bytes(), &response)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify response has updated values
+				Expect(response.Name).To(Equal("update-agent"))
+				Expect(response.SystemPrompt).To(Equal("New prompt"))
+
+				// Verify agent was updated in Kubernetes
+				var updatedAgent acp.Agent
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "update-agent",
+					Namespace: "default",
+				}, &updatedAgent)).To(Succeed())
+
+				Expect(updatedAgent.Spec.System).To(Equal("New prompt"))
+			})
+
+			It("should update MCP servers (add, update, remove)", func() {
+				// Create an LLM
+				createTestLLM("test-llm-mcp-update", "default")
+
+				// Create an MCP server that will be removed during update
+				oldMCP := &acp.MCPServer{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "mcp-update-agent-old",
+						Namespace: "default",
+					},
+					Spec: acp.MCPServerSpec{
+						Transport: "stdio",
+						Command:   "oldcmd",
+						Args:      []string{"oldarg"},
+					},
+				}
+				Expect(k8sClient.Create(ctx, oldMCP)).To(Succeed())
+
+				// Create an agent with an initial MCP server
+				agent := &acp.Agent{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "mcp-update-agent",
+						Namespace: "default",
+					},
+					Spec: acp.AgentSpec{
+						LLMRef: acp.LocalObjectReference{Name: "test-llm-mcp-update"},
+						System: "Original prompt",
+						MCPServers: []acp.LocalObjectReference{
+							{Name: "mcp-update-agent-old"},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+
+				// Prepare update request with new MCP server configuration
+				reqBody := UpdateAgentRequest{
+					LLM:          "test-llm-mcp-update",
+					SystemPrompt: "Updated prompt",
+					MCPServers: map[string]MCPServerConfig{
+						"new": {
+							Transport: "http",
+							URL:       "http://newserver.com",
+						},
+						"existing": {
+							Transport: "stdio",
+							Command:   "updated-cmd",
+							Args:      []string{"arg1", "arg2"},
+							Secrets:   map[string]string{"API_KEY": "secret-value"},
+						},
+					},
+				}
+				jsonBody, err := json.Marshal(reqBody)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Create a test request
+				req := httptest.NewRequest(http.MethodPut, "/v1/agents/mcp-update-agent?namespace=default", bytes.NewBuffer(jsonBody))
+				req.Header.Set("Content-Type", "application/json")
+				recorder = httptest.NewRecorder()
+
+				// Serve the request
+				router.ServeHTTP(recorder, req)
+
+				// Verify the response
+				Expect(recorder.Code).To(Equal(http.StatusOK))
+
+				// Parse the response
+				var response AgentResponse
+				err = json.Unmarshal(recorder.Body.Bytes(), &response)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Verify response has updated values
+				Expect(response.SystemPrompt).To(Equal("Updated prompt"))
+				Expect(response.MCPServers).To(HaveKey("new"))
+				Expect(response.MCPServers).To(HaveKey("existing"))
+				Expect(response.MCPServers).NotTo(HaveKey("old"))
+
+				// Verify agent was updated in Kubernetes with new MCP servers
+				var updatedAgent acp.Agent
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "mcp-update-agent",
+					Namespace: "default",
+				}, &updatedAgent)).To(Succeed())
+
+				Expect(updatedAgent.Spec.System).To(Equal("Updated prompt"))
+				Expect(len(updatedAgent.Spec.MCPServers)).To(Equal(2))
+
+				// Extract MCP server names from the updated agent
+				mcpServerNames := []string{}
+				for _, mcpRef := range updatedAgent.Spec.MCPServers {
+					mcpServerNames = append(mcpServerNames, mcpRef.Name)
+				}
+
+				// Verify both new MCP servers exist in the agent's references
+				Expect(mcpServerNames).To(ContainElement("mcp-update-agent-new"))
+				Expect(mcpServerNames).To(ContainElement("mcp-update-agent-existing"))
+
+				// Old MCP server should no longer be in the agent's references
+				Expect(mcpServerNames).NotTo(ContainElement("mcp-update-agent-old"))
+
+				// Verify new MCP server was created
+				var newMCP acp.MCPServer
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "mcp-update-agent-new",
+					Namespace: "default",
+				}, &newMCP)).To(Succeed())
+				Expect(newMCP.Spec.Transport).To(Equal("http"))
+				Expect(newMCP.Spec.URL).To(Equal("http://newserver.com"))
+
+				// Verify MCP server with secrets
+				var existingMCP acp.MCPServer
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "mcp-update-agent-existing",
+					Namespace: "default",
+				}, &existingMCP)).To(Succeed())
+				Expect(existingMCP.Spec.Transport).To(Equal("stdio"))
+				Expect(existingMCP.Spec.Command).To(Equal("updated-cmd"))
+				Expect(existingMCP.Spec.Args).To(ConsistOf("arg1", "arg2"))
+
+				// Verify the secret was created
+				var secret corev1.Secret
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "mcp-update-agent-existing-secrets",
+					Namespace: "default",
+				}, &secret)).To(Succeed())
+				Expect(string(secret.Data["API_KEY"])).To(Equal("secret-value"))
+
+				// Verify old MCP server was deleted
+				var oldMCPCheck acp.MCPServer
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "mcp-update-agent-old",
+					Namespace: "default",
+				}, &oldMCPCheck)
+				Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			})
+
+			It("should return 404 if agent doesn't exist", func() {
+				// Prepare update request
+				reqBody := UpdateAgentRequest{
+					LLM:          "non-existent-llm",
+					SystemPrompt: "Test prompt",
+				}
+				jsonBody, err := json.Marshal(reqBody)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Create a test request for non-existent agent
+				req := httptest.NewRequest(http.MethodPut, "/v1/agents/non-existent-agent?namespace=default", bytes.NewBuffer(jsonBody))
+				req.Header.Set("Content-Type", "application/json")
+				recorder = httptest.NewRecorder()
+
+				// Serve the request
+				router.ServeHTTP(recorder, req)
+
+				// Verify we get 404 Not Found
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+				var errorResponse map[string]string
+				err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(errorResponse["error"]).To(Equal("Agent not found"))
+			})
+
+			It("should return 404 if LLM doesn't exist", func() {
+				// Create an agent first
+				agent := &acp.Agent{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "existing-agent",
+						Namespace: "default",
+					},
+					Spec: acp.AgentSpec{
+						LLMRef: acp.LocalObjectReference{Name: "existing-llm"},
+						System: "Existing prompt",
+					},
+				}
+				Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+
+				// Prepare update request with non-existent LLM
+				reqBody := UpdateAgentRequest{
+					LLM:          "non-existent-llm",
+					SystemPrompt: "Updated prompt",
+				}
+				jsonBody, err := json.Marshal(reqBody)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Create a test request
+				req := httptest.NewRequest(http.MethodPut, "/v1/agents/existing-agent?namespace=default", bytes.NewBuffer(jsonBody))
+				req.Header.Set("Content-Type", "application/json")
+				recorder = httptest.NewRecorder()
+
+				// Serve the request
+				router.ServeHTTP(recorder, req)
+
+				// Verify we get 404 Not Found for LLM
+				Expect(recorder.Code).To(Equal(http.StatusNotFound))
+				var errorResponse map[string]string
+				err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(errorResponse["error"]).To(Equal("LLM not found"))
+			})
+
+			It("should return 400 for invalid MCP server configuration", func() {
+				// Create an LLM
+				createTestLLM("test-llm-invalid", "default")
+
+				// Create an agent
+				agent := &acp.Agent{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "agent-invalid-mcp",
+						Namespace: "default",
+					},
+					Spec: acp.AgentSpec{
+						LLMRef: acp.LocalObjectReference{Name: "test-llm-invalid"},
+						System: "Original prompt",
+					},
+				}
+				Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+
+				// Prepare update request with invalid MCP server config (missing URL for http transport)
+				reqBody := UpdateAgentRequest{
+					LLM:          "test-llm-invalid",
+					SystemPrompt: "Updated prompt",
+					MCPServers: map[string]MCPServerConfig{
+						"invalid": {
+							Transport: "http",
+							// URL is required for http transport but missing
+						},
+					},
+				}
+				jsonBody, err := json.Marshal(reqBody)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Create a test request
+				req := httptest.NewRequest(http.MethodPut, "/v1/agents/agent-invalid-mcp?namespace=default", bytes.NewBuffer(jsonBody))
+				req.Header.Set("Content-Type", "application/json")
+				recorder = httptest.NewRecorder()
+
+				// Serve the request
+				router.ServeHTTP(recorder, req)
+
+				// Verify we get 400 Bad Request
+				Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+				var errorResponse map[string]string
+				err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(errorResponse["error"]).To(ContainSubstring("Invalid MCP server config"))
+				Expect(errorResponse["error"]).To(ContainSubstring("url required"))
+			})
+
+			It("should require a namespace parameter", func() {
+				// Prepare update request
+				reqBody := UpdateAgentRequest{
+					LLM:          "test-llm",
+					SystemPrompt: "Test prompt",
+				}
+				jsonBody, err := json.Marshal(reqBody)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Create a test request without namespace
+				req := httptest.NewRequest(http.MethodPut, "/v1/agents/some-agent", bytes.NewBuffer(jsonBody))
+				req.Header.Set("Content-Type", "application/json")
+				recorder = httptest.NewRecorder()
+
+				// Serve the request
+				router.ServeHTTP(recorder, req)
+
+				// Verify we get 400 Bad Request
+				Expect(recorder.Code).To(Equal(http.StatusBadRequest))
+				var errorResponse map[string]string
+				err = json.Unmarshal(recorder.Body.Bytes(), &errorResponse)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(errorResponse["error"]).To(Equal("namespace query parameter is required"))
+			})
 		})
 	})
 })
