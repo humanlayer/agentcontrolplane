@@ -215,6 +215,13 @@ func (s *APIServer) createAgent(c *gin.Context) {
 	// Default namespace to "default" if not provided
 	namespace := defaultIfEmpty(req.Namespace, "default")
 
+	// Ensure the namespace exists
+	if err := s.ensureNamespaceExists(ctx, namespace); err != nil {
+		logger.Error(err, "Failed to ensure namespace exists")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to ensure namespace exists: " + err.Error()})
+		return
+	}
+
 	// Check if agent already exists
 	exists, err := s.resourceExists(ctx, &acp.Agent{}, namespace, req.Name)
 	if err != nil {
@@ -626,6 +633,40 @@ func defaultIfEmpty(val, defaultVal string) string {
 	return val
 }
 
+// ensureNamespaceExists checks if a namespace exists and creates it if it doesn't
+func (s *APIServer) ensureNamespaceExists(ctx context.Context, namespaceName string) error {
+	logger := log.FromContext(ctx)
+	
+	// Check if namespace exists
+	var namespace corev1.Namespace
+	err := s.client.Get(ctx, client.ObjectKey{Name: namespaceName}, &namespace)
+	if err == nil {
+		// Namespace exists, nothing to do
+		return nil
+	}
+	
+	if !apierrors.IsNotFound(err) {
+		// Error other than "not found" occurred
+		logger.Error(err, "Failed to check namespace existence", "namespace", namespaceName)
+		return fmt.Errorf("failed to check namespace existence: %w", err)
+	}
+	
+	// Namespace doesn't exist, create it
+	namespace = corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespaceName,
+		},
+	}
+	
+	if err := s.client.Create(ctx, &namespace); err != nil {
+		logger.Error(err, "Failed to create namespace", "namespace", namespaceName)
+		return fmt.Errorf("failed to create namespace: %w", err)
+	}
+	
+	logger.Info("Created namespace", "namespace", namespaceName)
+	return nil
+}
+
 // updateAgent handles updating an existing agent and its associated MCP servers
 func (s *APIServer) updateAgent(c *gin.Context) {
 	ctx := c.Request.Context()
@@ -886,6 +927,13 @@ func (s *APIServer) createTask(c *gin.Context) {
 	namespace := req.Namespace
 	if namespace == "" {
 		namespace = "default"
+	}
+
+	// Ensure the namespace exists
+	if err := s.ensureNamespaceExists(ctx, namespace); err != nil {
+		logger.Error(err, "Failed to ensure namespace exists")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to ensure namespace exists: " + err.Error()})
+		return
 	}
 
 	// Handle both responseURL and responseUrl fields (with responseURL taking precedence)
