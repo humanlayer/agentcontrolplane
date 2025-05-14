@@ -40,6 +40,13 @@ type CreateAgentRequest struct {
 	MCPServers   map[string]MCPServerConfig `json:"mcpServers,omitempty"` // Optional
 }
 
+// UpdateAgentRequest defines the structure of the request body for updating an agent
+type UpdateAgentRequest struct {
+	LLM          string                     `json:"llm"`                  // Required
+	SystemPrompt string                     `json:"systemPrompt"`         // Required
+	MCPServers   map[string]MCPServerConfig `json:"mcpServers,omitempty"` // Optional
+}
+
 // MCPServerConfig defines the configuration for an MCP server
 type MCPServerConfig struct {
 	Transport string            `json:"transport"`         // Required: "stdio" or "http"
@@ -103,6 +110,7 @@ func (s *APIServer) registerRoutes() {
 	agents.GET("", s.listAgents)
 	agents.GET("/:name", s.getAgent)
 	agents.POST("", s.createAgent)
+	agents.PUT("/:name", s.updateAgent)
 }
 
 // processMCPServers creates MCP servers and their secrets based on the given configuration
@@ -616,6 +624,218 @@ func defaultIfEmpty(val, defaultVal string) string {
 		return defaultVal
 	}
 	return val
+}
+
+// updateAgent handles updating an existing agent and its associated MCP servers
+func (s *APIServer) updateAgent(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
+
+	// Get namespace and name
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "namespace query parameter is required"})
+		return
+	}
+	name := c.Param("name")
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "agent name is required"})
+		return
+	}
+
+	// Read the raw data for validation
+	var rawData []byte
+	if data, err := c.GetRawData(); err == nil {
+		rawData = data
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body: " + err.Error()})
+		return
+	}
+
+	// Parse request
+	var req UpdateAgentRequest
+	if err := json.Unmarshal(rawData, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Validate for unknown fields
+	decoder := json.NewDecoder(bytes.NewReader(rawData))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		if strings.Contains(err.Error(), "unknown field") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown field in request: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON format: " + err.Error()})
+		return
+	}
+
+	// Validate required fields
+	if req.LLM == "" || req.SystemPrompt == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "llm and systemPrompt are required"})
+		return
+	}
+
+	// Fetch current agent
+	var currentAgent acp.Agent
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &currentAgent); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+			return
+		}
+		logger.Error(err, "Failed to get agent", "name", name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agent: " + err.Error()})
+		return
+	}
+
+	// Verify LLM exists
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: req.LLM}, &acp.LLM{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "LLM not found"})
+			return
+		}
+		logger.Error(err, "Failed to check LLM")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check LLM: " + err.Error()})
+		return
+	}
+
+	// Track current MCP servers for this agent
+	currentMCPServers := make(map[string]struct{})
+	for _, ref := range currentAgent.Spec.MCPServers {
+		currentMCPServers[ref.Name] = struct{}{}
+	}
+
+	// Process new/updated MCP servers
+	desiredMCPServers := make(map[string]MCPServerConfig)
+	for key, config := range req.MCPServers {
+		mcpName := fmt.Sprintf("%s-%s", name, key)
+		if err := validateMCPConfig(config); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid MCP server config for '%s': %s", key, err.Error())})
+			return
+		}
+		desiredMCPServers[mcpName] = config
+	}
+
+	// Create or update MCP servers
+	for mcpName, config := range desiredMCPServers {
+		secretName := fmt.Sprintf("%s-secrets", mcpName)
+		var mcpServer acp.MCPServer
+		err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: mcpName}, &mcpServer)
+		if apierrors.IsNotFound(err) {
+			// Create new MCP server and secret
+			if len(config.Secrets) > 0 {
+				secret := createSecret(secretName, namespace, config.Secrets)
+				if err := s.client.Create(ctx, secret); err != nil {
+					logger.Error(err, "Failed to create secret", "name", secretName)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create secret: " + err.Error()})
+					return
+				}
+			}
+			mcpServer := createMCPServer(mcpName, namespace, config, secretName)
+			if err := s.client.Create(ctx, mcpServer); err != nil {
+				logger.Error(err, "Failed to create MCP server", "name", mcpName)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create MCP server: " + err.Error()})
+				return
+			}
+		} else if err == nil {
+			// Update existing MCP server
+			updatedMCP := createMCPServer(mcpName, namespace, config, secretName)
+			updatedMCP.ObjectMeta = mcpServer.ObjectMeta
+			if err := s.client.Update(ctx, updatedMCP); err != nil {
+				logger.Error(err, "Failed to update MCP server", "name", mcpName)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update MCP server: " + err.Error()})
+				return
+			}
+			// Handle secret
+			if len(config.Secrets) > 0 {
+				var secret corev1.Secret
+				err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, &secret)
+				if apierrors.IsNotFound(err) {
+					secret := createSecret(secretName, namespace, config.Secrets)
+					if err := s.client.Create(ctx, secret); err != nil {
+						logger.Error(err, "Failed to create secret", "name", secretName)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create secret: " + err.Error()})
+						return
+					}
+				} else if err == nil {
+					for k, v := range config.Secrets {
+						if secret.Data == nil {
+							secret.Data = make(map[string][]byte)
+						}
+						secret.Data[k] = []byte(v)
+					}
+					if err := s.client.Update(ctx, &secret); err != nil {
+						logger.Error(err, "Failed to update secret", "name", secretName)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update secret: " + err.Error()})
+						return
+					}
+				} else {
+					logger.Error(err, "Failed to get secret", "name", secretName)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get secret: " + err.Error()})
+					return
+				}
+			} else {
+				// Delete secret if it exists and no secrets are specified
+				var secret corev1.Secret
+				if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, &secret); err == nil {
+					if err := s.client.Delete(ctx, &secret); err != nil {
+						logger.Error(err, "Failed to delete secret", "name", secretName)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete secret: " + err.Error()})
+						return
+					}
+				}
+			}
+		} else {
+			logger.Error(err, "Failed to get MCP server", "name", mcpName)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get MCP server: " + err.Error()})
+			return
+		}
+		delete(currentMCPServers, mcpName)
+	}
+
+	// Delete removed MCP servers
+	for mcpName := range currentMCPServers {
+		var mcpServer acp.MCPServer
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: mcpName}, &mcpServer); err == nil {
+			if err := s.client.Delete(ctx, &mcpServer); err != nil {
+				logger.Error(err, "Failed to delete MCP server", "name", mcpName)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete MCP server: " + err.Error()})
+				return
+			}
+		}
+		secretName := fmt.Sprintf("%s-secrets", mcpName)
+		var secret corev1.Secret
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, &secret); err == nil {
+			if err := s.client.Delete(ctx, &secret); err != nil {
+				logger.Error(err, "Failed to delete secret", "name", secretName)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete secret: " + err.Error()})
+				return
+			}
+		}
+	}
+
+	// Update agent spec
+	currentAgent.Spec.LLMRef = acp.LocalObjectReference{Name: req.LLM}
+	currentAgent.Spec.System = req.SystemPrompt
+	currentAgent.Spec.MCPServers = []acp.LocalObjectReference{}
+	for mcpName := range desiredMCPServers {
+		currentAgent.Spec.MCPServers = append(currentAgent.Spec.MCPServers, acp.LocalObjectReference{Name: mcpName})
+	}
+
+	if err := s.client.Update(ctx, &currentAgent); err != nil {
+		logger.Error(err, "Failed to update agent", "name", name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update agent: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, AgentResponse{
+		Namespace:    namespace,
+		Name:         name,
+		LLM:          req.LLM,
+		SystemPrompt: req.SystemPrompt,
+		MCPServers:   req.MCPServers,
+	})
 }
 
 // createTask handles the creation of a new task
