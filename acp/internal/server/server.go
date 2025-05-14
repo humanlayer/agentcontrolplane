@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,6 +29,34 @@ type CreateTaskRequest struct {
 	ContextWindow []acp.Message `json:"contextWindow,omitempty"` // Optional if userMessage is provided
 	ResponseURL   string        `json:"responseURL,omitempty"`   // Optional, URL for receiving task results
 	ResponseUrl   string        `json:"responseUrl,omitempty"`   // Alternative casing for responseURL (deprecated)
+}
+
+// CreateAgentRequest defines the structure of the request body for creating an agent
+type CreateAgentRequest struct {
+	Namespace    string                     `json:"namespace,omitempty"`  // Optional, defaults to "default"
+	Name         string                     `json:"name"`                 // Required
+	LLM          string                     `json:"llm"`                  // Required
+	SystemPrompt string                     `json:"systemPrompt"`         // Required
+	MCPServers   map[string]MCPServerConfig `json:"mcpServers,omitempty"` // Optional
+}
+
+// MCPServerConfig defines the configuration for an MCP server
+type MCPServerConfig struct {
+	Transport string            `json:"transport"`         // Required: "stdio" or "http"
+	Command   string            `json:"command,omitempty"` // Required for stdio transport
+	Args      []string          `json:"args,omitempty"`    // Required for stdio transport
+	URL       string            `json:"url,omitempty"`     // Required for http transport
+	Env       map[string]string `json:"env,omitempty"`     // Optional environment variables
+	Secrets   map[string]string `json:"secrets,omitempty"` // Optional secrets
+}
+
+// AgentResponse defines the structure of the response body for agent endpoints
+type AgentResponse struct {
+	Namespace    string                     `json:"namespace"`
+	Name         string                     `json:"name"`
+	LLM          string                     `json:"llm"`
+	SystemPrompt string                     `json:"systemPrompt"`
+	MCPServers   map[string]MCPServerConfig `json:"mcpServers,omitempty"`
 }
 
 // APIServer represents the REST API server
@@ -67,6 +97,278 @@ func (s *APIServer) registerRoutes() {
 	tasks.GET("", s.listTasks)
 	tasks.GET("/:id", s.getTask)
 	tasks.POST("", s.createTask)
+
+	// Agent endpoints
+	agents := v1.Group("/agents")
+	agents.GET("", s.listAgents)
+	agents.GET("/:name", s.getAgent)
+	agents.POST("", s.createAgent)
+}
+
+// processMCPServers creates MCP servers and their secrets based on the given configuration
+func (s *APIServer) processMCPServers(ctx context.Context, agentName, namespace string, mcpConfigs map[string]MCPServerConfig) ([]acp.LocalObjectReference, error) {
+	logger := log.FromContext(ctx)
+	mcpServerRefs := []acp.LocalObjectReference{}
+
+	for key, config := range mcpConfigs {
+		// Validate MCP server configuration
+		if err := validateMCPConfig(config); err != nil {
+			return nil, fmt.Errorf("invalid MCP server configuration for '%s': %s", key, err.Error())
+		}
+
+		// Generate names for MCP server and its secret
+		mcpName := fmt.Sprintf("%s-%s", agentName, key)
+		secretName := fmt.Sprintf("%s-%s-secrets", agentName, key)
+
+		// Check if MCP server already exists
+		exists, err := s.resourceExists(ctx, &acp.MCPServer{}, namespace, mcpName)
+		if err != nil {
+			logger.Error(err, "Failed to check MCP server existence", "name", mcpName)
+			return nil, fmt.Errorf("failed to check MCP server existence: %w", err)
+		}
+		if exists {
+			return nil, fmt.Errorf("MCP server '%s' already exists", mcpName)
+		}
+
+		// Check if secret already exists
+		if len(config.Secrets) > 0 {
+			exists, err := s.resourceExists(ctx, &corev1.Secret{}, namespace, secretName)
+			if err != nil {
+				logger.Error(err, "Failed to check secret existence", "name", secretName)
+				return nil, fmt.Errorf("failed to check secret existence: %w", err)
+			}
+			if exists {
+				return nil, fmt.Errorf("secret '%s' already exists", secretName)
+			}
+		}
+
+		// Create secret if needed
+		if len(config.Secrets) > 0 {
+			secret := createSecret(secretName, namespace, config.Secrets)
+			if err := s.client.Create(ctx, secret); err != nil {
+				logger.Error(err, "Failed to create secret", "name", secretName)
+				return nil, fmt.Errorf("failed to create secret: %w", err)
+			}
+		}
+
+		// Create MCP server
+		mcpServer := createMCPServer(mcpName, namespace, config, secretName)
+		if err := s.client.Create(ctx, mcpServer); err != nil {
+			logger.Error(err, "Failed to create MCP server", "name", mcpName)
+			return nil, fmt.Errorf("failed to create MCP server: %w", err)
+		}
+
+		// Add reference to the list
+		mcpServerRefs = append(mcpServerRefs, acp.LocalObjectReference{Name: mcpName})
+	}
+
+	return mcpServerRefs, nil
+}
+
+// createAgent handles the creation of a new agent and associated MCP servers
+func (s *APIServer) createAgent(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
+
+	// Read the raw data for validation
+	var rawData []byte
+	if data, err := c.GetRawData(); err == nil {
+		rawData = data
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body: " + err.Error()})
+		return
+	}
+
+	// Parse request
+	var req CreateAgentRequest
+	if err := json.Unmarshal(rawData, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Validate for unknown fields
+	decoder := json.NewDecoder(bytes.NewReader(rawData))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		if strings.Contains(err.Error(), "unknown field") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown field in request: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON format: " + err.Error()})
+		return
+	}
+
+	// Validate required fields
+	if req.Name == "" || req.LLM == "" || req.SystemPrompt == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name, llm, and systemPrompt are required"})
+		return
+	}
+
+	// Default namespace to "default" if not provided
+	namespace := defaultIfEmpty(req.Namespace, "default")
+
+	// Check if agent already exists
+	exists, err := s.resourceExists(ctx, &acp.Agent{}, namespace, req.Name)
+	if err != nil {
+		logger.Error(err, "Failed to check agent existence")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check agent existence: " + err.Error()})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "Agent already exists"})
+		return
+	}
+
+	// Verify LLM exists
+	var llm acp.LLM
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: req.LLM}, &llm); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "LLM not found"})
+			return
+		}
+		logger.Error(err, "Failed to check LLM existence")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check LLM existence: " + err.Error()})
+		return
+	}
+
+	// Process MCP servers if provided
+	var mcpServerRefs []acp.LocalObjectReference
+	if len(req.MCPServers) > 0 {
+		mcpServerRefs, err = s.processMCPServers(ctx, req.Name, namespace, req.MCPServers)
+		if err != nil {
+			// Convert various MCP server errors to appropriate HTTP status codes
+			if strings.Contains(err.Error(), "invalid MCP server configuration") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			} else if strings.Contains(err.Error(), "already exists") {
+				c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+				return
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+	}
+
+	// Create the agent
+	agent := &acp.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      req.Name,
+			Namespace: namespace,
+		},
+		Spec: acp.AgentSpec{
+			LLMRef:     acp.LocalObjectReference{Name: req.LLM},
+			System:     req.SystemPrompt,
+			MCPServers: mcpServerRefs,
+		},
+	}
+
+	if err := s.client.Create(ctx, agent); err != nil {
+		logger.Error(err, "Failed to create agent", "name", req.Name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create agent: " + err.Error()})
+		return
+	}
+
+	// Return success response
+	c.JSON(http.StatusCreated, AgentResponse{
+		Namespace:    namespace,
+		Name:         req.Name,
+		LLM:          req.LLM,
+		SystemPrompt: req.SystemPrompt,
+		MCPServers:   req.MCPServers,
+	})
+}
+
+// listAgents handles the GET /agents endpoint to list all agents in a namespace
+func (s *APIServer) listAgents(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
+
+	// Get namespace from query parameter (required)
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "namespace query parameter is required"})
+		return
+	}
+
+	// List all agents in the namespace
+	var agentList acp.AgentList
+	if err := s.client.List(ctx, &agentList, client.InNamespace(namespace)); err != nil {
+		logger.Error(err, "Failed to list agents", "namespace", namespace)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list agents: " + err.Error()})
+		return
+	}
+
+	// Transform to response format
+	response := []AgentResponse{}
+	for _, agent := range agentList.Items {
+		// Fetch MCP server details for each agent
+		mcpServers, err := s.fetchMCPServers(ctx, namespace, agent.Spec.MCPServers)
+		if err != nil {
+			logger.Error(err, "Failed to fetch MCP servers for agent", "agent", agent.Name)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch MCP servers: " + err.Error()})
+			return
+		}
+
+		response = append(response, AgentResponse{
+			Namespace:    namespace,
+			Name:         agent.Name,
+			LLM:          agent.Spec.LLMRef.Name,
+			SystemPrompt: agent.Spec.System,
+			MCPServers:   mcpServers,
+		})
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// getAgent handles the GET /agents/:name endpoint to get a specific agent by name
+func (s *APIServer) getAgent(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
+
+	// Get namespace from query parameter (required)
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "namespace query parameter is required"})
+		return
+	}
+
+	// Get agent name from path parameter
+	name := c.Param("name")
+	if name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "agent name is required"})
+		return
+	}
+
+	// Get the agent
+	var agent acp.Agent
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &agent); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+			return
+		}
+		logger.Error(err, "Failed to get agent", "name", name, "namespace", namespace)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get agent: " + err.Error()})
+		return
+	}
+
+	// Fetch MCP server details
+	mcpServers, err := s.fetchMCPServers(ctx, namespace, agent.Spec.MCPServers)
+	if err != nil {
+		logger.Error(err, "Failed to fetch MCP servers for agent", "agent", agent.Name)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch MCP servers: " + err.Error()})
+		return
+	}
+
+	// Return the response
+	c.JSON(http.StatusOK, AgentResponse{
+		Namespace:    namespace,
+		Name:         agent.Name,
+		LLM:          agent.Spec.LLMRef.Name,
+		SystemPrompt: agent.Spec.System,
+		MCPServers:   mcpServers,
+	})
 }
 
 // Start begins listening for requests in a goroutine
@@ -154,6 +456,166 @@ func (s *APIServer) getTask(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, task)
+}
+
+// Helper functions for Agent API
+// resourceExists checks if a resource with the given name exists in the specified namespace
+func (s *APIServer) resourceExists(ctx context.Context, obj client.Object, namespace, name string) (bool, error) {
+	err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, obj)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// validateMCPConfig validates an MCP server configuration
+// Defaults to "stdio" transport if not specified
+func validateMCPConfig(config MCPServerConfig) error {
+	// Default to stdio transport if not specified
+	transport := config.Transport
+	if transport == "" {
+		transport = "stdio"
+	}
+
+	// Validate the transport type
+	if transport != "stdio" && transport != "http" {
+		return fmt.Errorf("invalid transport: %s", transport)
+	}
+
+	// Validate transport-specific requirements
+	if transport == "stdio" && (config.Command == "" || len(config.Args) == 0) {
+		return fmt.Errorf("command and args required for stdio transport")
+	}
+	if transport == "http" && config.URL == "" {
+		return fmt.Errorf("url required for http transport")
+	}
+
+	return nil
+}
+
+// createSecret creates a Kubernetes Secret from a map of secret values
+func createSecret(name, namespace string, secrets map[string]string) *corev1.Secret {
+	data := make(map[string][]byte)
+	for k, v := range secrets {
+		data[k] = []byte(v)
+	}
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Data: data,
+	}
+}
+
+// createMCPServer creates an MCPServer from a configuration
+// Defaults to "stdio" transport if not specified
+func createMCPServer(name, namespace string, config MCPServerConfig, secretName string) *acp.MCPServer {
+	env := []acp.EnvVar{}
+
+	// Add regular environment variables
+	for k, v := range config.Env {
+		env = append(env, acp.EnvVar{
+			Name:  k,
+			Value: v,
+		})
+	}
+
+	// Add secret references
+	for k := range config.Secrets {
+		env = append(env, acp.EnvVar{
+			Name: k,
+			ValueFrom: &acp.EnvVarSource{
+				SecretKeyRef: &acp.SecretKeyRef{
+					Name: secretName,
+					Key:  k,
+				},
+			},
+		})
+	}
+
+	// Default to stdio transport if not specified
+	transport := config.Transport
+	if transport == "" {
+		transport = "stdio"
+	}
+
+	return &acp.MCPServer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: acp.MCPServerSpec{
+			Transport: transport,
+			Command:   config.Command,
+			Args:      config.Args,
+			URL:       config.URL,
+			Env:       env,
+		},
+	}
+}
+
+// fetchMCPServers retrieves MCP servers and their configurations
+func (s *APIServer) fetchMCPServers(ctx context.Context, namespace string, refs []acp.LocalObjectReference) (map[string]MCPServerConfig, error) {
+	result := make(map[string]MCPServerConfig)
+
+	for _, ref := range refs {
+		var mcpServer acp.MCPServer
+		if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, &mcpServer); err != nil {
+			return nil, err
+		}
+
+		// Extract key from MCP server name (assuming it follows the pattern: {agent-name}-{key})
+		parts := strings.Split(ref.Name, "-")
+		key := parts[len(parts)-1]
+
+		// Initialize config
+		config := MCPServerConfig{
+			Transport: mcpServer.Spec.Transport,
+			Command:   mcpServer.Spec.Command,
+			Args:      mcpServer.Spec.Args,
+			URL:       mcpServer.Spec.URL,
+			Env:       map[string]string{},
+			Secrets:   map[string]string{},
+		}
+
+		// Process environment variables and secrets
+		for _, envVar := range mcpServer.Spec.Env {
+			if envVar.Value != "" {
+				// Regular environment variable
+				config.Env[envVar.Name] = envVar.Value
+			} else if envVar.ValueFrom != nil && envVar.ValueFrom.SecretKeyRef != nil {
+				// Secret reference
+				secretRef := envVar.ValueFrom.SecretKeyRef
+				var secret corev1.Secret
+				if err := s.client.Get(ctx, client.ObjectKey{
+					Namespace: namespace,
+					Name:      secretRef.Name,
+				}, &secret); err != nil {
+					return nil, err
+				}
+
+				if val, ok := secret.Data[secretRef.Key]; ok {
+					config.Secrets[envVar.Name] = string(val)
+				}
+			}
+		}
+
+		result[key] = config
+	}
+
+	return result, nil
+}
+
+// defaultIfEmpty returns the default value if the input is empty
+func defaultIfEmpty(val, defaultVal string) string {
+	if val == "" {
+		return defaultVal
+	}
+	return val
 }
 
 // createTask handles the creation of a new task

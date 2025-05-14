@@ -76,7 +76,13 @@ var _ = Describe("ResponseURL Functionality", func() {
 
 			// Test sending result
 			testMsg := "This is the final task result"
-			err := reconciler.sendFinalResultToResponseURL(ctx, server.URL, testMsg)
+			testTask := &acp.Task{
+				Spec: acp.TaskSpec{
+					ResponseURL: server.URL,
+					AgentRef:    acp.LocalObjectReference{Name: "test-agent"},
+				},
+			}
+			err := reconciler.sendFinalResultToResponseURL(ctx, testTask, testMsg)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Wait for the request to be processed with a timeout
@@ -106,7 +112,13 @@ var _ = Describe("ResponseURL Functionality", func() {
 			reconciler, ctx := initTestReconciler()
 
 			// Test sending result
-			err := reconciler.sendFinalResultToResponseURL(ctx, server.URL, "test message")
+			testTask := &acp.Task{
+				Spec: acp.TaskSpec{
+					ResponseURL: server.URL,
+					AgentRef:    acp.LocalObjectReference{Name: "test-agent"},
+				},
+			}
+			err := reconciler.sendFinalResultToResponseURL(ctx, testTask, "test message")
 
 			// Should return an error due to non-200 response
 			Expect(err).To(HaveOccurred())
@@ -118,7 +130,13 @@ var _ = Describe("ResponseURL Functionality", func() {
 			reconciler, ctx := initTestReconciler()
 
 			// Use an invalid URL to cause a connection error
-			err := reconciler.sendFinalResultToResponseURL(ctx, "http://localhost:1", "test message")
+			testTask := &acp.Task{
+				Spec: acp.TaskSpec{
+					ResponseURL: "http://localhost:1",
+					AgentRef:    acp.LocalObjectReference{Name: "test-agent"},
+				},
+			}
+			err := reconciler.sendFinalResultToResponseURL(ctx, testTask, "test message")
 
 			// Should return an error due to connection failure
 			Expect(err).To(HaveOccurred())
