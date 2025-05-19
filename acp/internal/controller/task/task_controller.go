@@ -524,10 +524,12 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, st
 		return ctrl.Result{}, err
 	}
 
-	// Create a map of tool name to tool type for quick lookup
+	// Create maps for tool type and tool annotations for quick lookup
 	toolTypeMap := make(map[string]acp.ToolType)
+	toolAnnotationsMap := make(map[string]*acp.ToolAnnotation)
 	for _, tool := range tools {
 		toolTypeMap[tool.Function.Name] = tool.ACPToolType
+		toolAnnotationsMap[tool.Function.Name] = tool.ACPToolAnnotations
 	}
 
 	// For each tool call, create a new ToolCall with a unique name using the ToolCallRequestID
@@ -561,8 +563,9 @@ func (r *TaskReconciler) createToolCalls(ctx context.Context, task *acp.Task, st
 				ToolRef: acp.LocalObjectReference{
 					Name: tc.Function.Name,
 				},
-				ToolType:  toolTypeMap[tc.Function.Name],
-				Arguments: tc.Function.Arguments,
+				ToolType:         toolTypeMap[tc.Function.Name],
+				Arguments:        tc.Function.Arguments,
+				ToolAnnotations:  toolAnnotationsMap[tc.Function.Name],
 			},
 		}
 		if err := r.Client.Create(ctx, newTC); err != nil {

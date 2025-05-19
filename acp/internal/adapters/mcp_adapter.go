@@ -39,11 +39,12 @@ func ConvertMCPToolsToLLMClientTools(mcpTools []acp.MCPTool, serverName string) 
 			}
 		}
 
-		// Create the tool with the function definition
+		// Create the tool with the function definition and annotations
 		clientTools = append(clientTools, llmclient.Tool{
-			Type:        "function",
-			Function:    toolFunction,
-			ACPToolType: acp.ToolTypeMCP,
+			Type:               "function",
+			Function:           toolFunction,
+			ACPToolType:        acp.ToolTypeMCP,
+			ACPToolAnnotations: tool.Annotations,
 		})
 	}
 

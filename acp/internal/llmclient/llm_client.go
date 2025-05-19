@@ -36,6 +36,9 @@ type Tool struct {
 	// ACPToolType represents the ACP-specific type of tool (MCP, HumanContact)
 	// This field is not sent to the LLM API but is used internally for tool identification
 	ACPToolType acp.ToolType `json:"-"`
+	// ACPToolAnnotations contains metadata about the tool's behavior
+	// This field is not sent to the LLM API but is used internally for approval logic
+	ACPToolAnnotations *acp.ToolAnnotation `json:"-"`
 }
 
 // ToolFunction contains the function details
