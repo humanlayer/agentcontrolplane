@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -37,12 +37,12 @@ type MCPConnection struct {
 	ServerName string
 	// ServerType is "stdio" or "http"
 	ServerType string
-	// Command is the stdio process (if ServerType is "stdio")
-	Command *exec.Cmd
 	// Client is the MCP client
 	Client mcpclient.MCPClient
 	// Tools is the list of tools provided by this server
 	Tools []acp.MCPTool
+	// LastConnectTime records when this connection was established
+	LastConnectTime time.Time
 }
 
 // NewMCPServerManager creates a new MCPServerManager
@@ -116,6 +116,10 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Use a timeout context to prevent hanging during connection
+	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
 	// Check if we already have a connection for this server
 	if conn, exists := m.connections[mcpServer.Name]; exists {
 		// If the server exists and the specs are the same, reuse the connection
@@ -133,12 +137,13 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 
 	if mcpServer.Spec.Transport == "stdio" {
 		// Convert environment variables, resolving any secret references
-		envVars, err := m.convertEnvVars(ctx, mcpServer.Spec.Env, mcpServer.Namespace)
+		envVars, err := m.convertEnvVars(connectCtx, mcpServer.Spec.Env, mcpServer.Namespace)
 		if err != nil {
 			return fmt.Errorf("failed to process environment variables: %w", err)
 		}
 
 		// Create a stdio-based MCP client
+		// The cmd member will be set inside the NewStdioMCPClient function
 		mcpClient, err = mcpclient.NewStdioMCPClient(mcpServer.Spec.Command, envVars, mcpServer.Spec.Args...)
 		if err != nil {
 			return fmt.Errorf("failed to create stdio MCP client: %w", err)
@@ -153,21 +158,25 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 		return fmt.Errorf("unsupported MCP server transport: %s", mcpServer.Spec.Transport)
 	}
 
-	// Initialize the client
-	_, err = mcpClient.Initialize(ctx, mcp.InitializeRequest{})
+	// Ensure client is cleaned up on any error
+	clientCreated := true
+	defer func() {
+		if err != nil && clientCreated && mcpClient != nil {
+			if closeErr := mcpClient.Close(); closeErr != nil {
+				fmt.Printf("Error closing mcpClient during error handling: %v\n", closeErr)
+			}
+		}
+	}()
+
+	// Initialize the client with timeout context
+	_, err = mcpClient.Initialize(connectCtx, mcp.InitializeRequest{})
 	if err != nil {
-		if closeErr := mcpClient.Close(); closeErr != nil {
-			fmt.Printf("Error closing mcpClient: %v\n", closeErr)
-		} // Clean up on error
 		return fmt.Errorf("failed to initialize MCP client: %w", err)
 	}
 
-	// Get the list of tools
-	toolsResp, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+	// Get the list of tools with timeout context
+	toolsResp, err := mcpClient.ListTools(connectCtx, mcp.ListToolsRequest{})
 	if err != nil {
-		if closeErr := mcpClient.Close(); closeErr != nil {
-			fmt.Printf("Error closing mcpClient: %v\n", closeErr)
-		} // Clean up on error
 		return fmt.Errorf("failed to list tools: %w", err)
 	}
 
@@ -176,7 +185,7 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 	for _, tool := range toolsResp.Tools {
 		// Handle the InputSchema properly
 		var inputSchemaBytes []byte
-		var err error
+		var schemaErr error
 
 		if len(tool.RawInputSchema) > 0 {
 			// Use RawInputSchema if available (preferred)
@@ -190,10 +199,10 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 				schema.Required = []string{}
 			}
 
-			inputSchemaBytes, err = json.Marshal(schema)
-			if err != nil {
+			inputSchemaBytes, schemaErr = json.Marshal(schema)
+			if schemaErr != nil {
 				// Log the error but continue
-				fmt.Printf("Error marshaling input schema for tool %s: %v\n", tool.Name, err)
+				fmt.Printf("Error marshaling input schema for tool %s: %v\n", tool.Name, schemaErr)
 				// Use a minimal valid schema as fallback
 				inputSchemaBytes = []byte(`{"type":"object","properties":{},"required":[]}`)
 			}
@@ -208,10 +217,11 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 
 	// Store the connection
 	m.connections[mcpServer.Name] = &MCPConnection{
-		ServerName: mcpServer.Name,
-		ServerType: mcpServer.Spec.Transport,
-		Client:     mcpClient,
-		Tools:      tools,
+		ServerName:      mcpServer.Name,
+		ServerType:      mcpServer.Spec.Transport,
+		Client:          mcpClient,
+		Tools:           tools,
+		LastConnectTime: time.Now(),
 	}
 
 	return nil
@@ -232,12 +242,32 @@ func (m *MCPServerManager) disconnectServerLocked(serverName string) {
 		return
 	}
 
-	// Close the connection
-	if conn.Client != nil {
-		if err := conn.Client.Close(); err != nil {
-			fmt.Printf("Error closing MCP client connection: %v\n", err)
+	// Close the connection with a timeout to avoid hanging
+	closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Closing routine with timeout
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Close the client connection
+		if conn.Client != nil {
+			if err := conn.Client.Close(); err != nil {
+				fmt.Printf("Error closing MCP client connection for %s: %v\n", serverName, err)
+			}
 		}
+	}()
+
+	// Wait for close to finish or timeout
+	select {
+	case <-done:
+		// Closed successfully
+	case <-closeCtx.Done():
+		fmt.Printf("Warning: Timeout while closing MCP client connection for %s\n", serverName)
 	}
+
+	// The MCP client's Close method should handle process termination
+	// We don't have direct access to the underlying process anymore
 
 	// Remove the connection from the map
 	delete(m.connections, serverName)
@@ -272,6 +302,10 @@ func (m *MCPServerManager) GetToolsForAgent(agent *acp.Agent) []acp.MCPTool {
 
 // CallTool calls a tool on an MCP server
 func (m *MCPServerManager) CallTool(ctx context.Context, serverName, toolName string, arguments map[string]interface{}) (string, error) {
+	// Create a timeout context to prevent hanging calls
+	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	m.mu.RLock()
 	conn, exists := m.connections[serverName]
 	m.mu.RUnlock()
@@ -280,7 +314,12 @@ func (m *MCPServerManager) CallTool(ctx context.Context, serverName, toolName st
 		return "", fmt.Errorf("MCP server not found: %s", serverName)
 	}
 
-	result, err := conn.Client.CallTool(ctx, mcp.CallToolRequest{
+	// Check if the connection is still alive
+	if conn.Client == nil {
+		return "", fmt.Errorf("MCP server connection is invalid for %s", serverName)
+	}
+
+	result, err := conn.Client.CallTool(callCtx, mcp.CallToolRequest{
 		Params: struct {
 			Name      string                 `json:"name"`
 			Arguments map[string]interface{} `json:"arguments,omitempty"`
@@ -293,6 +332,10 @@ func (m *MCPServerManager) CallTool(ctx context.Context, serverName, toolName st
 		},
 	})
 	if err != nil {
+		// Check if it was a context timeout
+		if callCtx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("timeout calling tool %s on server %s: operation took too long", toolName, serverName)
+		}
 		return "", fmt.Errorf("error calling tool %s on server %s: %w", toolName, serverName, err)
 	}
 
@@ -350,7 +393,17 @@ func (m *MCPServerManager) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Create a list of server names to avoid modifying the map during iteration
+	serverNames := make([]string, 0, len(m.connections))
 	for serverName := range m.connections {
+		serverNames = append(serverNames, serverName)
+	}
+
+	// Close each connection
+	for _, serverName := range serverNames {
 		m.disconnectServerLocked(serverName)
 	}
+
+	// Clear the connections map
+	m.connections = make(map[string]*MCPConnection)
 }

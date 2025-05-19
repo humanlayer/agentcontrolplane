@@ -3,6 +3,9 @@ package llmclient
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/anthropic"
@@ -101,7 +104,48 @@ func (c *LangchainClient) SendRequest(ctx context.Context, messages []acp.Messag
 	// Make the API call
 	response, err := c.model.GenerateContent(ctx, langchainMessages, options...)
 	if err != nil {
-		return nil, fmt.Errorf("model API call failed: %w", err)
+		// Extract error details for better handling
+		var statusCode int
+		var message string
+
+		// Try to extract error info from the error string
+		// Many LLM providers include HTTP status in their error messages
+		errMsg := err.Error()
+		if statusMatch := regexp.MustCompile(`status code: (\d+)`).FindStringSubmatch(errMsg); len(statusMatch) > 1 {
+			if code, parseErr := strconv.Atoi(statusMatch[1]); parseErr == nil {
+				statusCode = code
+			}
+		}
+
+		// If no status code found in the message, check for common API error patterns
+		if statusCode == 0 {
+			// Check for various error types based on error string
+			if strings.Contains(errMsg, "rate limit") || strings.Contains(errMsg, "too many requests") {
+				statusCode = 429
+			} else if strings.Contains(errMsg, "invalid") || strings.Contains(errMsg, "bad request") {
+				statusCode = 400
+			} else if strings.Contains(errMsg, "not found") {
+				statusCode = 404
+			} else if strings.Contains(errMsg, "authorization") || strings.Contains(errMsg, "authentication") {
+				statusCode = 401
+			} else if strings.Contains(errMsg, "server") {
+				statusCode = 500
+			}
+		}
+
+		// Extract message content after the status code if possible
+		if messageMatch := regexp.MustCompile(`status code: \d+:?\s*(.*)`).FindStringSubmatch(errMsg); len(messageMatch) > 1 {
+			message = messageMatch[1]
+		} else {
+			message = errMsg
+		}
+
+		// Return a properly structured LLMRequestError that can be detected with errors.As
+		return nil, &LLMRequestError{
+			StatusCode: statusCode,
+			Message:    message,
+			Err:        err,
+		}
 	}
 
 	// Log response characteristics for debugging

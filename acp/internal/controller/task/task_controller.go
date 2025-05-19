@@ -210,6 +210,7 @@ func (r *TaskReconciler) prepareForLLM(ctx context.Context, task *acp.Task, stat
 
 		statusUpdate.Status.UserMsgPreview = validation.GetUserMessagePreview(task.Spec.UserMessage, task.Spec.ContextWindow)
 		statusUpdate.Status.ContextWindow = initialContextWindow
+		// Use intermediate ReadyForLLM state first to prevent double-sending
 		statusUpdate.Status.Phase = acp.TaskPhaseReadyForLLM
 		statusUpdate.Status.Ready = true
 		statusUpdate.Status.Status = acp.TaskStatusTypeReady
@@ -241,8 +242,12 @@ func (r *TaskReconciler) processToolCalls(ctx context.Context, task *acp.Task) (
 		return ctrl.Result{}, err
 	}
 
-	// Check if all tool calls are completed
+	// Check if all tool calls are completed and have valid results
 	allCompleted := true
+	allHaveValidResults := true
+	missingResultsCount := 0
+
+	// First pass: Check completion status
 	for _, tc := range toolCalls.Items {
 		if tc.Status.Status != acp.ToolCallStatusTypeSucceeded &&
 			// todo separate between send-to-model failures and tool-is-retrying failures
@@ -250,27 +255,114 @@ func (r *TaskReconciler) processToolCalls(ctx context.Context, task *acp.Task) (
 			allCompleted = false
 			break
 		}
+
+		// Additionally check for empty or missing results
+		if tc.Status.Result == "" {
+			allHaveValidResults = false
+			missingResultsCount++
+			logger.Info("Tool call missing result",
+				"toolCallID", tc.Spec.ToolCallID,
+				"toolCallName", tc.Name,
+				"status", tc.Status.Status,
+				"phase", tc.Status.Phase)
+		}
 	}
 
+	// If not all completed, just requeue
 	if !allCompleted {
 		return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 	}
 
-	// All tool calls are completed, append results to context window
-	for _, tc := range toolCalls.Items {
-		task.Status.ContextWindow = append(task.Status.ContextWindow, acp.Message{
-			Role:       "tool",
-			Content:    tc.Status.Result,
-			ToolCallID: tc.Spec.ToolCallID,
-		})
+	// If all completed but some are missing results, log an error and requeue
+	if !allHaveValidResults {
+		logger.Error(fmt.Errorf("tool calls completed but %d missing results", missingResultsCount),
+			"Found tool calls without results",
+			"toolCallRequestId", task.Status.ToolCallRequestID,
+			"toolCallCount", len(toolCalls.Items),
+			"missingResultsCount", missingResultsCount)
+
+		// We'll requeue with a slightly longer delay to allow for eventual consistency
+		return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+	}
+
+	// All tool calls are completed with valid results
+	// First, find the last assistant message with tool calls
+	var assistantMessageIndex = -1
+	for i := len(task.Status.ContextWindow) - 1; i >= 0; i-- {
+		msg := task.Status.ContextWindow[i]
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			assistantMessageIndex = i
+			break
+		}
+	}
+
+	if assistantMessageIndex == -1 {
+		// This shouldn't happen, log an error
+		logger.Error(fmt.Errorf("no assistant message with tool calls found"),
+			"Cannot find assistant message with tool calls",
+			"contextWindowLength", len(task.Status.ContextWindow))
+
+		// Append results to end as fallback behavior
+		for _, tc := range toolCalls.Items {
+			task.Status.ContextWindow = append(task.Status.ContextWindow, acp.Message{
+				Role:       "tool",
+				Content:    tc.Status.Result,
+				ToolCallID: tc.Spec.ToolCallID,
+			})
+		}
+	} else {
+		// Get the assistant message with tool calls
+		assistantMsg := task.Status.ContextWindow[assistantMessageIndex]
+
+		// Create a map of tool call IDs to their index in the assistantMsg.ToolCalls
+		toolCallOrder := make(map[string]int)
+		for i, tc := range assistantMsg.ToolCalls {
+			toolCallOrder[tc.ID] = i
+		}
+
+		// Sort tool calls to match the order in the assistant message
+		sortedToolCalls := make([]*acp.ToolCall, len(toolCalls.Items))
+		for i := range sortedToolCalls {
+			sortedToolCalls[i] = nil
+		}
+
+		// Place each tool call in the sorted array based on its order in the assistant message
+		for i, tc := range toolCalls.Items {
+			if idx, ok := toolCallOrder[tc.Spec.ToolCallID]; ok && idx < len(sortedToolCalls) {
+				sortedToolCalls[idx] = &toolCalls.Items[i]
+			} else {
+				// If we can't find the tool call ID in the assistant message,
+				// just append it to the end
+				sortedToolCalls = append(sortedToolCalls, &toolCalls.Items[i])
+			}
+		}
+
+		// Build a new context window that interleaves the assistant message with tool calls
+		// and their corresponding tool responses
+		newContextWindow := task.Status.ContextWindow[:assistantMessageIndex]
+		newContextWindow = append(newContextWindow, assistantMsg)
+
+		// Add tool responses in the correct order
+		for _, tc := range sortedToolCalls {
+			if tc != nil {
+				newContextWindow = append(newContextWindow, acp.Message{
+					Role:       "tool",
+					Content:    tc.Status.Result,
+					ToolCallID: tc.Spec.ToolCallID,
+				})
+			}
+		}
+
+		// Replace the original context window with the reordered one
+		task.Status.ContextWindow = newContextWindow
 	}
 
 	// Update status
 	task.Status.Phase = acp.TaskPhaseReadyForLLM
 	task.Status.Status = acp.TaskStatusTypeReady
-	task.Status.StatusDetail = "All tool calls completed, ready to send tool results to LLM"
+	task.Status.StatusDetail = "All tool calls completed with valid results, ready to send to LLM"
 	task.Status.Error = "" // Clear previous error
-	r.recorder.Event(task, corev1.EventTypeNormal, "AllToolCallsCompleted", "All tool calls completed")
+	r.recorder.Event(task, corev1.EventTypeNormal, "AllToolCallsCompleted", "All tool calls completed with valid results")
 
 	if err := r.Status().Update(ctx, task); err != nil {
 		logger.Error(err, "Failed to update Task status")
@@ -642,9 +734,26 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// Step 4: Check for unexpected phase
-	if task.Status.Phase != acp.TaskPhaseReadyForLLM {
+	if task.Status.Phase != acp.TaskPhaseReadyForLLM &&
+		task.Status.Phase != acp.TaskPhaseSendContextWindowToLLM {
 		logger.Info("Task in unknown phase", "phase", task.Status.Phase)
 		return ctrl.Result{}, nil
+	}
+
+	// Handle the ReadyForLLM phase by transitioning to SendContextWindowToLLM
+	if task.Status.Phase == acp.TaskPhaseReadyForLLM {
+		// Transition to SendContextWindowToLLM to prevent double-sending
+		statusUpdate.Status.Phase = acp.TaskPhaseSendContextWindowToLLM
+		statusUpdate.Status.StatusDetail = "Preparing to send context window to LLM"
+
+		// Update status to new phase and then requeue
+		if err := r.Status().Update(ctx, statusUpdate); err != nil {
+			logger.Error(err, "Failed to update Task status to SendContextWindowToLLM")
+			return ctrl.Result{}, err
+		}
+
+		logger.Info("Transitioned to SendContextWindowToLLM phase", "name", task.Name)
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Step 5: Get API credentials (LLM is returned but not used)
