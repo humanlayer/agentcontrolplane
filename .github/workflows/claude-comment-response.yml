@@ -15,28 +15,27 @@ jobs:
           prompt: "${{ github.event.comment.body }}"
 
           # Define which tools Claude can use
-          allowed_tools: [
+          allowed_tools: |-
             # Git inspection commands (read-only)
-            "Bash(git status)",
-            "Bash(git log)",
-            "Bash(git show)",
-            "Bash(git blame)",
-            "Bash(git ls-files)",
-            "Bash(git branch)",
-            "Bash(git tag)",
-            "Bash(git diff)",
+            Bash(git status)
+            Bash(git log)
+            Bash(git show)
+            Bash(git blame)
+            Bash(git ls-files)
+            Bash(git branch)
+            Bash(git tag)
+            Bash(git diff)
 
             # File modifications 
-            "Bash(git add)",
-            "Bash(git commit)",
+            Bash(git add)
+            Bash(git commit)
             
             # File exploration tools
-            "View",        # Read file contents
-            "Edit",        # Edit files
-            "GlobTool",    # Find files by pattern
-            "GrepTool",    # Search file contents
-            "BatchTool"    # Run multiple tools in parallel
-          ]
+            View        # Read file contents
+            Edit        # Edit files
+            GlobTool    # Find files by pattern
+            GrepTool    # Search file contents
+            BatchTool   # Run multiple tools in parallel
 
           # Maximum number of conversation turns
           max_turns: 10

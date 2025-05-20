@@ -22,21 +22,20 @@ jobs:
           prompt: "Review the PR changes. Focus on code quality, potential bugs, and performance issues. Suggest improvements where appropriate. Pay special attention to Kubernetes operator patterns and Go best practices according to the CLAUDE.md file."
 
           # Limited tools for safer review operations
-          allowed_tools: [
+          allowed_tools: |-
             # Git inspection commands (read-only)
-            "Bash(git status)",
-            "Bash(git log)",
-            "Bash(git diff --name-only HEAD~1)",
-            "Bash(git diff HEAD~1)",
-            "Bash(git show)",
-            "Bash(git blame)",
+            Bash(git status)
+            Bash(git log)
+            Bash(git diff --name-only HEAD~1)
+            Bash(git diff HEAD~1)
+            Bash(git show)
+            Bash(git blame)
             
             # File exploration tools
-            "View",        # Read file contents
-            "GlobTool",    # Find files by pattern
-            "GrepTool",    # Search file contents
-            "BatchTool"    # Run multiple tools in parallel
-          ]
+            View        # Read file contents
+            GlobTool    # Find files by pattern
+            GrepTool    # Search file contents
+            BatchTool   # Run multiple tools in parallel
 
           # Timeout after 15 minutes
           timeout_minutes: 15
