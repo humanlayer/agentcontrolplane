@@ -6,7 +6,7 @@ on:
 
 jobs:
   create-pr:
-    # Only run if the comment mentions @claude create pr or similar
+    # Only run if the comment mentions specific PR creation prompts
     if: >
       contains(github.event.comment.body, '@claude create pr') || 
       contains(github.event.comment.body, '@claude create a pr') || 
@@ -17,11 +17,8 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-      discussions: write
-      id-token: write
-      statuses: write
-      actions: write
     steps:
+      # Simply checking out the repository is sufficient
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -51,44 +48,12 @@ jobs:
       - name: Claude PR Creation
         uses: anthropics/claude-code-action@beta
         with:
-          # Your GitHub token for API operations
+          # Your Anthropic API key
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+          # Explicitly set the trigger phrase and provide github token
+          trigger_phrase: "@claude"
           github_token: ${{ secrets.GITHUB_TOKEN }}
           
-          # Pass the comment text as the prompt
-          direct_prompt: "${{ github.event.comment.body }}"
-
-          # Define which tools Claude can use
-          allowed_tools: |-
-            # Git inspection commands
-            Bash(git status)
-            Bash(git log)
-            Bash(git show)
-            Bash(git blame)
-            Bash(git reflog)
-            Bash(git stash list)
-            Bash(git ls-files)
-            Bash(git branch)
-            Bash(git tag)
-            Bash(git diff)
-            
-            # Git modification commands
-            Bash(git checkout -b)
-            Bash(git add)
-            Bash(git commit)
-            Bash(git push)
-            
-            # GitHub CLI commands for PR creation
-            Bash(gh pr create)
-            
-            # File exploration and modification tools
-            View        # Read file contents
-            Edit        # Edit files
-            GlobTool    # Find files by pattern
-            GrepTool    # Search file contents
-            BatchTool   # Run multiple tools in parallel
-          
-          # Timeout after 30 minutes for potentially complex implementations
+          # Timeout for execution (longer for PR creation)
           timeout_minutes: 30
-          
-          # Your Anthropic API key (stored as a GitHub secret)
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
