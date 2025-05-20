@@ -50,8 +50,6 @@ jobs:
             GrepTool    # Search file contents
             BatchTool   # Run multiple tools in parallel
 
-          # Maximum number of conversation turns
-          max_turns: 10
           
           # Timeout after 20 minutes
           timeout_minutes: 20
