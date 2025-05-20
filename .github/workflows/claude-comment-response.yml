@@ -1,0 +1,34 @@
+name: Claude Comment Response
+on:
+  issue_comment:
+    types: [created]  # Triggers when someone comments on an issue or PR
+
+jobs:
+  respond-to-claude-mention:
+    # Only run if the comment mentions @claude
+    if: contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      # Simply checking out the repository is sufficient
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get full history for accurate diffs
+          
+      - name: Claude Response
+        uses: anthropics/claude-code-action@beta
+        with:
+          # Your Anthropic API key
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+          # Explicitly set the trigger phrase and provide github token
+          trigger_phrase: "@claude"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          
+          # Timeout for execution
+          timeout_minutes: 20

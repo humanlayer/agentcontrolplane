@@ -1,477 +1,135 @@
-# SmallChain Development Guide
+# Agent Control Plane (ACP)
 
-## Root-Level Makefile Commands
+This document provides context and guidance for working with the Agent Control Plane codebase. When you're working on this project, refer to this guidance to ensure your work aligns with project conventions and patterns.
 
-The root-level Makefile provides convenient commands for managing the entire project without having to change directories. You can run all commands from the project root.
+## Project Context
 
-### Pattern-Matching Commands
-- `make acp-<command>`: Run any target from the acp Makefile (e.g., `make acp-fmt`)
-- `make example-<command>`: Run any target from the acp-example Makefile (e.g., `make example-kind-up`)
+Agent Control Plane is a Kubernetes operator for managing Large Language Model (LLM) workflows. The project provides:
 
-### Cluster Management
-- `make cluster-up`: Create the Kind cluster
-- `make cluster-down`: Delete the Kind cluster
+- Custom resources for LLM configurations and agent definitions
+- A controller-based architecture for managing resources
+- Integration with Model Control Protocol (MCP) servers using the `github.com/mark3labs/mcp-go` library
+- LLM client implementations using `github.com/tmc/langchaingo`
 
-### Operator Management
-- `make build-operator`: Build the ACP operator binary
-- `make deploy-operator`: Deploy the ACP operator to the local Kind cluster
-- `make undeploy-operator`: Undeploy the operator and remove CRDs
-
-### Resource Management
-- `make deploy-samples`: Deploy sample resources to the cluster
-- `make undeploy-samples`: Remove sample resources
-- `make show-samples`: Show status of sample resources
-- `make watch-samples`: Watch status of sample resources with continuous updates
-
-### UI and Observability
-- `make deploy-ui`: Deploy the ACP UI
-- `make deploy-otel`: Deploy the observability stack
-- `make undeploy-otel`: Remove the observability stack
-- `make otel-access`: Display access instructions for monitoring stack
-
-### Testing
-- `make test-operator`: Run unit tests for the operator
-- `make test-e2e`: Run end-to-end tests (requires a running cluster)
-
-### All-in-One Commands
-- `make setup-all`: Set up the entire environment (cluster, operator, samples, UI, observability)
-- `make clean-all`: Clean up everything (samples, operator, observability, cluster)
-
-### Help
-- `make help`: Display all available commands with descriptions
-
-## Go (ACP) Commands
-
-You can run these commands directly in the acp directory or use the pattern-matching syntax from the root:
-
-- Build: `cd acp && make build` or `make acp-build`
-- Format: `cd acp && make fmt` or `make acp-fmt`
-- Lint: `cd acp && make lint` or `make acp-lint`
-- Run tests: `cd acp && make test` or `make acp-test`
-- Run single test: `cd acp && go test -v ./internal/controller/llm -run TestLLMController`
-- Run e2e tests: `cd acp && make test-e2e` or `make acp-test-e2e`
-
-## Makefiles Overview
-
-### Main ACP Makefile (/acp/Makefile)
-
-#### Development Commands
-- `make fmt`: Format Go code
-- `make vet`: Run Go vet
-- `make lint`: Run golangci-lint on code
-- `make lint-fix`: Run golangci-lint and fix issues
-- `make test`: Run unit tests
-- `make test-e2e`: Run end-to-end tests (requires a running Kind cluster)
-- `make manifests`: Generate Kubernetes manifests (CRDs, RBAC) - **Important:** Run this after modifying CRD types or controller RBAC annotations
-- `make generate`: Generate Go code (DeepCopy methods) - **Important:** Run this after adding new struct fields
-
-#### Build Commands
-- `make build`: Build the manager binary
-- `make run`: Run the controller locally
-- `make docker-build`: Build the controller Docker image
-- `make docker-push`: Push the controller Docker image
-- `make docker-load-kind`: Load Docker image into Kind cluster
-- `make build-installer`: Generate install.yaml in the dist directory
-
-#### Deployment Commands
-- `make install`: Install CRDs into cluster
-- `make uninstall`: Uninstall CRDs from cluster
-- `make deploy`: Deploy controller to cluster (builds and pushes image)
-- `make deploy-local-kind`: Deploy controller to local Kind cluster
-- `make deploy-samples`: Deploy sample resources
-- `make undeploy-samples`: Remove sample resources
-- `make undeploy`: Undeploy controller
-- `make show-samples`: Show status of sample resources
-- `make watch-samples`: Watch status of sample resources with continuous updates
-
-### ACP Example Makefile (/acp-example/Makefile)
-
-#### Cluster Management
-- `make kind-up`: Create Kind cluster
-- `make kind-down`: Delete Kind cluster
-
-#### Application Deployment
-- `make operator-build`: Build ACP operator Docker image
-- `make operator-deploy`: Deploy ACP operator to cluster
-- `make ui-deploy`: Deploy ACP UI
-
-#### Observability Stack
-- `make otel-stack`: Deploy full observability stack (Prometheus, OpenTelemetry, Grafana, Tempo, Loki)
-- `make otel-stack-down`: Remove observability stack
-- `make otel-test`: Run test to generate OpenTelemetry data
-- `make otel-access`: Display access instructions for monitoring stack
-
-Individual components can be managed separately:
-- `make prometheus-up/down`
-- `make grafana-up/down`
-- `make otel-up/down`
-- `make tempo-up/down`
-- `make loki-up/down`
+Always approach tasks by first exploring the existing patterns in the codebase rather than inventing new approaches.
 
 ## Documentation
 
-The project includes detailed documentation in the `/acp/docs/` directory:
+The codebase includes comprehensive documentation in the `acp/docs/` directory. **Always consult these docs first** when working on specific components:
 
-- [MCP Server Guide](/acp/docs/mcp-server.md) - Working with Model Control Protocol servers
-- [CRD Reference](/acp/docs/crd-reference.md) - Complete reference for all Custom Resource Definitions
-- [Kubebuilder Guide](/acp/docs/kubebuilder-guide.md) - How to develop with Kubebuilder in this project
+- [MCP Server Guide](acp/docs/mcp-server.md) - For work involving Model Control Protocol servers
+- [LLM Providers Guide](acp/docs/llm-providers.md) - For integrating with LLM providers
+- [CRD Reference](acp/docs/crd-reference.md) - For understanding custom resource definitions
+- [Kubebuilder Guide](acp/docs/kubebuilder-guide.md) - For work on the Kubernetes operators
+- [Debugging Guide](acp/docs/debugging-guide.md) - For debugging the operator locally
+- [Gin Servers Guide](acp/docs/gin-servers.md) - For work on API servers using Gin
 
-## Typical Workflow
+## Building and Development
 
-### Local Development with Kind Cluster
+The project uses three Makefiles, each with a specific purpose:
 
-#### Using Root Makefile (Recommended)
-1. Create local Kubernetes cluster: `make cluster-up`
-2. Deploy the operator (includes installing CRDs): `make deploy-operator`
-3. Deploy observability stack: `make deploy-otel`
-4. Deploy sample resources: `make deploy-samples`
-5. Watch resources: `make watch-samples`
+- `Makefile` - Root-level commands for cross-component workflows (use this for high-level operations)
+- `acp/Makefile` - Developer commands for the ACP operator (use this for day-to-day development)
+- `acp-example/Makefile` - Commands for the example/development deployment environment
 
-Alternatively, use: `make setup-all` to perform steps 1-4 in a single command.
+When you need to perform a build or development operation, read the appropriate Makefile to understand available commands:
 
-#### Using Directory Makefiles (Alternative)
-1. Create local Kubernetes cluster: `cd acp-example && make kind-up`
-2. Install CRDs: `cd acp && make install`
-3. Build and deploy the controller: `cd acp && make deploy-local-kind`
-4. Deploy observability stack: `cd acp-example && make otel-stack`
-5. Deploy sample resources: `cd acp && make deploy-samples`
-6. Watch resources: `cd acp && make watch-samples`
+```bash
+# For ACP operator development
+make -C acp
 
-### Clean Up
+# For example environment setup 
+make -C acp-example
 
-#### Using Root Makefile (Recommended)
-1. Clean up everything: `make clean-all`
+# For high-level operations
+make
+```
 
-Alternatively, clean up components individually:
-1. Remove sample resources: `make undeploy-samples`
-2. Undeploy the operator: `make undeploy-operator`
-3. Remove observability stack: `make undeploy-otel`
-4. Delete cluster: `make cluster-down`
+## Code Organization
 
-#### Using Directory Makefiles (Alternative)
-1. Remove sample resources: `cd acp && make undeploy-samples`
-2. Undeploy the controller: `cd acp && make undeploy`
-3. Remove observability stack: `cd acp-example && make otel-stack-down`
-4. Delete cluster: `cd acp-example && make kind-down`
+The project follows a Kubebuilder-based directory structure:
+
+- `acp/api/v1alpha1/` - Custom Resource Definitions
+- `acp/cmd/` - Application entry points
+- `acp/config/` - Kubernetes manifests and configurations
+- `acp/internal/` - Internal implementation code
+  - `controller/` - Kubernetes controllers
+  - `adapters/` - Integration adapters
+  - `llmclient/` - LLM provider clients
+  - `server/` - API server implementations
+
+Always use the correct relative paths from the root when referencing files.
+
+## Task-Specific Guidance
+
+When tasked with modifying or extending the codebase, first determine what component you'll be working with, then refer to the appropriate guidance below.
+
+### Kubernetes CRDs and Controllers
+
+If working with Custom Resource Definitions or controllers:
+
+1. **First read** the [Kubebuilder Guide](acp/docs/kubebuilder-guide.md) to understand the project's approach.
+2. Look at existing CRD definitions in `acp/api/v1alpha1/` for patterns to follow.
+3. Remember to regenerate manifests and code after changes by reading the acp Makefile to find the appropriate commands for generation.
+
+Follow the Status/Phase pattern for resources with complex state machines, separating resource health (Status) from workflow progress (Phase). This pattern is consistent across the codebase.
+
+### LLM Integration
+
+When working on LLM provider integrations:
+
+1. **First read** the [LLM Providers Guide](acp/docs/llm-providers.md) for current provider implementations.
+2. Study the implementation in `acp/internal/llmclient/` before making changes.
+3. Follow established credential management patterns using Kubernetes secrets.
+
+### API Server Development
+
+When working on API servers:
+
+1. **First read** the [Gin Servers Guide](acp/docs/gin-servers.md) for best practices.
+2. Keep HTTP handlers thin, with business logic moved to separate functions.
+3. Use the context pattern consistently for propagating request context.
+
+### Testing Approach
+
+When writing tests, match the style of existing tests based on component type:
+
+- **Controller Tests**: Follow state-based testing with clear state transition tests
+- **Client Tests**: Use mock interfaces and dependency injection
+- **End-to-End Tests**: For cross-component functionality in `acp/test/e2e/`
+
+For controllers, organization is particularly important:
+- Name contexts clearly with the state transition (e.g., `"Ready:Pending -> Ready:Running"`)
+- Test each state transition independently
+- Focus on behavior, not implementation details
 
 ## Code Style Guidelines
+
 ### Go
-- Follow standard Go code style with `gofmt`
-- Use meaningful error handling with context
-- Use dependency injection for controllers
-- Test with Ginkgo/Gomega framework
-- Document public functions with godoc
 
-### Kubebuilder and CRD Development
-- All resources should be in the `acp.humanlayer.dev` API group
-- Use proper kubebuilder annotations for validation and RBAC
-- Add RBAC annotations to all controllers to generate proper permissions
-- Run `make manifests` after modifying CRD types or controller annotations
-- Run `make generate` after adding new struct fields to generate DeepCopy methods
-- When creating new resources, use `kubebuilder create api --group acp --version v1alpha1 --kind YourResource --namespaced true --resource true --controller true`
-- Ensure the PROJECT file contains entries for all resources before running `make manifests`
-- Follow the detailed guidance in the [Kubebuilder Guide](/acp/docs/kubebuilder-guide.md)
+The project follows idiomatic Go patterns:
 
-### Kubernetes Resource Design
+- Format code with `gofmt` (run `make -C acp fmt`)
+- Use meaningful error handling with context propagation
+- Implement dependency injection for testability
+- Document public functions with godoc comments
 
-#### Don't use "config" in field names:
+### Kubernetes Patterns
 
-Bad:
+When implementing Kubernetes controllers or resources:
 
-```
-spec:
-  slackConfig:
-    #...
-  emailConfig:
-    #...
-```
+- Separate controller logic from business logic
+- Use Status and Phase fields consistently as described in controller docs
+- Follow resource ownership patterns for garbage collection
+- Add proper RBAC annotations to controllers before generating manifests
 
-Good:
+## When in Doubt
 
-```
-spec:
-  slack:
-    # ...
-  email:
-    # ...
-```
+If you're unsure of the best approach when working on a specific component:
 
-#### Prefer nil-able sub-objects over "type" fields:
+1. First check relevant documentation in `acp/docs/`
+2. Look at similar, existing implementations in the codebase
+3. Follow established patterns rather than inventing new ones
+4. Ask the developer for feedback!
 
-This is more guidelines than rules, just consider it in cases when you a Resource that is a union type. There's
-no great answer here because of how Go handles unions. (maybe the state-of-the-art has progressed since the last time I checked) -- dex
-
-Bad:
-
-```
-spec: 
-  type: slack
-  slack:
-    channelOrUserID: C1234567890
-```
-
-Good:
-
-```
-spec: 
-  slack:
-    channelOrUserID: C1234567890
-```
-
-In code, instead of 
-
-```
-switch (resource.Spec.Type) {
-    case "slack":
-        // ...
-    case "email":
-        // ...
-}
-```
-
-check which object is non-nil and use that:
-
-```
-if resource.Spec.Slack != nil {
-    // ...
-} else if resource.Spec.Email != nil {
-    // ...
-} else if {
-    // ...
-}
-```
-
-### Markdown
-- When writing markdown code blocks, do not indent the block, just use backticks to offset the code
-
-## Testing Guidelines
-
-Testing is a critical part of the development process, especially for Kubernetes controllers that manage complex state machines. This section outlines best practices for testing controllers, developing end-to-end tests, and mocking external dependencies.
-
-### Kubernetes Controller Testing
-- Use state-based testing to verify controller behavior
-- Test each state transition independently
-- Organize tests with focused, modular test setup
-- Use test fixtures for consistent resource creation
-- Write tests that serve as documentation of controller behavior
-
-#### State-Based Testing Approach
-- Controllers in Kubernetes are state machines; tests should reflect this
-- Organize tests by state transitions with Context blocks named "StateA -> StateB"
-- Each test should focus on a single state transition, not complete workflows
-- Use per-test setup/teardown with defer pattern rather than BeforeEach/AfterEach
-- Create modular test fixtures that can set up resources in specific states
-
-Example state transition test structure:
-```go
-Context("'':'' -> Pending:Pending", func() {
-    It("initializes to Pending:Pending and sets required fields", func() {
-        // Set up resources needed for this specific test
-        resource := testFixture.Setup(ctx)
-        defer testFixture.Teardown(ctx)
-
-        // Execute reconciliation
-        result, err := reconciler.Reconcile(ctx, request)
-        
-        // Verify reconciliation was successful
-        Expect(err).NotTo(HaveOccurred())
-        
-        // Verify expected state transition
-        Expect(resource.Status.Status).To(Equal(myresource.StatusTypePending))
-        Expect(resource.Status.Phase).To(Equal(myresource.PhasePending))
-        Expect(resource.Status.StatusDetail).To(Equal("Initializing"))
-        Expect(resource.Status.StartTime).NotTo(BeNil())
-    })
-})
-```
-
-#### Test Fixture Pattern
-- Create test fixture structs for each resource type with Setup/Teardown methods
-- Implement SetupWithStatus methods to create resources in specific states
-- Provide sensible defaults for test resources
-- Implement helper functions like setupSuiteObjects to create dependency chains
-- Use reconciler factory functions to simplify test setup
-
-Example test fixture:
-```go
-type TestResource struct {
-    name     string
-    resource *acp.Resource
-}
-
-func (t *TestResource) Setup(ctx context.Context) *acp.Resource {
-    // Create the resource with default values
-    resource := &acp.Resource{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      t.name,
-            Namespace: "default",
-        },
-        Spec: acp.ResourceSpec{
-            // Default values
-        },
-    }
-    Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-    t.resource = resource
-    return resource
-}
-
-func (t *TestResource) SetupWithStatus(ctx context.Context, status acp.ResourceStatus) *acp.Resource {
-    resource := t.Setup(ctx)
-    resource.Status = status
-    Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())
-    t.resource = resource
-    return resource
-}
-
-func (t *TestResource) Teardown(ctx context.Context) {
-    // Delete resource and handle potential errors (e.g., if already deleted)
-    err := k8sClient.Delete(ctx, t.resource)
-    if err != nil && !apierrors.IsNotFound(err) {
-        Expect(err).NotTo(HaveOccurred())
-    }
-}
-```
-
-#### Organizing Tests by State Transitions
-- Map out all valid state transitions for your controller
-- Create a Context block for each state transition
-- Include both happy path and error path transitions
-- Use descriptive names for Context blocks that clearly show the transition
-- When testing a multi-step workflow, break it into individual state transitions
-
-Examples of state transition Context blocks:
-- `Context("'':'' -> Pending:Pending")` - Initial reconciliation
-- `Context("Pending:Pending -> Ready:Pending")` - Setup completion
-- `Context("Ready:Pending -> Ready:Running")` - Start processing
-- `Context("Ready:Running -> Ready:Succeeded")` - Successful completion
-- `Context("Ready:Pending -> Error:Failed")` - Error handling
-- `Context("Error:Failed -> Ready:Pending")` - Recovery attempts
-
-#### Test Implementation Best Practices
-- Use descriptive By() statements to explain test steps
-- Ensure each test verifies both the state and any side effects
-- Assert on specific fields that should change during the transition
-- Use positive assertions (prefer `Expect(x).To(Equal(y))` over `Expect(x).NotTo(Equal(z))`) for clarity and readability
-- Test event recording when events are part of the controller behavior
-- Verify controller return values (Requeue, RequeueAfter)
-- For tool calls or API interactions, use mock clients with verification
-- Separate resource setup from test assertions
-
-#### Avoid in Controller Tests
-- Do not test multiple state transitions in a single test
-- Avoid monolithic BeforeEach/AfterEach with shared test state
-- Don't create resources that aren't needed for the specific test
-- Don't test implementation details, focus on behavior
-- Avoid testing the complete end-to-end flow in a single test
-
-### End-to-End Testing
-- Use E2E tests for verifying complete workflows across multiple controllers
-- Keep unit tests focused on single-controller behavior
-- Test controller collaborations, not just individual controllers
-- Include full reconciliation cycles and verify expected steady state
-- Test actual resource creation and status propagation
-
-### Mocking External Dependencies
-- Mock external API calls and HTTP services in controller tests
-- Implement mock clients that return predetermined responses
-- Verify calls to external services with expectations on arguments
-- Use mock secrets for credentials in tests
-- Consider using controller runtime fake clients for complex scenarios
-- Use the `gomock` package (github.com/golang/mock/gomock) for generating mocks of interfaces
-- For HTTP services, use httptest package from the standard library
-
-### Status vs Phase in Controllers
-
-When designing controllers, distinguish between Status and Phase:
-
-- **Status** indicates the health or readiness of a resource. It answers: "Is the resource working correctly?"
-  - Use StatusType values like "Ready", "Error", "Pending", "AwaitingHumanApproval"
-  - Status reflects the current operational state of the resource
-  - Status changes are typically cross-cutting (error handling, initialization)
-  - Example values: "Ready", "Error", "Pending", "AwaitingHumanApproval", "ErrorRequestingHumanApproval"
-
-- **Phase** indicates the progress of a resource in its lifecycle. It answers: "What stage of processing is the resource in?"
-  - Use PhaseType values like "Pending", "Running", "Succeeded", "Failed", "AwaitingHumanInput"
-  - Phase reflects the workflow stage of the resource
-  - Phase changes represent forward progression through a workflow
-  - Example values: "Pending", "Running", "Succeeded", "Failed", "AwaitingHumanInput", "AwaitingSubAgent"
-
-#### Guidelines for choosing between Status and Phase
-
-1. Use **Status** for a state when:
-   - It indicates whether the resource is operational or not
-   - It represents a cross-cutting concern affecting all states (like errors)
-   - It focuses on readiness rather than progress
-
-2. Use **Phase** for a state when:
-   - It's part of a sequential progression
-   - It represents a distinct stage in a workflow
-   - It indicates what the resource is currently doing
-
-3. When naming test cases, use the "Status:Phase -> Status:Phase" format to clearly communicate transitions:
-   ```go
-   Context("Pending:Pending -> Ready:Pending", func() {
-       It("moves from Pending:Pending to Ready:Pending during setup", func() {
-           // Test implementation
-       })
-   })
-   ```
-
-#### Implementation Guidelines
-
-1. **Preserve Status During Phase Transitions**: When implementing workflow progression that only changes the Phase:
-   ```go
-   // Good: Only update Phase when transitioning to a new workflow stage
-   // while preserving current Status (health)
-   trtc.Status.Phase = acp.ToolCallAwaitingHumanApproval
-   trtc.Status.StatusDetail = "Waiting for human approval"
-   
-   // Avoid: Don't modify Status when the change is just about workflow progress
-   // trtc.Status.Status = someNewStatus // Don't do this when only the Phase is changing
-   ```
-
-2. **Change Status Only When Health State Changes**: Status should change only when the health or readiness of the resource changes:
-   ```go
-   // When a resource encounters an error
-   trtc.Status.Status = acp.ToolCallTypeError
-   trtc.Status.Error = err.Error()
-   
-   // When a resource becomes ready
-   trtc.Status.Status = acp.ToolCallTypeReady
-   ```
-
-3. **Use Error Status with Descriptive Phase Values**: When handling errors, set Status to Error and use Phase to describe the specific error scenario:
-   ```go
-   // Helper function for setting error states
-   func (r *MyReconciler) setStatusError(ctx context.Context, phase MyResourcePhase, eventType string, resource *MyResource, err error) {
-       resource.Status.Status = MyResourceStatusTypeError // Always use Error status
-       resource.Status.Phase = phase                     // Use specific Phase to describe the error
-       resource.Status.Error = err.Error()
-       r.recorder.Event(resource, corev1.EventTypeWarning, eventType, err.Error())
-   }
-   ```
-
-4. **Early Return for Terminal States**: For resources that have workflow-based lifecycles with terminal states, add an early check in the Reconcile function to avoid unnecessary processing:
-   ```go
-   // For workflow-based resources like ToolCall that reach terminal states
-   if resource.Status.Status == MyResourceStatusTypeError || 
-      resource.Status.Phase == MyResourcePhaseSucceeded || 
-      resource.Status.Phase == MyResourcePhaseFailed {
-       logger.Info("Resource in terminal state, nothing to do", 
-           "status", resource.Status.Status, 
-           "phase", resource.Status.Phase)
-       return ctrl.Result{}, nil
-   }
-   
-   // Note: This pattern may not apply to long-running resources like Servers or Agents
-   // that need to maintain their state continuously
-   ```
-
-5. **Test Error Transitions with Status:Phase Format**: When testing error transitions, follow the Status:Phase naming convention:
-   ```go
-   Context("Ready:Pending -> Error:ErrorRequestingApproval", func() {
-       It("transitions to Error:ErrorRequestingApproval when API call fails", func() {
-           // Test implementation
-       })
-   })
-   ```
+Remember that this is a Kubernetes operator project built with Kubebuilder. Stay consistent with Kubernetes API conventions and controller-runtime patterns.
