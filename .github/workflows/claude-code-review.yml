@@ -1,7 +1,7 @@
 name: Claude Code Review
 
 on:
-  pull_request:
+  pull_request_target:  # Use pull_request_target instead of pull_request
     types: [opened, synchronize]  # Runs on new PRs and updates
 
 jobs:
@@ -21,17 +21,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch full history for accurate diffs
+          # Important: For pull_request_target, ref needs to be explicitly set to PR head
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Run Code Review with Claude
         id: code-review
         uses: anthropics/claude-code-action@beta
         with:
-          # Your GitHub token for API operations
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          
           # Define the review focus areas
           direct_prompt: "Review the PR changes. Focus on code quality, potential bugs, and performance issues. Suggest improvements where appropriate. Pay special attention to Kubernetes operator patterns and Go best practices according to the CLAUDE.md file."
 
+          # Your GitHub token for API operations
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          
           # Limited tools for safer review operations
           allowed_tools: |-
             # Git inspection commands (read-only)
