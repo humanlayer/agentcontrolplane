@@ -1,6 +1,3 @@
-// This file is brand new. Hadn't added it to the codebase yet. It was a pending PR to add to CLAUDE.md. It plus sluggish claude code is why I started tackling this rewriting of
-// CLAUDE.md so it's better for us. This should probably be a doc of it's own (which is why I added it here for now).
-
 ### Working with Gin servers
 
 Gin provides a powerful context object that be used to read request information and send down response information.
