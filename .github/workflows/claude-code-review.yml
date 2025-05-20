@@ -11,6 +11,7 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      id-token: write
     steps:
       # Simply checking out the repository is sufficient - the action handles the PR code
       - name: Checkout code
