@@ -41,7 +41,8 @@ type CreateTaskRequest struct {
 	UserMessage   string        `json:"userMessage,omitempty"`   // Optional if contextWindow is provided
 	ContextWindow []acp.Message `json:"contextWindow,omitempty"` // Optional if userMessage is provided
 	ResponseURL   string        `json:"responseURL,omitempty"`   // Optional, URL for receiving task results
-	ResponseUrl   string        `json:"responseUrl,omitempty"`   // Alternative casing for responseURL (deprecated)
+	// todo remove
+	ResponseUrl string `json:"responseUrl,omitempty"` // Alternative casing for responseURL (deprecated)
 }
 
 // CreateAgentRequest defines the structure of the request body for creating an agent
@@ -199,6 +200,8 @@ func (s *APIServer) createAgent(c *gin.Context) {
 	logger := log.FromContext(ctx)
 
 	// Read the raw data for validation
+	// why doesn't this use the builtin gin json binding?
+	// do we really want disallowUnknownFields that badly?
 	var rawData []byte
 	if data, err := c.GetRawData(); err == nil {
 		rawData = data
