@@ -25,33 +25,23 @@ jobs:
       # If running on a PR comment, we need to explicitly check out the PR branch
       - name: Checkout PR branch if needed
         if: github.event.issue.pull_request
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get the PR number from the issue object
           PR_NUMBER="${{ github.event.issue.number }}"
+          echo "Fetching PR #${PR_NUMBER} details..."
           
-          echo "Checking out PR #${PR_NUMBER}"
+          # Use the GitHub CLI to get PR details
+          gh pr view $PR_NUMBER --json headRefName,headRepository --jq '.headRefName, .headRepository.nameWithOwner'
           
-          # Get PR info
-          PR_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER")
+          # Checkout the PR using the GitHub CLI - this handles forks automatically
+          echo "Checking out PR #${PR_NUMBER}..."
+          gh pr checkout $PR_NUMBER
           
-          # Extract the PR branch ref and other details
-          PR_BRANCH=$(echo "$PR_INFO" | jq -r .head.ref)
-          PR_SHA=$(echo "$PR_INFO" | jq -r .head.sha)
-          PR_REPO=$(echo "$PR_INFO" | jq -r .head.repo.full_name)
-          
-          echo "PR branch is $PR_BRANCH from repo $PR_REPO with commit SHA $PR_SHA"
-          
-          # Fetch the PR as a local branch (works for forks too)
-          git fetch origin "pull/$PR_NUMBER/head:pr-$PR_NUMBER"
-          git checkout "pr-$PR_NUMBER"
-          
-          # Verify checkout
           echo "Current branch details:"
           git status
-          git rev-parse HEAD
+          git branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Claude Response
         uses: anthropics/claude-code-action@beta

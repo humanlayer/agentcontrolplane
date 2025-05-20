@@ -27,6 +27,27 @@ jobs:
         with:
           fetch-depth: 0  # Fetch full history for accurate diffs
           
+      # If running on a PR comment, we need to explicitly check out the PR branch
+      - name: Checkout PR branch if needed
+        if: github.event.issue.pull_request
+        run: |
+          # Get the PR number from the issue object
+          PR_NUMBER="${{ github.event.issue.number }}"
+          echo "Fetching PR #${PR_NUMBER} details..."
+          
+          # Use the GitHub CLI to get PR details
+          gh pr view $PR_NUMBER --json headRefName,headRepository --jq '.headRefName, .headRepository.nameWithOwner'
+          
+          # Checkout the PR using the GitHub CLI - this handles forks automatically
+          echo "Checking out PR #${PR_NUMBER}..."
+          gh pr checkout $PR_NUMBER
+          
+          echo "Current branch details:"
+          git status
+          git branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Claude PR Creation
         uses: anthropics/claude-code-action@beta
         with:
@@ -65,7 +86,6 @@ jobs:
             GlobTool    # Find files by pattern
             GrepTool    # Search file contents
             BatchTool   # Run multiple tools in parallel
-          
           
           # Timeout after 30 minutes for potentially complex implementations
           timeout_minutes: 30
