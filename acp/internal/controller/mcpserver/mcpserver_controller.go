@@ -47,29 +47,41 @@ type MCPServerReconciler struct {
 }
 
 // updateStatus updates the status of the MCPServer resource with the latest version
+// This method handles conflicts by retrying the status update up to 3 times
 func (r *MCPServerReconciler) updateStatus(ctx context.Context, req ctrl.Request, statusUpdate *acp.MCPServer) error {
 	logger := log.FromContext(ctx)
+	const maxRetries = 3
 
-	// Get the latest version of the MCPServer
-	var latestMCPServer acp.MCPServer
-	if err := r.Get(ctx, req.NamespacedName, &latestMCPServer); err != nil {
-		logger.Error(err, "Failed to get latest MCPServer before status update")
-		return err
+	var updateErr error
+	for i := 0; i < maxRetries; i++ {
+		// Get the latest version of the MCPServer
+		var latestMCPServer acp.MCPServer
+		if err := r.Get(ctx, req.NamespacedName, &latestMCPServer); err != nil {
+			logger.Error(err, "Failed to get latest MCPServer before status update")
+			return err
+		}
+
+		// Apply status updates to the latest version
+		latestMCPServer.Status.Connected = statusUpdate.Status.Connected
+		latestMCPServer.Status.Status = statusUpdate.Status.Status
+		latestMCPServer.Status.StatusDetail = statusUpdate.Status.StatusDetail
+		latestMCPServer.Status.Tools = statusUpdate.Status.Tools
+
+		// Update the status
+		updateErr = r.Status().Update(ctx, &latestMCPServer)
+		if updateErr == nil {
+			// Success - no need for more retries
+			return nil
+		}
+
+		// If conflict, wait briefly and retry
+		logger.Info("Status update conflict, retrying", "attempt", i+1, "error", updateErr)
+		time.Sleep(time.Millisecond * 100)
 	}
 
-	// Apply status updates to the latest version
-	latestMCPServer.Status.Connected = statusUpdate.Status.Connected
-	latestMCPServer.Status.Status = statusUpdate.Status.Status
-	latestMCPServer.Status.StatusDetail = statusUpdate.Status.StatusDetail
-	latestMCPServer.Status.Tools = statusUpdate.Status.Tools
-
-	// Update the status
-	if err := r.Status().Update(ctx, &latestMCPServer); err != nil {
-		logger.Error(err, "Failed to update MCPServer status")
-		return err
-	}
-
-	return nil
+	// If we got here, we failed all retries
+	logger.Error(updateErr, "Failed to update MCPServer status after retries")
+	return updateErr
 }
 
 // Reconcile processes the MCPServer resource and establishes a connection to the MCP server
@@ -158,7 +170,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Update status with tools
 	statusUpdate.Status.Connected = true
-	statusUpdate.Status.Status = "Ready"
+	statusUpdate.Status.Status = StatusReady
 	statusUpdate.Status.StatusDetail = fmt.Sprintf("Connected successfully with %d tools", len(tools))
 	statusUpdate.Status.Tools = tools
 	r.recorder.Event(&mcpServer, corev1.EventTypeNormal, "Connected", "MCP server connected successfully")

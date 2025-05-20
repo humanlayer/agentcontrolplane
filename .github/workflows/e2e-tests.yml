@@ -1,0 +1,148 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "acp/**"
+      - ".github/workflows/e2e-tests.yml"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "acp/**"
+      - ".github/workflows/e2e-tests.yml"
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  # E2E tests don't need to run unit tests again, those are run in the Go CI workflow
+  # We only need to build a Docker image for E2E tests
+  docker-build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: acp/go.sum
+
+      - name: Cache acp tools
+        uses: actions/cache@v4
+        with:
+          path: acp/bin
+          key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-acp-bin-
+
+      - name: Build Docker image
+        working-directory: acp
+        run: make docker-build IMG=example.com/acp:v0.0.1
+
+  e2e-test:
+    name: End-to-End Tests
+    needs: docker-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: acp/go.sum
+
+      - name: Cache acp tools
+        uses: actions/cache@v4
+        with:
+          path: acp/bin
+          key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-acp-bin-
+
+      # Setup KinD using the engineerd action with updated version
+      - name: Setup KinD
+        uses: engineerd/setup-kind@v0.5.0
+        with:
+          version: "v0.20.0"
+          name: "kind"
+          config: "acp-example/kind/kind-config.yaml"
+          wait: "300s"
+
+      - name: Verify KinD cluster
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+          echo "KinD cluster created successfully!"
+
+      # Setup cert-manager which is required for the controller
+      - name: Install cert-manager
+        run: |
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.2/cert-manager.yaml
+          kubectl wait --for=condition=Available --timeout=180s deployment/cert-manager-webhook -n cert-manager
+          echo "Cert-manager installed successfully!"
+
+      # Setup prometheus operator for metrics (using older version to avoid annotation size issue)
+      - name: Install Prometheus Operator
+        run: |
+          # Use an older version (v0.58.0) which doesn't have the annotation size issue
+          kubectl apply -f https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.58.0/bundle.yaml || true
+          # Wait with a longer timeout but don't fail if it's not ready
+          kubectl wait --for=condition=Available --timeout=300s deployment/prometheus-operator -n default || true
+          echo "Prometheus operator installation attempted - continuing regardless of outcome"
+
+      # Load Docker image into the kind cluster for the controller
+      - name: Load the controller image
+        run: |
+          # The image was already built in the previous job, now just load it into kind
+          # First check if image exists
+          docker image inspect example.com/acp:v0.0.1 || docker pull example.com/acp:v0.0.1 || (cd acp && make docker-build IMG=example.com/acp:v0.0.1)
+          # Load the image into the kind cluster
+          kind load docker-image example.com/acp:v0.0.1 --name kind
+          echo "Docker image loaded successfully!"
+          
+      # Run E2E tests
+      - name: Run e2e tests
+        working-directory: acp
+        timeout-minutes: 10
+        env:
+          # Set environment variables that might be needed by the tests
+          KUBECONFIG: /home/runner/.kube/config
+        run: |
+          echo "Running e2e tests..."
+          make test-e2e
+
+      # Upload test logs on failure for debugging
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-logs
+          path: |
+            /tmp/*.log
+            /home/runner/.kube/config
+          retention-days: 7
+
+      # Collect diagnostic information
+      - name: Collect diagnostic information
+        if: always()
+        run: |
+          echo "==== Kubernetes Nodes ===="
+          kubectl get nodes -o wide || true
+          
+          echo "==== Kubernetes Pods ===="
+          kubectl get pods -A || true
+          
+          echo "==== Pod Logs ===="
+          kubectl logs -l control-plane=controller-manager -n default || true
+          
+          echo "==== Events ===="
+          kubectl get events --sort-by='.lastTimestamp' -A || true

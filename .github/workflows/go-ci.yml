@@ -106,65 +106,18 @@ jobs:
         working-directory: acp
         run: make build
 
-  # E2E tests are temporarily disabled due to configuration issues
-  # 
-  # Issues encountered:
-  # 1. The e2e test suite has a hardcoded image name "example.com/acp:v0.0.1" in e2e_suite_test.go
-  # 2. The test expects controller-manager pods to be created in the acp-system namespace
-  # 3. Attempts to fix:
-  #    - Setting KIND_CLUSTER environment variable to match the KinD cluster name
-  #    - Modifying the Makefile to check for the correct cluster name
-  #    - Trying to use the same image name that's hardcoded in the tests
-  # 4. The controller-manager pods never get created successfully during CI
+  # E2E tests are now run in a separate workflow file: .github/workflows/e2e-tests.yml
+  # This provides several benefits:
+  # - Faster CI for regular pushes (as E2E tests can take several minutes)
+  # - Better isolation of test failures
+  # - Ability to trigger E2E tests independently via workflow_dispatch
+  # - Specialized configuration for Kubernetes components
   #
-  # TODO: 
-  # - Fix the e2e test configuration to work properly in CI
-  # - Consider making the test image name configurable instead of hardcoded
-  # - Debug why the controller-manager pods aren't being created/started correctly
-  #
-  # e2e-test:
-  #   name: E2E Tests
-  #   runs-on: ubuntu-latest
-  #   needs: [build]
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Set up Go
-  #       uses: actions/setup-go@v5
-  #       with:
-  #         go-version: '1.24'
-  #         cache: true
-  #         cache-dependency-path: acp/go.sum
-  #
-  #     - name: Setup KinD
-  #       uses: helm/kind-action@v1.9.0
-  #       with:
-  #         cluster_name: acp-example-cluster
-  #         config: acp-example/kind/kind-config.yaml
-  #
-  #     - name: Set timestamp
-  #       id: timestamp
-  #       run: echo "TIMESTAMP=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
-  #
-  #     - name: Fix test-e2e check for cluster
-  #       working-directory: acp
-  #       run: |
-  #         # Temporarily modify the Makefile to check for acp-example-cluster instead of 'kind'
-  #         sed -i 's/@kind get clusters | grep -q '"'"'kind'"'"'/@kind get clusters | grep -q '"'"'acp-example-cluster'"'"'/' Makefile
-  #
-  #     - name: Build and load controller image
-  #       working-directory: acp
-  #       env:
-  #         IMG: controller:${{ env.TIMESTAMP }}
-  #       run: make docker-build && kind load docker-image controller:${{ env.TIMESTAMP }} --name acp-example-cluster
-  #
-  #     - name: Run e2e tests
-  #       working-directory: acp
-  #       env:
-  #         KIND_CLUSTER: acp-example-cluster
-  #         IMG: controller:${{ env.TIMESTAMP }}
-  #       run: make test-e2e
+  # The e2e-tests.yml workflow addresses the previous issues:
+  # - Uses the exact image name expected by the tests: example.com/acp:v0.0.1
+  # - Properly configures the KinD cluster with the expected name 'kind'
+  # - Sets up required components like cert-manager and Prometheus
+  # - Provides detailed diagnostic output in case of failures
 
   docker:
     name: Docker Build
