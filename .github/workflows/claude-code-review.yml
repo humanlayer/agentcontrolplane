@@ -12,6 +12,8 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+    env:
+      OVERRIDE_GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
     steps:
       # Simply checking out the repository is sufficient - the action handles the PR code
       - name: Checkout code
@@ -19,8 +21,11 @@ jobs:
         with:
           fetch-depth: 0  # Get full history for accurate diffs
 
+
       - name: Run Code Review with Claude
         uses: anthropics/claude-code-action@beta
+        env:
+          OVERRIDE_GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
         with:
           # Your Anthropic API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
