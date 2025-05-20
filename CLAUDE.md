@@ -293,7 +293,7 @@ func (s *Server) createUser(c *gin.Context) {
 }
 ```
 
-you should ALWAYS move business logic out of gin handlers and into a separate function with a clean type signature. Merthods that handle business logic should not know about gin or http.
+you should ALWAYS move business logic out of gin handlers and into a separate function with a clean type signature. Methods that handle business logic should not know about gin or http.
 
 ```
 func createUser(ctx context.Context, user User) (*User, error) {
