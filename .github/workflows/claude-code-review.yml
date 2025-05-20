@@ -1,7 +1,7 @@
 name: Claude Code Review
 
 on:
-  pull_request_target:  # Use pull_request_target instead of pull_request
+  pull_request:
     types: [opened, synchronize]  # Runs on new PRs and updates
 
 jobs:
@@ -21,8 +21,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch full history for accurate diffs
-          # Important: For pull_request_target, ref needs to be explicitly set to PR head
-          ref: ${{ github.event.pull_request.head.sha }}
+
+      # Handle PR branch checkout for forks
+      - name: Checkout PR branch
+        run: |
+          # Get the PR number
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          echo "Checking out PR #${PR_NUMBER}..."
+          
+          # Use the GitHub CLI to checkout the PR
+          gh pr checkout $PR_NUMBER
+          
+          # Verify the checkout
+          echo "Current branch details:"
+          git branch
+          git status
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Code Review with Claude
         id: code-review
