@@ -21,11 +21,6 @@ jobs:
         with:
           fetch-depth: 0  # Get full history for accurate diffs
 
-      # Debug - let's see if our token is being set
-      - name: Debug token
-        run: |
-          echo "Token defined: ${{ env.OVERRIDE_GITHUB_TOKEN != '' }}"
-          echo "GITHUB_TOKEN defined: ${{ secrets.GITHUB_TOKEN != '' }}"
 
       - name: Run Code Review with Claude
         uses: anthropics/claude-code-action@beta
