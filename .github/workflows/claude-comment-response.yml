@@ -12,6 +12,9 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      discussions: write
+      id-token: write
+      statuses: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
