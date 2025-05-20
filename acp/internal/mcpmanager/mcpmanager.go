@@ -199,10 +199,22 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 			}
 		}
 
+		// Create a ToolAnnotation object to preserve the annotations from the MCP tool
+		var annotations *acp.ToolAnnotation
+		if tool.Annotations != nil {
+			annotations = &acp.ToolAnnotation{
+				ReadOnlyHint:     tool.Annotations.ReadOnlyHint,
+				DestructiveHint:  tool.Annotations.DestructiveHint,
+				IdempotentHint:   tool.Annotations.IdempotentHint,
+				OpenWorldHint:    tool.Annotations.OpenWorldHint,
+			}
+		}
+
 		tools = append(tools, acp.MCPTool{
 			Name:        tool.Name,
 			Description: tool.Description,
 			InputSchema: runtime.RawExtension{Raw: inputSchemaBytes},
+			Annotations: annotations,
 		})
 	}
 

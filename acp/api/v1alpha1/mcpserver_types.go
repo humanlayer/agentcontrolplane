@@ -86,6 +86,25 @@ const (
 	ResourceMemory ResourceName = "memory"
 )
 
+// ToolAnnotation contains metadata and hints about a tool's behavior
+type ToolAnnotation struct {
+	// If true, the tool does not modify its environment
+	// +optional
+	ReadOnlyHint *bool `json:"readOnlyHint,omitempty"`
+
+	// If true, the tool may perform destructive updates
+	// +optional
+	DestructiveHint *bool `json:"destructiveHint,omitempty"`
+
+	// If true, repeated calls with same args have no additional effect
+	// +optional
+	IdempotentHint *bool `json:"idempotentHint,omitempty"`
+
+	// If true, tool interacts with external entities
+	// +optional
+	OpenWorldHint *bool `json:"openWorldHint,omitempty"`
+}
+
 // MCPTool represents a tool provided by an MCP server
 type MCPTool struct {
 	// Name of the tool
@@ -100,6 +119,10 @@ type MCPTool struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	InputSchema runtime.RawExtension `json:"inputSchema,omitempty"`
+
+	// Annotations contains metadata and hints about the tool's behavior
+	// +optional
+	Annotations *ToolAnnotation `json:"annotations,omitempty"`
 }
 
 // MCPServerStatus defines the observed state of MCPServer

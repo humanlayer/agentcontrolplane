@@ -42,6 +42,10 @@ type ToolCallSpec struct {
 	// Arguments contains the arguments for the tool call
 	// +kubebuilder:validation:Required
 	Arguments string `json:"arguments"`
+
+	// ToolAnnotations contains metadata about the tool's behavior
+	// +optional
+	ToolAnnotations *ToolAnnotation `json:"toolAnnotations,omitempty"`
 }
 
 // ToolCallStatus defines the observed state of ToolCall

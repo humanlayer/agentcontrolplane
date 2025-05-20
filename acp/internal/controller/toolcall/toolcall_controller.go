@@ -1,9 +1,11 @@
 package toolcall
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -30,6 +33,11 @@ import (
 const (
 	DetailToolExecutedSuccess = "Tool executed successfully"
 	DetailInvalidArgsJSON     = "Invalid arguments JSON"
+	
+	// Response option names for tool approval
+	ApproveOption        = "approve"
+	ApproveSessionOption = "approve_session"
+	RejectOption         = "reject"
 )
 
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=toolcalls,verbs=get;list;watch;create;update;patch;delete
@@ -381,6 +389,23 @@ func (r *ToolCallReconciler) getContactChannel(ctx context.Context, channelName 
 	return &contactChannel, nil
 }
 
+// getParentTask retrieves the parent Task for a ToolCall to access task-level properties like responseURL
+func (r *ToolCallReconciler) getParentTask(ctx context.Context, tc *acp.ToolCall) (*acp.Task, error) {
+	logger := log.FromContext(ctx)
+	
+	// Get the parent Task
+	var task acp.Task
+	if err := r.Get(ctx, client.ObjectKey{
+		Namespace: tc.Namespace,
+		Name:      tc.Spec.TaskRef.Name,
+	}, &task); err != nil {
+		logger.Error(err, "Failed to get parent Task", "taskName", tc.Spec.TaskRef.Name)
+		return nil, fmt.Errorf("failed to get parent Task: %v", err)
+	}
+	
+	return &task, nil
+}
+
 func (r *ToolCallReconciler) getHumanLayerAPIKey(ctx context.Context, secretKeyRefName string, secretKeyRefKey string, tcNamespace string) (string, error) {
 	var secret corev1.Secret
 	err := r.Get(ctx, client.ObjectKey{
@@ -492,46 +517,159 @@ func (r *ToolCallReconciler) handlePendingApproval(ctx context.Context, tc *acp.
 		logger.Info("Missing ExternalCallID in AwaitingHumanApproval phase")
 		return ctrl.Result{}, nil, false
 	}
-
+	
+	// Get the parent task to check for responseURL
+	task, err := r.getParentTask(ctx, tc)
+	if err != nil {
+		logger.Error(err, "Failed to get parent Task", "taskName", tc.Spec.TaskRef.Name)
+		return ctrl.Result{}, err, true
+	}
+	
 	client := r.HLClientFactory.NewHumanLayerClient()
 	client.SetCallID(tc.Status.ExternalCallID)
 	client.SetAPIKey(apiKey)
-	// Fix: Ensure correct assignment for 3 return values
-	functionCall, _, err := client.GetFunctionCallStatus(ctx) // Assign *humanlayerapi.FunctionCallOutput, int, error
-	if err != nil {
-		// Log the error but attempt to requeue, as it might be transient
-		logger.Error(err, "Failed to get function call status from HumanLayer")
-		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil, true // Requeue after delay
-	}
-
-	// Check if functionCall is nil before accessing GetStatus
-	if functionCall == nil {
-		logger.Error(fmt.Errorf("GetFunctionCallStatus returned nil functionCall"), "HumanLayer API call returned unexpected nil object")
-		// Decide how to handle this - maybe requeue or set an error status
-		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil, true // Requeue for now
-	}
-
-	status := functionCall.GetStatus()
-
-	approved, ok := status.GetApprovedOk()
-
-	if !ok || approved == nil {
-		// Still pending, requeue
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil, true
-	}
-
-	if *approved {
-		// Approval received, update status to ReadyToExecuteApprovedTool
+	
+	// Check if we're using responseURL (human contact) or standard function call
+	// We need to know if this approval came from a human contact endpoint via responseURL
+	// or a regular function call approval
+	isHumanContactFlow := task.Spec.ResponseURL != "" && !strings.HasPrefix(tc.Status.ExternalCallID, "responseurl-")
+	
+	if isHumanContactFlow {
+		// This is a human contact flow
+		logger.Info("Polling human contact status", 
+			"toolName", tc.Spec.ToolRef.Name,
+			"callID", tc.Status.ExternalCallID)
+			
+		// Get human contact status from HumanLayer
+		humanContact, _, err := client.GetHumanContactStatus(ctx)
+		if err != nil {
+			logger.Error(err, "Failed to get human contact status from HumanLayer")
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil, true
+		}
+		
+		if humanContact == nil {
+			logger.Error(fmt.Errorf("GetHumanContactStatus returned nil"), "HumanLayer API call returned unexpected nil object")
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil, true
+		}
+		
+		status := humanContact.GetStatus()
+		
+		// Check if we have a response yet
+		response, ok := status.GetResponseOk()
+		if !ok || response == nil {
+			// Still waiting for response
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil, true
+		}
+		
+		// Human contact response received - treat as approval
+		logger.Info("Human contact response received",
+			"toolName", tc.Spec.ToolRef.Name,
+			"response", *response)
+			
+		// For human contact, we treat any response as an approval
+		// The response text contains the user's actual input
 		return r.updateTCStatus(ctx, tc,
 			acp.ToolCallStatusTypeReady,
 			acp.ToolCallPhaseReadyToExecuteApprovedTool,
-			"Ready to execute approved tool", "")
+			"Ready to execute tool with human response", *response)
+		
+	} else if strings.HasPrefix(tc.Status.ExternalCallID, "responseurl-") {
+		// This is a fallback ID for when we couldn't extract the real call ID
+		// We'll just requeue and hope we can get a valid response in the future
+		logger.Info("Using fallback polling for approval with placeholder callID", 
+			"toolName", tc.Spec.ToolRef.Name,
+			"callID", tc.Status.ExternalCallID)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil, true
+	} else {
+		// Standard function call approval flow
+		// Get approval status from HumanLayer function call API
+		functionCall, _, err := client.GetFunctionCallStatus(ctx)
+		if err != nil {
+			// Log the error but attempt to requeue, as it might be transient
+			logger.Error(err, "Failed to get function call status from HumanLayer")
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil, true // Requeue after delay
+		}
+	
+		// Check if functionCall is nil before accessing GetStatus
+		if functionCall == nil {
+			logger.Error(fmt.Errorf("GetFunctionCallStatus returned nil functionCall"), "HumanLayer API call returned unexpected nil object")
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil, true // Requeue for now
+		}
+	
+		status := functionCall.GetStatus()
+	
+		approved, ok := status.GetApprovedOk()
+		if !ok || approved == nil {
+			// Still pending, requeue
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil, true
+		}
+	}
+
+	// Get the response option that was selected (for session-level approval)
+	responseOption, responseOptionOk := status.GetResponseOptionOk()
+	
+	if *approved {
+		// Approval received
+		if responseOptionOk && responseOption != nil {
+			if *responseOption == ApproveSessionOption {
+				// Session-level approval - log this information
+				logger.Info("Tool received session-level approval", 
+					"toolName", tc.Spec.ToolRef.Name,
+					"responseOption", *responseOption)
+				
+				// TODO: In a future enhancement, we would store this in a session store
+				// This would allow tools with the same name to skip approval in the future
+				
+				return r.updateTCStatus(ctx, tc,
+					acp.ToolCallStatusTypeReady,
+					acp.ToolCallPhaseReadyToExecuteApprovedTool,
+					"Ready to execute tool with session-level approval", "")
+			} else if *responseOption == ApproveOption {
+				// Standard one-time approval
+				logger.Info("Tool received one-time approval",
+					"toolName", tc.Spec.ToolRef.Name,
+					"responseOption", *responseOption)
+					
+				return r.updateTCStatus(ctx, tc,
+					acp.ToolCallStatusTypeReady,
+					acp.ToolCallPhaseReadyToExecuteApprovedTool,
+					"Ready to execute approved tool", "")
+			} else {
+				// Unknown response option, but still approved
+				logger.Info("Tool received approval with unknown response option",
+					"toolName", tc.Spec.ToolRef.Name,
+					"responseOption", *responseOption)
+					
+				return r.updateTCStatus(ctx, tc,
+					acp.ToolCallStatusTypeReady,
+					acp.ToolCallPhaseReadyToExecuteApprovedTool,
+					"Ready to execute approved tool", "")
+			}
+		} else {
+			// No response option provided, but still approved
+			logger.Info("Tool received approval without response option",
+				"toolName", tc.Spec.ToolRef.Name)
+				
+			return r.updateTCStatus(ctx, tc,
+				acp.ToolCallStatusTypeReady,
+				acp.ToolCallPhaseReadyToExecuteApprovedTool,
+				"Ready to execute approved tool", "")
+		}
 	} else {
 		// Rejection received, update status to ToolCallRejected
+		comment := "No feedback provided"
+		if commentStr, ok := status.GetCommentOk(); ok && commentStr != nil {
+			comment = *commentStr
+		}
+		
+		logger.Info("Tool execution rejected",
+			"toolName", tc.Spec.ToolRef.Name,
+			"comment", comment)
+			
 		return r.updateTCStatus(ctx, tc,
 			acp.ToolCallStatusTypeSucceeded, // Succeeded because the rejection was processed
 			acp.ToolCallPhaseToolCallRejected,
-			"Tool execution rejected", fmt.Sprintf("User denied `%s` with feedback: %s", tc.Spec.ToolRef.Name, status.GetComment()))
+			"Tool execution rejected", fmt.Sprintf("User denied `%s` with feedback: %s", tc.Spec.ToolRef.Name, comment))
 	}
 }
 
@@ -569,6 +707,11 @@ func (r *ToolCallReconciler) handlePendingHumanInput(ctx context.Context, tc *ac
 func (r *ToolCallReconciler) requestHumanApproval(ctx context.Context, tc *acp.ToolCall,
 	contactChannel *acp.ContactChannel, apiKey string, mcpServer *acp.MCPServer,
 ) (ctrl.Result, error) {
+	// Get the parent task to check for responseURL
+	task, err := r.getParentTask(ctx, tc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	logger := log.FromContext(ctx)
 
 	// Start child span for the approval request process
@@ -611,22 +754,111 @@ func (r *ToolCallReconciler) requestHumanApproval(ctx context.Context, tc *acp.T
 		return result, errStatus // Return only Result and error
 	}
 
-	// Post to HumanLayer to request approval using approvalCtx
-	functionCall, statusCode, err := r.postToHumanLayer(approvalCtx, tc, contactChannel, apiKey)
-	if err != nil {
-		errorMsg := fmt.Errorf("HumanLayer request failed with status code: %d", statusCode)
+	var callId string
+	
+	// Check if parent task has responseURL - if so, send directly to that URL
+	if task.Spec.ResponseURL != "" {
+		// Create the approval request payload with response options
+		jsonData, err := createToolApprovalRequest(tc)
 		if err != nil {
-			errorMsg = fmt.Errorf("HumanLayer request failed with status code %d: %v", statusCode, err)
+			approvalSpan.RecordError(err)
+			approvalSpan.SetStatus(codes.Error, "Failed to create approval request")
+			result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+				"CreateRequestFailed", tc, err)
+			return result, errStatus
 		}
-		approvalSpan.RecordError(errorMsg)
-		approvalSpan.SetStatus(codes.Error, "HumanLayer request failed")
-		result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
-			"HumanLayerRequestFailed", tc, errorMsg)
-		return result, errStatus // Return only Result and error
+		
+		// Log the use of responseURL
+		logger.Info("Using responseURL for approval request", 
+			"taskName", task.Name,
+			"responseURL", task.Spec.ResponseURL)
+		approvalSpan.SetAttributes(attribute.String("acp.task.response_url", task.Spec.ResponseURL))
+		
+		// Create the HTTP request to the responseURL
+		req, err := http.NewRequestWithContext(approvalCtx, "POST", task.Spec.ResponseURL, bytes.NewBuffer(jsonData))
+		if err != nil {
+			approvalSpan.RecordError(err)
+			approvalSpan.SetStatus(codes.Error, "Failed to create HTTP request")
+			result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+				"CreateRequestFailed", tc, err)
+			return result, errStatus
+		}
+		
+		// Set headers
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "ACP-ToolCall-Controller")
+		
+		// Send the request
+		client := &http.Client{
+			Timeout: 5 * time.Second,
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			approvalSpan.RecordError(err)
+			approvalSpan.SetStatus(codes.Error, "Failed to send approval request")
+			result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+				"SendRequestFailed", tc, err)
+			return result, errStatus
+		}
+		defer resp.Body.Close()
+		
+		// Check response status
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			body, _ := io.ReadAll(resp.Body)
+			err := fmt.Errorf("HTTP error from responseURL (status %d): %s", resp.StatusCode, string(body))
+			approvalSpan.RecordError(err)
+			approvalSpan.SetStatus(codes.Error, "Approval request failed")
+			result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+				"ApprovalRequestFailed", tc, err)
+			return result, errStatus
+		}
+		
+		// Extract the call ID from the response
+		var responseData map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+			logger.Error(err, "Failed to decode response body")
+			// Still attempt to continue even if we couldn't decode the response
+		} else {
+			// Look for call_id in the response
+			if callIDValue, ok := responseData["call_id"]; ok {
+				if callIDStr, ok := callIDValue.(string); ok {
+					// Mark this call ID as a human contact call ID with a prefix
+					callId = "hc-" + callIDStr
+					logger.Info("Extracted human contact call ID from responseURL response", 
+						"toolName", tc.Spec.ToolRef.Name,
+						"callId", callId)
+				}
+			}
+		}
+		
+		// If we couldn't extract a call ID, log a warning but continue
+		if callId == "" {
+			logger.Info("Could not extract call ID from responseURL response, generating a placeholder",
+				"toolName", tc.Spec.ToolRef.Name,
+				"responseURL", task.Spec.ResponseURL)
+			callId = "responseurl-" + uuid.New().String()[:7]
+		}
+		
+	} else {
+		// Use standard HumanLayer client for approval
+		functionCall, statusCode, err := r.postToHumanLayer(approvalCtx, tc, contactChannel, apiKey)
+		if err != nil {
+			errorMsg := fmt.Errorf("HumanLayer request failed with status code: %d", statusCode)
+			if err != nil {
+				errorMsg = fmt.Errorf("HumanLayer request failed with status code %d: %v", statusCode, err)
+			}
+			approvalSpan.RecordError(errorMsg)
+			approvalSpan.SetStatus(codes.Error, "HumanLayer request failed")
+			result, errStatus := r.setStatusError(approvalCtx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+				"HumanLayerRequestFailed", tc, errorMsg)
+			return result, errStatus // Return only Result and error
+		}
+		
+		// Get callId from functionCall response
+		callId = functionCall.GetCallId()
 	}
 
 	// Update with call ID and requeue using approvalCtx
-	callId := functionCall.GetCallId()
 	tc.Status.ExternalCallID = callId
 	approvalSpan.SetAttributes(attribute.String("acp.humanlayer.call_id", callId)) // Add call ID to span
 	if err := r.Status().Update(approvalCtx, tc); err != nil {
@@ -702,18 +934,62 @@ func (r *ToolCallReconciler) handleMCPApprovalFlow(ctx context.Context, tc *acp.
 		return ctrl.Result{}, err, true
 	}
 
-	// If not an MCP tool or no approval needed, continue with normal processing
-	if mcpServer == nil || !needsApproval {
+	// If not an MCP tool, continue with normal processing
+	if mcpServer == nil {
+		return ctrl.Result{}, nil, false
+	}
+	
+	// Check if the tool has ReadOnlyHint set to true
+	if tc.Spec.ToolAnnotations != nil && tc.Spec.ToolAnnotations.ReadOnlyHint != nil && *tc.Spec.ToolAnnotations.ReadOnlyHint {
+		// Skip approval for tools that are explicitly marked as read-only
+		logger := log.FromContext(ctx)
+		logger.Info("Skipping approval for tool with ReadOnlyHint=true", 
+			"toolName", tc.Spec.ToolRef.Name,
+			"taskName", tc.Spec.TaskRef.Name)
+		return ctrl.Result{}, nil, false
+	}
+	
+	// If no approval channel is configured and tool is not marked read-only, continue with approval
+	if !needsApproval {
 		return ctrl.Result{}, nil, false
 	}
 
-	// Get contact channel and API key information
-	tcNamespace := tc.Namespace
-	contactChannel, err := r.getContactChannel(ctx, mcpServer.Spec.ApprovalContactChannel.Name, tcNamespace)
+	// Get parent task to check for responseURL
+	task, err := r.getParentTask(ctx, tc)
 	if err != nil {
 		result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
-			"NoContactChannel", tc, err)
+			"ParentTaskNotFound", tc, err)
 		return result, errStatus, true
+	}
+	
+	// Check if we should use the parent task's responseURL for approval
+	// This allows approval requests to be sent back to the original channel
+	var contactChannel *acp.ContactChannel
+	tcNamespace := tc.Namespace
+	
+	if task.Spec.ResponseURL != "" {
+		// Task has a responseURL, so look for an appropriate channel to use with it
+		// For now, we'll use the MCPServer's approval channel with the responseURL
+		contactChannel, err = r.getContactChannel(ctx, mcpServer.Spec.ApprovalContactChannel.Name, tcNamespace)
+		if err != nil {
+			result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+				"NoContactChannel", tc, err)
+			return result, errStatus, true
+		}
+		
+		// Log that we're using a responseURL with the approval flow
+		logger := log.FromContext(ctx)
+		logger.Info("Using task responseURL for approval", 
+			"taskName", task.Name, 
+			"responseURL", task.Spec.ResponseURL)
+	} else {
+		// No responseURL, use the standard MCPServer approval channel
+		contactChannel, err = r.getContactChannel(ctx, mcpServer.Spec.ApprovalContactChannel.Name, tcNamespace)
+		if err != nil {
+			result, errStatus := r.setStatusError(ctx, acp.ToolCallPhaseErrorRequestingHumanApproval,
+				"NoContactChannel", tc, err)
+			return result, errStatus, true
+		}
 	}
 
 	apiKey, err := r.getHumanLayerAPIKey(ctx,
@@ -946,6 +1222,44 @@ func (r *ToolCallReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// 9. Execute the appropriate tool type
 	return r.dispatchToolExecution(ctx, &tc, args)
+}
+
+// createToolApprovalRequest builds a human contact request with approval options
+func createToolApprovalRequest(tc *acp.ToolCall) ([]byte, error) {
+	// Generate a unique ID for the approval request
+	callID := uuid.New().String()
+	
+	// Create response options for approve/reject with session-level approval
+	responseOptions := []humanlayerapi.ResponseOption{
+		{
+			Name:        ApproveOption,
+			Title:       ptr.To("Approve"),
+			Description: ptr.To("Allow this tool to execute once"),
+		},
+		{
+			Name:        ApproveSessionOption,
+			Title:       ptr.To("Approve for Session"),
+			Description: ptr.To("Allow this tool to execute for the duration of this session"),
+		},
+		{
+			Name:        RejectOption,
+			Title:       ptr.To("Reject"),
+			Description: ptr.To("Prevent this tool from executing"),
+			PromptFill:  ptr.To("I'm rejecting this tool because..."),
+		},
+	}
+	
+	// Create message with tool details
+	toolName := tc.Spec.ToolRef.Name
+	messageText := fmt.Sprintf("Tool approval request: `%s`\n\nArguments: ```%s```\n\nThis tool needs approval because it wasn't marked as read-only.", 
+		toolName, tc.Spec.Arguments)
+	
+	// Create the human contact input with response options
+	spec := humanlayerapi.NewHumanContactSpecInput(messageText)
+	spec.SetResponseOptions(responseOptions)
+	input := humanlayerapi.NewHumanContactInput(tc.Name, callID, *spec)
+	
+	return json.Marshal(input)
 }
 
 func (r *ToolCallReconciler) SetupWithManager(mgr ctrl.Manager) error {
