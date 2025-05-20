@@ -18,41 +18,49 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: anthropics/claude-code-action@beta
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 0  # Fetch full history for accurate diffs
+          
+      - name: Claude PR Creation
+        uses: anthropics/claude-code-action@beta
+        with:
+          # Your GitHub token for API operations
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          
           # Pass the comment text as the prompt
-          prompt: "${{ github.event.comment.body }}"
+          direct_prompt: "${{ github.event.comment.body }}"
 
           # Define which tools Claude can use
-          allowed_tools: [
+          allowed_tools: |-
             # Git inspection commands
-            "Bash(git status)",
-            "Bash(git log)",
-            "Bash(git show)",
-            "Bash(git blame)",
-            "Bash(git reflog)",
-            "Bash(git stash list)",
-            "Bash(git ls-files)",
-            "Bash(git branch)",
-            "Bash(git tag)",
-            "Bash(git diff)",
+            Bash(git status)
+            Bash(git log)
+            Bash(git show)
+            Bash(git blame)
+            Bash(git reflog)
+            Bash(git stash list)
+            Bash(git ls-files)
+            Bash(git branch)
+            Bash(git tag)
+            Bash(git diff)
             
             # Git modification commands
-            "Bash(git checkout -b)",
-            "Bash(git add)",
-            "Bash(git commit)",
-            "Bash(git push)",
+            Bash(git checkout -b)
+            Bash(git add)
+            Bash(git commit)
+            Bash(git push)
             
             # GitHub CLI commands for PR creation
-            "Bash(gh pr create)",
+            Bash(gh pr create)
             
             # File exploration and modification tools
-            "View",        # Read file contents
-            "Edit",        # Edit files
-            "GlobTool",    # Find files by pattern
-            "GrepTool",    # Search file contents
-            "BatchTool"    # Run multiple tools in parallel
-          ]
+            View        # Read file contents
+            Edit        # Edit files
+            GlobTool    # Find files by pattern
+            GrepTool    # Search file contents
+            BatchTool   # Run multiple tools in parallel
           
           # Maximum number of conversation turns
           max_turns: 20
