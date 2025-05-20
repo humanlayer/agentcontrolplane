@@ -15,6 +15,8 @@ jobs:
       discussions: write
       id-token: write
       statuses: write
+      workflow: write
+      actions: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,19 +27,32 @@ jobs:
       - name: Checkout PR branch if needed
         if: github.event.issue.pull_request
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get the PR number from the issue object
           PR_NUMBER="${{ github.event.issue.number }}"
           
           echo "Checking out PR #${PR_NUMBER}"
           
-          # Use GitHub CLI to checkout the PR
-          # This handles both internal branches and forks automatically
-          gh pr checkout ${PR_NUMBER}
+          # Get PR info
+          PR_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER")
           
-          echo "Current branch: $(git branch --show-current)"
+          # Extract the PR branch ref and other details
+          PR_BRANCH=$(echo "$PR_INFO" | jq -r .head.ref)
+          PR_SHA=$(echo "$PR_INFO" | jq -r .head.sha)
+          PR_REPO=$(echo "$PR_INFO" | jq -r .head.repo.full_name)
+          
+          echo "PR branch is $PR_BRANCH from repo $PR_REPO with commit SHA $PR_SHA"
+          
+          # Fetch the PR as a local branch (works for forks too)
+          git fetch origin "pull/$PR_NUMBER/head:pr-$PR_NUMBER"
+          git checkout "pr-$PR_NUMBER"
+          
+          # Verify checkout
+          echo "Current branch details:"
           git status
+          git rev-parse HEAD
           
       - name: Claude Response
         uses: anthropics/claude-code-action@beta

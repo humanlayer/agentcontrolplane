@@ -11,6 +11,11 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      discussions: write
+      id-token: write
+      statuses: write
+      workflow: write
+      actions: write
     steps:
       # Check out the code to allow git diff operations
       - name: Checkout code
