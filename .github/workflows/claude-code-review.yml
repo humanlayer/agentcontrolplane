@@ -13,9 +13,11 @@ jobs:
       issues: write
       id-token: write
     steps:
-      # Export PAT token to environment before checkout
+      # Set environment variables for Claude Code Action
       - name: Set up environment
-        run: echo "OVERRIDE_GITHUB_TOKEN=${{ secrets.CLAUDE_PAT_TOKEN }}" >> $GITHUB_ENV
+        run: |
+          echo "OVERRIDE_GITHUB_TOKEN=${{ secrets.CLAUDE_PAT_TOKEN }}" >> $GITHUB_ENV
+          echo "Setting up PAT token for Claude Code Action"
       
       # Simply checking out the repository is sufficient - the action handles the PR code
       - name: Checkout code
@@ -29,8 +31,7 @@ jobs:
           # Your Anthropic API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           
-          # Use PAT token instead of default GITHUB_TOKEN
-          github_token: ${{ secrets.CLAUDE_PAT_TOKEN }}
+          # Note: Token is provided via OVERRIDE_GITHUB_TOKEN environment variable
           
           # Direct prompt for Claude to execute
           direct_prompt: "Review the PR changes. Focus on code quality, potential bugs, and performance issues. Suggest improvements where appropriate. Pay special attention to Kubernetes operator patterns and Go best practices according to the CLAUDE.md file."

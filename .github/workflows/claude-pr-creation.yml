@@ -19,9 +19,11 @@ jobs:
       issues: write
       id-token: write
     steps:
-      # Export PAT token to environment before checkout
+      # Set environment variables for Claude Code Action
       - name: Set up environment
-        run: echo "OVERRIDE_GITHUB_TOKEN=${{ secrets.CLAUDE_PAT_TOKEN }}" >> $GITHUB_ENV
+        run: |
+          echo "OVERRIDE_GITHUB_TOKEN=${{ secrets.CLAUDE_PAT_TOKEN }}" >> $GITHUB_ENV
+          echo "Setting up PAT token for Claude Code Action"
       
       # Simply checking out the repository is sufficient
       - name: Checkout code
@@ -56,9 +58,9 @@ jobs:
           # Your Anthropic API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           
-          # Explicitly set the trigger phrase and provide PAT token
+          # Explicitly set the trigger phrase
           trigger_phrase: "@claude"
-          github_token: ${{ secrets.CLAUDE_PAT_TOKEN }}
+          # Note: Token is provided via OVERRIDE_GITHUB_TOKEN environment variable
           
           # Timeout for execution (longer for PR creation)
           timeout_minutes: 30
