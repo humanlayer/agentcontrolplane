@@ -338,8 +338,8 @@ var _ = Describe("Task Controller", func() {
 			ExpectRecorder(recorder).ToEmitEventContaining("ValidationSucceeded")
 		})
 	})
-	Context("ReadyForLLM -> LLMFinalAnswer", func() {
-		It("moves to LLMFinalAnswer after getting a response from the LLM", func() {
+	Context("ReadyForLLM -> SendContextWindowToLLM -> LLMFinalAnswer", func() {
+		It("transitions through SendContextWindowToLLM to LLMFinalAnswer after getting a response from the LLM", func() {
 			_, _, _, teardown := setupSuiteObjects(ctx)
 			defer teardown()
 
@@ -374,8 +374,21 @@ var _ = Describe("Task Controller", func() {
 				return mockLLMClient, nil
 			}
 
-			// Reconcile (should handle ReadyForLLM -> LLMFinalAnswer)
+			// First reconcile (should handle ReadyForLLM -> SendContextWindowToLLM)
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: testTask.Name, Namespace: "default"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			// Expect requeue because it's transitioning to SendContextWindowToLLM
+			Expect(result.Requeue).To(BeTrue())
+
+			// Verify transition to SendContextWindowToLLM state
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testTask.Name, Namespace: "default"}, task)).To(Succeed())
+			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseSendContextWindowToLLM))
+			Expect(task.Status.StatusDetail).To(ContainSubstring("Preparing to send context window to LLM"))
+
+			// Second reconcile (should handle SendContextWindowToLLM -> LLMFinalAnswer)
+			result, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Name: testTask.Name, Namespace: "default"},
 			})
 			Expect(err).NotTo(HaveOccurred())
