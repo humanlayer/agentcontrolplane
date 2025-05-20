@@ -25,6 +25,9 @@ jobs:
           # Your Anthropic API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           
+          # Use PAT token instead of default GITHUB_TOKEN
+          github_token: ${{ secrets.CLAUDE_PAT_TOKEN }}
+          
           # Direct prompt for Claude to execute
           direct_prompt: "Review the PR changes. Focus on code quality, potential bugs, and performance issues. Suggest improvements where appropriate. Pay special attention to Kubernetes operator patterns and Go best practices according to the CLAUDE.md file."
           

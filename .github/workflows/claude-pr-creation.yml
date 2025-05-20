@@ -44,7 +44,7 @@ jobs:
           git status
           git branch
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
           
       - name: Claude PR Creation
         uses: anthropics/claude-code-action@beta
@@ -52,9 +52,9 @@ jobs:
           # Your Anthropic API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           
-          # Explicitly set the trigger phrase and provide github token
+          # Explicitly set the trigger phrase and provide PAT token
           trigger_phrase: "@claude"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.CLAUDE_PAT_TOKEN }}
           
           # Timeout for execution (longer for PR creation)
           timeout_minutes: 30
