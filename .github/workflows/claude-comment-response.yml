@@ -12,11 +12,32 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      discussions: write
+      id-token: write
+      statuses: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch full history for accurate diffs
+          
+      # If running on a PR comment, we need to explicitly check out the PR branch
+      - name: Checkout PR branch if needed
+        if: github.event.issue.pull_request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the PR number from the issue object
+          PR_NUMBER="${{ github.event.issue.number }}"
+          
+          echo "Checking out PR #${PR_NUMBER}"
+          
+          # Use GitHub CLI to checkout the PR
+          # This handles both internal branches and forks automatically
+          gh pr checkout ${PR_NUMBER}
+          
+          echo "Current branch: $(git branch --show-current)"
+          git status
           
       - name: Claude Response
         uses: anthropics/claude-code-action@beta
@@ -49,7 +70,6 @@ jobs:
             GlobTool    # Find files by pattern
             GrepTool    # Search file contents
             BatchTool   # Run multiple tools in parallel
-
           
           # Timeout after 20 minutes
           timeout_minutes: 20

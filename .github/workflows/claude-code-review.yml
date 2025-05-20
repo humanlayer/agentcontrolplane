@@ -10,6 +10,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
     steps:
       # Check out the code to allow git diff operations
       - name: Checkout code
