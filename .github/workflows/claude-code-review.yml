@@ -12,26 +12,28 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+    env:
+      OVERRIDE_GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
     steps:
-      # Set environment variables for Claude Code Action
-      - name: Set up environment
-        run: |
-          echo "OVERRIDE_GITHUB_TOKEN=${{ secrets.CLAUDE_PAT_TOKEN }}" >> $GITHUB_ENV
-          echo "Setting up PAT token for Claude Code Action"
-      
       # Simply checking out the repository is sufficient - the action handles the PR code
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Get full history for accurate diffs
 
+      # Debug - let's see if our token is being set
+      - name: Debug token
+        run: |
+          echo "Token defined: ${{ env.OVERRIDE_GITHUB_TOKEN != '' }}"
+          echo "GITHUB_TOKEN defined: ${{ secrets.GITHUB_TOKEN != '' }}"
+
       - name: Run Code Review with Claude
         uses: anthropics/claude-code-action@beta
+        env:
+          OVERRIDE_GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
         with:
           # Your Anthropic API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          
-          # Note: Token is provided via OVERRIDE_GITHUB_TOKEN environment variable
           
           # Direct prompt for Claude to execute
           direct_prompt: "Review the PR changes. Focus on code quality, potential bugs, and performance issues. Suggest improvements where appropriate. Pay special attention to Kubernetes operator patterns and Go best practices according to the CLAUDE.md file."
