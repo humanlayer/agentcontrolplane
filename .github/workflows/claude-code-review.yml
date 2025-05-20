@@ -13,6 +13,10 @@ jobs:
       issues: write
       id-token: write
     steps:
+      # Export PAT token to environment before checkout
+      - name: Set up environment
+        run: echo "OVERRIDE_GITHUB_TOKEN=${{ secrets.CLAUDE_PAT_TOKEN }}" >> $GITHUB_ENV
+      
       # Simply checking out the repository is sufficient - the action handles the PR code
       - name: Checkout code
         uses: actions/checkout@v4
