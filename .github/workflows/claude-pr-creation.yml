@@ -36,7 +36,7 @@ jobs:
           echo "Fetching PR #${PR_NUMBER} details..."
           
           # Use the GitHub CLI to get PR details
-          gh pr view $PR_NUMBER --json headRefName,headRepository --jq '.headRefName, .headRepository.nameWithOwner'
+          gh pr view "$PR_NUMBER" --json headRefName,headRepository --jq '.headRefName, .headRepository.nameWithOwner'
           
           # Checkout the PR using the GitHub CLI - this handles forks automatically
           echo "Checking out PR #${PR_NUMBER}..."
