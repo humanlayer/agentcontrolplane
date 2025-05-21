@@ -201,7 +201,7 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 
 		// Create annotations based on tool properties
 		annotations := &acp.MCPToolAnnotations{
-			Title:           tool.Annotations.Title, // Default title is the tool's name if Title is empty
+			Title:           tool.Annotations.Title,
 			ReadOnlyHint:    tool.Annotations.ReadOnlyHint != nil && *tool.Annotations.ReadOnlyHint,
 			DestructiveHint: tool.Annotations.DestructiveHint != nil && *tool.Annotations.DestructiveHint,
 			IdempotentHint:  tool.Annotations.IdempotentHint != nil && *tool.Annotations.IdempotentHint,
