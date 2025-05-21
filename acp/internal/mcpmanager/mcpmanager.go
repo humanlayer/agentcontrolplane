@@ -201,12 +201,11 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 
 		// Create annotations based on tool properties
 		annotations := &acp.MCPToolAnnotations{
-			Title: tool.Name, // Use name as title by default
-			// Set hints based on tool properties or defaults
-			ReadOnlyHint:   false, // Default to false for safety
-			DestructiveHint: false,
-			IdempotentHint:  false,
-			OpenWorldHint:   false,
+			Title:           tool.Annotations.Title, // Default title is the tool's name if Title is empty
+			ReadOnlyHint:    tool.Annotations.ReadOnlyHint != nil && *tool.Annotations.ReadOnlyHint,
+			DestructiveHint: tool.Annotations.DestructiveHint != nil && *tool.Annotations.DestructiveHint,
+			IdempotentHint:  tool.Annotations.IdempotentHint != nil && *tool.Annotations.IdempotentHint,
+			OpenWorldHint:   tool.Annotations.OpenWorldHint != nil && *tool.Annotations.OpenWorldHint,
 		}
 
 		tools = append(tools, acp.MCPTool{
@@ -293,11 +292,9 @@ func (m *MCPServerManager) CallTool(ctx context.Context, serverName, toolName st
 
 	result, err := conn.Client.CallTool(ctx, mcp.CallToolRequest{
 		Params: struct {
-			Name      string                 `json:"name"`
-			Arguments map[string]interface{} `json:"arguments,omitempty"`
-			Meta      *struct {
-				ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-			} `json:"_meta,omitempty"`
+			Name      string      `json:"name"`
+			Arguments interface{} `json:"arguments,omitempty"`
+			Meta      *mcp.Meta   `json:"_meta,omitempty"`
 		}{
 			Name:      toolName,
 			Arguments: arguments,

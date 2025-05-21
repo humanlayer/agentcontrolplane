@@ -12,10 +12,13 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // MockMCPClient mocks the mcpclient.MCPClient interface for testing
+var _ mcpclient.MCPClient = &MockMCPClient{}
+
 type MockMCPClient struct {
 	// Results
 	initResult     *mcp.InitializeResult
@@ -74,6 +77,12 @@ func (m *MockMCPClient) ListTools(ctx context.Context, req mcp.ListToolsRequest)
 	return m.toolsResult, m.toolsError
 }
 
+// ListToolsByPage implements mcpclient.MCPClient
+func (m *MockMCPClient) ListToolsByPage(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
+	m.toolsCallCount++
+	return m.toolsResult, m.toolsError
+}
+
 // CallTool implements mcpclient.MCPClient
 func (m *MockMCPClient) CallTool(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	m.callToolCallCount++
@@ -95,7 +104,15 @@ func (m *MockMCPClient) ListResources(ctx context.Context, req mcp.ListResources
 	return nil, nil
 }
 
+func (m *MockMCPClient) ListResourcesByPage(ctx context.Context, req mcp.ListResourcesRequest) (*mcp.ListResourcesResult, error) {
+	return nil, nil
+}
+
 func (m *MockMCPClient) ListResourceTemplates(ctx context.Context, req mcp.ListResourceTemplatesRequest) (*mcp.ListResourceTemplatesResult, error) {
+	return nil, nil
+}
+
+func (m *MockMCPClient) ListResourceTemplatesByPage(ctx context.Context, req mcp.ListResourceTemplatesRequest) (*mcp.ListResourceTemplatesResult, error) {
 	return nil, nil
 }
 
@@ -108,6 +125,10 @@ func (m *MockMCPClient) Unsubscribe(ctx context.Context, req mcp.UnsubscribeRequ
 }
 
 func (m *MockMCPClient) ListPrompts(ctx context.Context, req mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) {
+	return nil, nil
+}
+
+func (m *MockMCPClient) ListPromptsByPage(ctx context.Context, req mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) {
 	return nil, nil
 }
 

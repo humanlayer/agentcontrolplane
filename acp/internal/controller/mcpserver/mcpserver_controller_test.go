@@ -120,6 +120,13 @@ var _ = Describe("MCPServer Controller", func() {
 						{
 							Name:        "test-tool",
 							Description: "A test tool",
+							Annotations: &acp.MCPToolAnnotations{
+								Title:           "Test Tool",
+								ReadOnlyHint:    true,
+								DestructiveHint: false,
+								IdempotentHint:  true,
+								OpenWorldHint:   false,
+							},
 						},
 					}, true
 				},
@@ -147,6 +154,11 @@ var _ = Describe("MCPServer Controller", func() {
 				}
 				return createdMCPServer.Status.Connected &&
 					len(createdMCPServer.Status.Tools) == 1 &&
+					createdMCPServer.Status.Tools[0].Name == "test-tool" &&
+					createdMCPServer.Status.Tools[0].Annotations != nil &&
+					createdMCPServer.Status.Tools[0].Annotations.Title == "Test Tool" &&
+					createdMCPServer.Status.Tools[0].Annotations.ReadOnlyHint == true &&
+					createdMCPServer.Status.Tools[0].Annotations.IdempotentHint == true &&
 					createdMCPServer.Status.Status == "Ready"
 			}, time.Second*10, time.Millisecond*250).Should(BeTrue())
 		})
