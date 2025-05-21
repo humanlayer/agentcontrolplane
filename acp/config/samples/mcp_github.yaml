@@ -1,0 +1,16 @@
+apiVersion: acp.humanlayer.dev/v1alpha1 
+kind: MCPServer
+metadata:
+  name: github
+spec:
+  transport: stdio
+  command: npx
+  args:
+    - -y
+    - "@modelcontextprotocol/server-github"
+  env:
+    - name: GITHUB_PERSONAL_ACCESS_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: github-token
+          key: token

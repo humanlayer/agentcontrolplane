@@ -100,6 +100,33 @@ type MCPTool struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	InputSchema runtime.RawExtension `json:"inputSchema,omitempty"`
+
+	// Annotations provides additional metadata about the tool's behavior
+	// +optional
+	Annotations *MCPToolAnnotations `json:"annotations,omitempty"`
+}
+
+// MCPToolAnnotations provides metadata about a tool's behavior
+type MCPToolAnnotations struct {
+	// Title is a human-readable title for the tool
+	// +optional
+	Title string `json:"title,omitempty"`
+
+	// ReadOnlyHint indicates if the tool does not modify its environment
+	// +optional
+	ReadOnlyHint bool `json:"readOnlyHint,omitempty"`
+
+	// DestructiveHint indicates if the tool may perform destructive updates
+	// +optional
+	DestructiveHint bool `json:"destructiveHint,omitempty"`
+
+	// IdempotentHint indicates if repeated calls with same args have no additional effect
+	// +optional
+	IdempotentHint bool `json:"idempotentHint,omitempty"`
+
+	// OpenWorldHint indicates if the tool interacts with external entities
+	// +optional
+	OpenWorldHint bool `json:"openWorldHint,omitempty"`
 }
 
 // MCPServerStatus defines the observed state of MCPServer

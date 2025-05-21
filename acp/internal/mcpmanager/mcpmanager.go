@@ -199,10 +199,21 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 			}
 		}
 
+		// Create annotations based on tool properties
+		annotations := &acp.MCPToolAnnotations{
+			Title: tool.Name, // Use name as title by default
+			// Set hints based on tool properties or defaults
+			ReadOnlyHint:   false, // Default to false for safety
+			DestructiveHint: false,
+			IdempotentHint:  false,
+			OpenWorldHint:   false,
+		}
+
 		tools = append(tools, acp.MCPTool{
 			Name:        tool.Name,
 			Description: tool.Description,
 			InputSchema: runtime.RawExtension{Raw: inputSchemaBytes},
+			Annotations: annotations,
 		})
 	}
 

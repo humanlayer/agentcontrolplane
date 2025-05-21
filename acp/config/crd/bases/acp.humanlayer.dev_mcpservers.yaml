@@ -163,6 +163,30 @@ spec:
                 items:
                   description: MCPTool represents a tool provided by an MCP server
                   properties:
+                    annotations:
+                      description: Annotations provides additional metadata about
+                        the tool's behavior
+                      properties:
+                        destructiveHint:
+                          description: DestructiveHint indicates if the tool may perform
+                            destructive updates
+                          type: boolean
+                        idempotentHint:
+                          description: IdempotentHint indicates if repeated calls
+                            with same args have no additional effect
+                          type: boolean
+                        openWorldHint:
+                          description: OpenWorldHint indicates if the tool interacts
+                            with external entities
+                          type: boolean
+                        readOnlyHint:
+                          description: ReadOnlyHint indicates if the tool does not
+                            modify its environment
+                          type: boolean
+                        title:
+                          description: Title is a human-readable title for the tool
+                          type: string
+                      type: object
                     description:
                       description: Description of the tool
                       type: string
