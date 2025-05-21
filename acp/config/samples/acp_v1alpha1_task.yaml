@@ -1,4 +1,4 @@
-apiVersion: acp.humanlayer.dev/v1alpha1 
+apiVersion: acp.humanlayer.dev/v1alpha1
 kind: Task
 metadata:
   name: fetch-example
@@ -6,3 +6,7 @@ spec:
   agentRef:
     name: web-fetch-agent
   userMessage: "Please fetch the content from example.com and summarize what's on the site."
+  baseURL: "https://api.humanlayer.dev"
+  channelTokenFrom:
+    name: channel-token-secret
+    key: token

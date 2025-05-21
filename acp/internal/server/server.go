@@ -34,14 +34,20 @@ const (
 	transportTypeHTTP  = "http"
 )
 
+// ChannelTokenRef defines a reference to a secret containing the channel token
+type ChannelTokenRef struct {
+	Name string `json:"name"` // Name of the secret
+	Key  string `json:"key"`  // Key in the secret data
+}
+
 // CreateTaskRequest defines the structure of the request body for creating a task
 type CreateTaskRequest struct {
-	Namespace     string        `json:"namespace,omitempty"`     // Optional, defaults to "default"
-	AgentName     string        `json:"agentName"`               // Required
-	UserMessage   string        `json:"userMessage,omitempty"`   // Optional if contextWindow is provided
-	ContextWindow []acp.Message `json:"contextWindow,omitempty"` // Optional if userMessage is provided
-	ResponseURL   string        `json:"responseURL,omitempty"`   // Optional, URL for receiving task results
-	ResponseUrl   string        `json:"responseUrl,omitempty"`   // Alternative casing for responseURL (deprecated)
+	Namespace        string           `json:"namespace,omitempty"`        // Optional, defaults to "default"
+	AgentName        string           `json:"agentName"`                  // Required
+	UserMessage      string           `json:"userMessage,omitempty"`      // Optional if contextWindow is provided
+	ContextWindow    []acp.Message    `json:"contextWindow,omitempty"`    // Optional if userMessage is provided
+	BaseURL          string           `json:"baseURL,omitempty"`          // Optional, base URL for the contact channel
+	ChannelTokenFrom *ChannelTokenRef `json:"channelTokenFrom,omitempty"` // Optional, reference to secret containing the token
 }
 
 // CreateAgentRequest defines the structure of the request body for creating an agent
@@ -592,6 +598,17 @@ func (s *APIServer) getStatus(c *gin.Context) {
 	})
 }
 
+// sanitizeTask removes sensitive information from a Task before returning it via API
+func sanitizeTask(task acp.Task) acp.Task {
+	// Create a copy to avoid modifying the original
+	sanitized := task.DeepCopy()
+
+	// Remove sensitive fields
+	sanitized.Spec.ChannelTokenFrom = nil
+
+	return *sanitized
+}
+
 func (s *APIServer) listTasks(c *gin.Context) {
 	ctx := c.Request.Context()
 	logger := log.FromContext(ctx)
@@ -616,7 +633,13 @@ func (s *APIServer) listTasks(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, taskList.Items)
+	// Sanitize sensitive information before returning
+	sanitizedTasks := make([]acp.Task, len(taskList.Items))
+	for i, task := range taskList.Items {
+		sanitizedTasks[i] = sanitizeTask(task)
+	}
+
+	c.JSON(http.StatusOK, sanitizedTasks)
 }
 
 func (s *APIServer) getTask(c *gin.Context) {
@@ -643,7 +666,9 @@ func (s *APIServer) getTask(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, task)
+	// Sanitize the task before returning
+	sanitizedTask := sanitizeTask(task)
+	c.JSON(http.StatusOK, sanitizedTask)
 }
 
 func (s *APIServer) resourceExists(ctx context.Context, obj client.Object, namespace, name string) (bool, error) {
@@ -1195,10 +1220,14 @@ func (s *APIServer) createTask(c *gin.Context) {
 		return
 	}
 
-	// Handle both responseURL and responseUrl fields (with responseURL taking precedence)
-	responseURL := req.ResponseURL
-	if responseURL == "" && req.ResponseUrl != "" {
-		responseURL = req.ResponseUrl
+	// Extract the baseURL and channelTokenFrom fields
+	baseURL := req.BaseURL
+	var channelTokenFrom *acp.SecretKeyRef
+	if req.ChannelTokenFrom != nil {
+		channelTokenFrom = &acp.SecretKeyRef{
+			Name: req.ChannelTokenFrom.Name,
+			Key:  req.ChannelTokenFrom.Key,
+		}
 	}
 
 	// Check if agent exists
@@ -1229,9 +1258,10 @@ func (s *APIServer) createTask(c *gin.Context) {
 			AgentRef: acp.LocalObjectReference{
 				Name: req.AgentName,
 			},
-			UserMessage:   req.UserMessage,
-			ContextWindow: req.ContextWindow,
-			ResponseURL:   responseURL,
+			UserMessage:      req.UserMessage,
+			ContextWindow:    req.ContextWindow,
+			BaseURL:          baseURL,
+			ChannelTokenFrom: channelTokenFrom,
 		},
 	}
 

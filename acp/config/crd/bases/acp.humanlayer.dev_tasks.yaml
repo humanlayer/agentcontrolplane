@@ -85,6 +85,24 @@ spec:
                 required:
                 - name
                 type: object
+              baseURL:
+                description: BaseURL specifies the base URL for the human contact
+                  channel.
+                type: string
+              channelTokenFrom:
+                description: ChannelTokenFrom references a secret containing the token
+                  for the human contact channel.
+                properties:
+                  key:
+                    description: Key is the key in the secret
+                    type: string
+                  name:
+                    description: Name is the name of the secret
+                    type: string
+                required:
+                - key
+                - name
+                type: object
               contextWindow:
                 description: |-
                   ContextWindow provides the initial conversation context when creating a Task.
@@ -153,11 +171,6 @@ spec:
                   - role
                   type: object
                 type: array
-              responseURL:
-                description: |-
-                  ResponseURL specifies a pre-generated URL that will be used for human contact responses.
-                  This allows the system to direct responses to a specific endpoint.
-                type: string
               userMessage:
                 description: |-
                   UserMessage is the message to send to the agent.
