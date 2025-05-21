@@ -42,12 +42,12 @@ type ChannelTokenRef struct {
 
 // CreateTaskRequest defines the structure of the request body for creating a task
 type CreateTaskRequest struct {
-	Namespace        string           `json:"namespace,omitempty"`        // Optional, defaults to "default"
-	AgentName        string           `json:"agentName"`                  // Required
-	UserMessage      string           `json:"userMessage,omitempty"`      // Optional if contextWindow is provided
-	ContextWindow    []acp.Message    `json:"contextWindow,omitempty"`    // Optional if userMessage is provided
-	BaseURL          string           `json:"baseURL,omitempty"`          // Optional, base URL for the contact channel
-	ChannelTokenFrom *ChannelTokenRef `json:"channelTokenFrom,omitempty"` // Optional, reference to secret containing the token
+	Namespace     string        `json:"namespace,omitempty"`     // Optional, defaults to "default"
+	AgentName     string        `json:"agentName"`               // Required
+	UserMessage   string        `json:"userMessage,omitempty"`   // Optional if contextWindow is provided
+	ContextWindow []acp.Message `json:"contextWindow,omitempty"` // Optional if userMessage is provided
+	BaseURL       string        `json:"baseURL,omitempty"`       // Optional, base URL for the contact channel
+	ChannelToken  string        `json:"channelToken,omitempty"`  // Optional, token for the contact channel API
 }
 
 // CreateAgentRequest defines the structure of the request body for creating an agent
@@ -1220,13 +1220,37 @@ func (s *APIServer) createTask(c *gin.Context) {
 		return
 	}
 
-	// Extract the baseURL and channelTokenFrom fields
+	// Extract the baseURL and channelToken fields
 	baseURL := req.BaseURL
+	channelToken := req.ChannelToken
+
+	// Create a secret for the channel token if provided
 	var channelTokenFrom *acp.SecretKeyRef
-	if req.ChannelTokenFrom != nil {
+	if channelToken != "" {
+		// Generate a secret name based on the task
+		secretName := fmt.Sprintf("channel-token-%s", uuid.New().String()[:8])
+		
+		// Create the secret
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      secretName,
+				Namespace: namespace,
+			},
+			Data: map[string][]byte{
+				"token": []byte(channelToken),
+			},
+		}
+		
+		if err := s.client.Create(ctx, secret); err != nil {
+			logger.Error(err, "Failed to create channel token secret")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create channel token secret: " + err.Error()})
+			return
+		}
+		
+		// Reference the secret
 		channelTokenFrom = &acp.SecretKeyRef{
-			Name: req.ChannelTokenFrom.Name,
-			Key:  req.ChannelTokenFrom.Key,
+			Name: secretName,
+			Key:  "token",
 		}
 	}
 
@@ -1273,5 +1297,5 @@ func (s *APIServer) createTask(c *gin.Context) {
 	}
 
 	// Return the created task
-	c.JSON(http.StatusCreated, task)
+	c.JSON(http.StatusCreated, sanitizeTask(*task))
 }
