@@ -38,10 +38,13 @@ type TaskSpec struct {
 	// +optional
 	ContextWindow []Message `json:"contextWindow,omitempty"`
 
-	// ResponseURL specifies a pre-generated URL that will be used for human contact responses.
-	// This allows the system to direct responses to a specific endpoint.
+	// BaseURL specifies the base URL for the human contact channel.
 	// +optional
-	ResponseURL string `json:"responseURL,omitempty"`
+	BaseURL string `json:"baseURL,omitempty"`
+
+	// ChannelTokenFrom references a secret containing the token for the human contact channel.
+	// +optional
+	ChannelTokenFrom *SecretKeyRef `json:"channelTokenFrom,omitempty"`
 }
 
 // Message represents a single message in the conversation
