@@ -132,7 +132,20 @@ Run `make help` for more information on all potential `make` targets. Common tar
 - `make manifests` - Generate WebhookConfiguration, ClusterRole, and CustomResourceDefinition objects
 - `make generate` - Generate code (DeepCopy methods)
 - `make test` - Run tests
+- `make mocks` - Generate mock implementations for testing (not committed to git)
 - `make docker-build` - Build the Docker image
+
+#### Mock Generation
+
+The project uses generated mocks for testing interfaces. Mock files are automatically generated via `make mocks` and are **not committed to version control**. They are recreated locally as needed for testing.
+
+```sh
+# Generate all mock files
+make mocks
+
+# Clean and regenerate mocks
+make clean-mocks && make mocks
+```
 
 ### Resources
 

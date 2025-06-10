@@ -32,3 +32,11 @@ go.work
 # macOS system files
 .DS_Store
 **/.DS_Store
+
+# Generated mock files
+**/mocks/
+internal/**/mocks/
+internal/controller/toolcall/services/mocks/
+internal/humanlayer/mocks/
+internal/llmclient/mocks/
+internal/mcpmanager/mocks/

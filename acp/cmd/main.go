@@ -240,11 +240,12 @@ func main() {
 	// Create a shared MCPManager that all controllers will use
 	mcpManagerInstance := mcpmanager.NewMCPServerManagerWithClient(mgr.GetClient())
 
-	if err = (&agent.AgentReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		MCPManager: mcpManagerInstance,
-	}).SetupWithManager(mgr); err != nil {
+	agentReconciler, err := agent.NewAgentReconcilerForManager(mgr)
+	if err != nil {
+		setupLog.Error(err, "unable to create agent reconciler")
+		os.Exit(1)
+	}
+	if err = agentReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Agent")
 		os.Exit(1)
 	}

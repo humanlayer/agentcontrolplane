@@ -61,13 +61,13 @@ func NewLangchainClient(ctx context.Context, provider string, apiKey string, mod
 		if modelConfig.Model != "" {
 			opts = append(opts, googleai.WithDefaultModel(modelConfig.Model))
 		}
-		model, err = googleai.New(context.Background(), opts...)
+		model, err = googleai.New(ctx, opts...)
 	case "vertex":
 		opts := []googleai.Option{googleai.WithCredentialsJSON([]byte(apiKey))}
 		if modelConfig.Model != "" {
 			opts = append(opts, googleai.WithDefaultModel(modelConfig.Model))
 		}
-		model, err = vertex.New(context.Background(), opts...)
+		model, err = vertex.New(ctx, opts...)
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s. Supported providers are: openai, anthropic, mistral, google, vertex", provider)
 	}

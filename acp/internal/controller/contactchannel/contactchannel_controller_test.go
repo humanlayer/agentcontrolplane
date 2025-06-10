@@ -406,5 +406,145 @@ var _ = Describe("ContactChannel Controller", func() {
 			Expect(updatedChannel.Status.Status).To(Equal(statusError))
 			Expect(updatedChannel.Status.StatusDetail).To(ContainSubstring("invalid email"))
 		})
+
+		It("should initialize empty status and proceed through validation", func() {
+			By("Creating a secret with valid API key")
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: "default",
+				},
+				Data: map[string][]byte{
+					secretKey: []byte("valid-humanlayer-key"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			By("Creating a ContactChannel resource with empty status")
+			channel := &acp.ContactChannel{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: acp.ContactChannelSpec{
+					Type: "slack",
+					APIKeyFrom: acp.APIKeySource{
+						SecretKeyRef: acp.SecretKeyRef{
+							Name: secretName,
+							Key:  secretKey,
+						},
+					},
+					Slack: &acp.SlackChannelConfig{
+						ChannelOrUserID: "C12345678",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, channel)).To(Succeed())
+
+			By("Creating StateMachine and testing initialize()")
+			eventRecorder := record.NewFakeRecorder(10)
+			stateMachine := NewStateMachine(k8sClient, eventRecorder)
+
+			_, err := stateMachine.initialize(ctx, channel)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Checking the resource status goes through full validation")
+			updatedChannel := &acp.ContactChannel{}
+			err = k8sClient.Get(ctx, typeNamespacedName, updatedChannel)
+			Expect(err).NotTo(HaveOccurred())
+			// Since initialization now calls validation, it should end up Ready or Error
+			Expect(updatedChannel.Status.Status).To(Or(Equal(statusReady), Equal(statusError)))
+		})
+
+		It("should transition Pending:Pending -> Ready:Ready with valid config", func() {
+			By("Creating a secret with valid API key")
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: "default",
+				},
+				Data: map[string][]byte{
+					secretKey: []byte("valid-humanlayer-key"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			By("Creating a ContactChannel with valid Slack config")
+			channel := &acp.ContactChannel{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: acp.ContactChannelSpec{
+					Type: "slack",
+					APIKeyFrom: acp.APIKeySource{
+						SecretKeyRef: acp.SecretKeyRef{
+							Name: secretName,
+							Key:  secretKey,
+						},
+					},
+					Slack: &acp.SlackChannelConfig{
+						ChannelOrUserID:           "C12345678",
+						ContextAboutChannelOrUser: "A test channel",
+					},
+				},
+			}
+			// Set status to Pending first
+			channel.Status.Status = statusPending
+			Expect(k8sClient.Create(ctx, channel)).To(Succeed())
+
+			By("Creating StateMachine and testing validateConfiguration()")
+			eventRecorder := record.NewFakeRecorder(10)
+			stateMachine := NewStateMachine(k8sClient, eventRecorder)
+
+			_, err := stateMachine.validateConfiguration(ctx, channel)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Checking the resource status transitions to Ready")
+			updatedChannel := &acp.ContactChannel{}
+			err = k8sClient.Get(ctx, typeNamespacedName, updatedChannel)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedChannel.Status.Status).To(Equal(statusReady))
+			Expect(updatedChannel.Status.Ready).To(BeTrue())
+			Expect(updatedChannel.Status.StatusDetail).To(ContainSubstring("validated successfully"))
+		})
+
+		It("should transition Pending:Pending -> Error:Error with invalid config", func() {
+			By("Creating a ContactChannel with invalid config (missing Slack config)")
+			channel := &acp.ContactChannel{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+				Spec: acp.ContactChannelSpec{
+					Type: "slack",
+					APIKeyFrom: acp.APIKeySource{
+						SecretKeyRef: acp.SecretKeyRef{
+							Name: "dummy-secret",
+							Key:  "dummy-key",
+						},
+					},
+					// Missing Slack config - should cause validation error
+				},
+			}
+			// Set status to Pending first
+			channel.Status.Status = statusPending
+			Expect(k8sClient.Create(ctx, channel)).To(Succeed())
+
+			By("Creating StateMachine and testing validateConfiguration()")
+			eventRecorder := record.NewFakeRecorder(10)
+			stateMachine := NewStateMachine(k8sClient, eventRecorder)
+
+			_, err := stateMachine.validateConfiguration(ctx, channel)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Checking the resource status transitions to Error")
+			updatedChannel := &acp.ContactChannel{}
+			err = k8sClient.Get(ctx, typeNamespacedName, updatedChannel)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedChannel.Status.Status).To(Equal(statusError))
+			Expect(updatedChannel.Status.Ready).To(BeFalse())
+			Expect(updatedChannel.Status.StatusDetail).To(ContainSubstring("slackConfig"))
+		})
 	})
 })

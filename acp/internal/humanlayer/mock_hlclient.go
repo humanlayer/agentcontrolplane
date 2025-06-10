@@ -133,7 +133,13 @@ func (m *MockHumanLayerClientWrapper) RequestApproval(ctx context.Context) (*hum
 
 // RequestHumanContact implements HumanLayerClientWrapper
 func (m *MockHumanLayerClientWrapper) RequestHumanContact(ctx context.Context, userMsg string) (*humanlayerapi.HumanContactOutput, int, error) {
-	return nil, m.parent.StatusCode, m.parent.ReturnError
+	if m.parent.ShouldFail {
+		return nil, m.parent.StatusCode, m.parent.ReturnError
+	}
+
+	// Return a successful mock response
+	output := humanlayerapi.NewHumanContactOutput(m.runID, m.callID, *humanlayerapi.NewHumanContactSpecOutput(userMsg))
+	return output, m.parent.StatusCode, nil
 }
 
 // GetHumanContactStatus implements HumanLayerClientWrapper

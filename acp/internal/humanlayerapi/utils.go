@@ -18,6 +18,9 @@ import (
 	"time"
 )
 
+// NOTE: The following Ptr* functions are currently unused but are part of generated API code
+// They should be cleaned up during next code generation cycle rather than manual removal
+
 // PtrBool is a helper routine that returns a pointer to given boolean value.
 func PtrBool(v bool) *bool { return &v }
 

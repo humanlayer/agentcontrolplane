@@ -8,10 +8,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -75,18 +73,8 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	// Set up the event recorder
-	eventBroadcaster := record.NewBroadcaster()
-	eventRecorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "mcpserver-controller-test"})
-
-	err = (&MCPServerReconciler{
-		Client:     k8sManager.GetClient(),
-		Scheme:     k8sManager.GetScheme(),
-		recorder:   eventRecorder,
-		MCPManager: nil, // Will be set in individual tests
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
+	// Note: Controller setup is now done manually in tests to allow mock injection
+	// This prevents race conditions between automatic and manual reconciliation
 	go func() {
 		defer GinkgoRecover()
 		err = k8sManager.Start(ctx)

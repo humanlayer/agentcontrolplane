@@ -78,8 +78,6 @@ func (c *Client) Call(
 	callID string,
 	spec map[string]interface{},
 ) (json.RawMessage, error) {
-	// Debug logging
-	fmt.Printf("HumanLayer Call - runID: %s, callID: %s, spec: %+v\n", runID, callID, spec)
 
 	// Ensure kwargs is properly structured
 	if fn, ok := spec["fn"].(string); ok && fn == "approve_tool_call" {
@@ -123,9 +121,6 @@ func (c *Client) Call(
 		"call_id": callID,
 		"spec":    spec,
 	}
-
-	// Log final payload
-	fmt.Printf("Final API payload: %+v\n", payload)
 
 	// Convert payload to JSON
 	reqBody, err := json.Marshal(payload)

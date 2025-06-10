@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 	"sync"
 
@@ -14,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 )
@@ -29,6 +29,7 @@ type MCPServerManager struct {
 
 type MCPManagerInterface interface {
 	CallTool(ctx context.Context, serverName, toolName string, args map[string]interface{}) (string, error)
+	GetTools(serverName string) ([]acp.MCPTool, bool)
 }
 
 // MCPConnection represents a connection to an MCP server
@@ -37,8 +38,6 @@ type MCPConnection struct {
 	ServerName string
 	// ServerType is "stdio" or "http"
 	ServerType string
-	// Command is the stdio process (if ServerType is "stdio")
-	Command *exec.Cmd
 	// Client is the MCP client
 	Client mcpclient.MCPClient
 	// Tools is the list of tools provided by this server
@@ -113,6 +112,7 @@ func (m *MCPServerManager) convertEnvVars(ctx context.Context, envVars []acp.Env
 
 // ConnectServer establishes a connection to an MCP server
 func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCPServer) error {
+	logger := log.FromContext(ctx).WithName("mcpmanager")
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -157,7 +157,7 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 	_, err = mcpClient.Initialize(ctx, mcp.InitializeRequest{})
 	if err != nil {
 		if closeErr := mcpClient.Close(); closeErr != nil {
-			fmt.Printf("Error closing mcpClient: %v\n", closeErr)
+			logger.Error(closeErr, "Failed to close MCP client during cleanup")
 		} // Clean up on error
 		return fmt.Errorf("failed to initialize MCP client: %w", err)
 	}
@@ -166,7 +166,7 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 	toolsResp, err := mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
 		if closeErr := mcpClient.Close(); closeErr != nil {
-			fmt.Printf("Error closing mcpClient: %v\n", closeErr)
+			logger.Error(closeErr, "Failed to close MCP client during cleanup")
 		} // Clean up on error
 		return fmt.Errorf("failed to list tools: %w", err)
 	}
@@ -193,7 +193,7 @@ func (m *MCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCP
 			inputSchemaBytes, err = json.Marshal(schema)
 			if err != nil {
 				// Log the error but continue
-				fmt.Printf("Error marshaling input schema for tool %s: %v\n", tool.Name, err)
+				logger.Error(err, "Failed to marshal input schema for tool", "toolName", tool.Name)
 				// Use a minimal valid schema as fallback
 				inputSchemaBytes = []byte(`{"type":"object","properties":{},"required":[]}`)
 			}
@@ -235,7 +235,8 @@ func (m *MCPServerManager) disconnectServerLocked(serverName string) {
 	// Close the connection
 	if conn.Client != nil {
 		if err := conn.Client.Close(); err != nil {
-			fmt.Printf("Error closing MCP client connection: %v\n", err)
+			// Log close error - we don't have context here, so use package logger
+			log.Log.WithName("mcpmanager").Error(err, "Failed to close MCP client connection", "serverName", serverName)
 		}
 	}
 
@@ -252,22 +253,6 @@ func (m *MCPServerManager) GetTools(serverName string) ([]acp.MCPTool, bool) {
 		return nil, false
 	}
 	return conn.Tools, true
-}
-
-// GetToolsForAgent returns all tools from the MCP servers referenced by the agent
-func (m *MCPServerManager) GetToolsForAgent(agent *acp.Agent) []acp.MCPTool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	var allTools []acp.MCPTool
-	for _, serverRef := range agent.Spec.MCPServers {
-		conn, exists := m.connections[serverRef.Name]
-		if !exists {
-			continue
-		}
-		allTools = append(allTools, conn.Tools...)
-	}
-	return allTools
 }
 
 // CallTool calls a tool on an MCP server

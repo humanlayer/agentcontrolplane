@@ -130,10 +130,11 @@ var _ = Describe("Collect Tools", func() {
 		It("should include sub-agents as delegate tools", func() {
 			// Create a task reconciler
 			reconciler := &TaskReconciler{
-				Client:     k8sClient,
-				Scheme:     k8sClient.Scheme(),
-				recorder:   record.NewFakeRecorder(10),
-				MCPManager: mcpmanager.NewMCPServerManager(),
+				Client:      k8sClient,
+				Scheme:      k8sClient.Scheme(),
+				recorder:    record.NewFakeRecorder(10),
+				MCPManager:  mcpmanager.NewMCPServerManager(),
+				toolAdapter: &defaultToolAdapter{},
 			}
 
 			// Collect tools from the parent agent

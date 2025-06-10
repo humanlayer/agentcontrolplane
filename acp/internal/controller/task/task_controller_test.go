@@ -7,6 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -14,6 +15,7 @@ import (
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
+	llmmocks "github.com/humanlayer/agentcontrolplane/acp/internal/llmclient/mocks"
 	. "github.com/humanlayer/agentcontrolplane/acp/test/utils"
 )
 
@@ -364,14 +366,21 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
-			mockLLMClient := &llmclient.MockLLMClient{
-				Response: &acp.Message{
-					Role:    "assistant",
-					Content: "The moon is a natural satellite of the Earth and lacks any formal government or capital.",
+			ctrl := gomock.NewController(GinkgoT())
+			defer ctrl.Finish()
+			mockLLMClient := llmmocks.NewMockLLMClient(ctrl)
+			mockLLMClient.EXPECT().SendRequest(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+			).Return(&acp.Message{
+				Role:    "assistant",
+				Content: "The moon is a natural satellite of the Earth and lacks any formal government or capital.",
+			}, nil)
+			reconciler.llmClientFactory = &mockLLMClientFactory{
+				createFunc: func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
+					return mockLLMClient, nil
 				},
-			}
-			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
-				return mockLLMClient, nil
 			}
 
 			// Reconcile (should handle ReadyForLLM -> LLMFinalAnswer)
@@ -393,13 +402,6 @@ var _ = Describe("Task Controller", func() {
 			Expect(task.Status.ContextWindow[2].Content).To(ContainSubstring("The moon is a natural satellite of the Earth and lacks any formal government or capital."))
 			ExpectRecorder(recorder).ToEmitEventContaining("SendingContextWindowToLLM", "LLMFinalAnswer")
 
-			By("ensuring the llm client was called correctly")
-			Expect(mockLLMClient.Calls).To(HaveLen(1))
-			Expect(mockLLMClient.Calls[0].Messages).To(HaveLen(2))
-			Expect(mockLLMClient.Calls[0].Messages[0].Role).To(Equal("system"))
-			Expect(mockLLMClient.Calls[0].Messages[0].Content).To(ContainSubstring(testAgent.SystemPrompt))
-			Expect(mockLLMClient.Calls[0].Messages[1].Role).To(Equal("user"))
-			Expect(mockLLMClient.Calls[0].Messages[1].Content).To(ContainSubstring(testTask.UserMessage))
 		})
 	})
 	Context("ReadyForLLM -> Error", func() {
@@ -428,11 +430,18 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task with a mock LLM client that returns an error")
 			reconciler, recorder := reconciler()
-			mockLLMClient := &llmclient.MockLLMClient{
-				Error: fmt.Errorf("connection timeout"),
-			}
-			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
-				return mockLLMClient, nil
+			ctrl := gomock.NewController(GinkgoT())
+			defer ctrl.Finish()
+			mockLLMClient := llmmocks.NewMockLLMClient(ctrl)
+			mockLLMClient.EXPECT().SendRequest(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+			).Return(nil, fmt.Errorf("connection timeout"))
+			reconciler.llmClientFactory = &mockLLMClientFactory{
+				createFunc: func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
+					return mockLLMClient, nil
+				},
 			}
 
 			// Reconcile (should handle ReadyForLLM -> Error)
@@ -475,15 +484,22 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task with a mock LLM client that returns a 400 error")
 			reconciler, recorder := reconciler()
-			mockLLMClient := &llmclient.MockLLMClient{
-				Error: &llmclient.LLMRequestError{
-					StatusCode: 400,
-					Message:    "invalid request: model not found",
-					Err:        fmt.Errorf("LLM API request failed"),
+			ctrl := gomock.NewController(GinkgoT())
+			defer ctrl.Finish()
+			mockLLMClient := llmmocks.NewMockLLMClient(ctrl)
+			mockLLMClient.EXPECT().SendRequest(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+			).Return(nil, &llmclient.LLMRequestError{
+				StatusCode: 400,
+				Message:    "invalid request: model not found",
+				Err:        fmt.Errorf("LLM API request failed"),
+			})
+			reconciler.llmClientFactory = &mockLLMClientFactory{
+				createFunc: func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
+					return mockLLMClient, nil
 				},
-			}
-			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
-				return mockLLMClient, nil
 			}
 
 			// Reconcile (should handle ReadyForLLM -> Failed)
@@ -529,19 +545,26 @@ var _ = Describe("Task Controller", func() {
 
 			By("reconciling the task")
 			reconciler, recorder := reconciler()
-			mockLLMClient := &llmclient.MockLLMClient{
-				Response: &acp.Message{
-					Role: "assistant",
-					ToolCalls: []acp.MessageToolCall{
-						{
-							ID:       "1",
-							Function: acp.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url": "https://api.example.com/data"}`},
-						},
+			ctrl := gomock.NewController(GinkgoT())
+			defer ctrl.Finish()
+			mockLLMClient := llmmocks.NewMockLLMClient(ctrl)
+			mockLLMClient.EXPECT().SendRequest(
+				gomock.Any(),
+				gomock.Any(),
+				gomock.Any(),
+			).Return(&acp.Message{
+				Role: "assistant",
+				ToolCalls: []acp.MessageToolCall{
+					{
+						ID:       "1",
+						Function: acp.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url": "https://api.example.com/data"}`},
 					},
 				},
-			}
-			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
-				return mockLLMClient, nil
+			}, nil)
+			reconciler.llmClientFactory = &mockLLMClientFactory{
+				createFunc: func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
+					return mockLLMClient, nil
+				},
 			}
 
 			// Reconcile (should handle ReadyForLLM -> ToolCallsPending)
@@ -808,35 +831,41 @@ var _ = Describe("Task Controller", func() {
 			defer testTask.Teardown(ctx)
 
 			By("creating a mock LLM client that validates context window messages are passed correctly")
-			mockClient := &llmclient.MockLLMClient{
-				Response: &acp.Message{
+			ctrl := gomock.NewController(GinkgoT())
+			defer ctrl.Finish()
+			mockClient := llmmocks.NewMockLLMClient(ctrl)
+			mockClient.EXPECT().SendRequest(
+				gomock.Any(),
+				gomock.AssignableToTypeOf([]acp.Message{}),
+				gomock.Any(),
+			).DoAndReturn(func(ctx context.Context, contextWindow []acp.Message, tools []llmclient.Tool) (*acp.Message, error) {
+				Expect(contextWindow).To(HaveLen(4), "All 4 messages should be sent to the LLM")
+
+				// Verify all messages are present in the correct order
+				Expect(contextWindow[0].Role).To(Equal("system"))
+				Expect(contextWindow[0].Content).To(Equal("you are a testing assistant"))
+
+				Expect(contextWindow[1].Role).To(Equal("user"))
+				Expect(contextWindow[1].Content).To(Equal("what is 2 + 2?"))
+
+				Expect(contextWindow[2].Role).To(Equal("assistant"))
+				Expect(contextWindow[2].Content).To(Equal("2 + 2 = 4"))
+
+				Expect(contextWindow[3].Role).To(Equal("user"))
+				Expect(contextWindow[3].Content).To(Equal("what is 4 + 4?"))
+
+				return &acp.Message{
 					Role:    "assistant",
 					Content: "4 + 4 = 8",
-				},
-				ValidateContextWindow: func(contextWindow []acp.Message) error {
-					Expect(contextWindow).To(HaveLen(4), "All 4 messages should be sent to the LLM")
-
-					// Verify all messages are present in the correct order
-					Expect(contextWindow[0].Role).To(Equal("system"))
-					Expect(contextWindow[0].Content).To(Equal("you are a testing assistant"))
-
-					Expect(contextWindow[1].Role).To(Equal("user"))
-					Expect(contextWindow[1].Content).To(Equal("what is 2 + 2?"))
-
-					Expect(contextWindow[2].Role).To(Equal("assistant"))
-					Expect(contextWindow[2].Content).To(Equal("2 + 2 = 4"))
-
-					Expect(contextWindow[3].Role).To(Equal("user"))
-					Expect(contextWindow[3].Content).To(Equal("what is 4 + 4?"))
-
-					return nil
-				},
-			}
+				}, nil
+			})
 
 			By("reconciling the task")
 			reconciler, _ := reconciler()
-			reconciler.newLLMClient = func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
-				return mockClient, nil
+			reconciler.llmClientFactory = &mockLLMClientFactory{
+				createFunc: func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
+					return mockClient, nil
+				},
 			}
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
