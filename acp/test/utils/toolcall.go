@@ -13,11 +13,12 @@ import (
 )
 
 type TestToolCall struct {
-	Name      string
-	TaskName  string
-	ToolRef   string
-	ToolType  acp.ToolType
-	Arguments string
+	Name       string
+	TaskName   string
+	ToolRef    string
+	ToolType   acp.ToolType
+	Arguments  string
+	ToolCallID string
 
 	ToolCall  *acp.ToolCall
 	k8sClient client.Client
@@ -27,6 +28,9 @@ func (t *TestToolCall) Setup(ctx context.Context, k8sClient client.Client) *acp.
 	t.k8sClient = k8sClient
 	if t.Arguments == "" {
 		t.Arguments = `{"url": "https://api.example.com/data"}`
+	}
+	if t.ToolCallID == "" {
+		t.ToolCallID = "test-call-id"
 	}
 
 	By("creating the toolcall")
@@ -40,6 +44,7 @@ func (t *TestToolCall) Setup(ctx context.Context, k8sClient client.Client) *acp.
 			},
 		},
 		Spec: acp.ToolCallSpec{
+			ToolCallID: t.ToolCallID,
 			TaskRef: acp.LocalObjectReference{
 				Name: t.TaskName,
 			},

@@ -11,7 +11,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
-	"github.com/humanlayer/agentcontrolplane/acp/internal/mcpmanager"
 	"github.com/humanlayer/agentcontrolplane/acp/test/utils"
 )
 
@@ -32,6 +31,115 @@ var _ = Describe("Agent Controller", func() {
 		Name:      agentName,
 		Namespace: "default",
 	}
+
+	Context("StateMachine Tests", func() {
+		Describe("'' -> Ready:Ready", func() {
+			It("initializes agent status and validates dependencies successfully", func() {
+				By("setting up required dependencies")
+				llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
+					Ready:        true,
+					Status:       "Ready",
+					StatusDetail: "Ready for testing",
+				})
+				defer llm.Teardown(ctx)
+
+				By("creating a test agent with empty status")
+				testAgent := &utils.TestAgent{
+					Name:         agentName,
+					SystemPrompt: "Test agent",
+					LLM:          llmName,
+				}
+				testAgent.Setup(ctx, k8sClient)
+				defer testAgent.Teardown(ctx)
+
+				By("getting the agent to verify empty status")
+				agent := &acp.Agent{}
+				err := k8sClient.Get(ctx, typeNamespacedName, agent)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(agent.Status.Status).To(BeEmpty())
+
+				By("processing with state machine")
+				eventRecorder := record.NewFakeRecorder(10)
+				stateMachine := NewStateMachine(k8sClient, eventRecorder)
+
+				_, err = stateMachine.Process(ctx, agent)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("verifying status transitions to Ready")
+				err = k8sClient.Get(ctx, typeNamespacedName, agent)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(agent.Status.Status).To(Equal(acp.AgentStatusReady))
+				Expect(agent.Status.StatusDetail).To(Equal("All dependencies validated successfully"))
+
+				By("checking that events were created")
+				utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("Initializing")
+				utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationSucceeded")
+			})
+		})
+
+		Describe("Pending:Pending -> Ready:Ready", func() {
+			It("validates dependencies and transitions to Ready", func() {
+				By("setting up all required dependencies")
+				llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
+					Ready:        true,
+					Status:       "Ready",
+					StatusDetail: "Ready for testing",
+				})
+				defer llm.Teardown(ctx)
+
+				contactChannel := &utils.TestContactChannel{
+					Name:        "test-humancontactchannel",
+					ChannelType: acp.ContactChannelTypeEmail,
+					SecretName:  "test-secret",
+				}
+				contactChannel.SetupWithStatus(ctx, k8sClient, acp.ContactChannelStatus{
+					Ready:        true,
+					Status:       "Ready",
+					StatusDetail: "Ready for testing",
+				})
+				defer contactChannel.Teardown(ctx)
+
+				By("creating a test agent with pending status")
+				testAgent := &utils.TestAgent{
+					Name:                 agentName,
+					SystemPrompt:         "Test agent",
+					LLM:                  llmName,
+					HumanContactChannels: []string{contactChannel.Name},
+				}
+				testAgent.SetupWithStatus(ctx, k8sClient, acp.AgentStatus{
+					Status:       acp.AgentStatusPending,
+					StatusDetail: "Validating dependencies",
+					Ready:        false,
+				})
+				defer testAgent.Teardown(ctx)
+
+				By("processing with state machine")
+				eventRecorder := record.NewFakeRecorder(10)
+				stateMachine := NewStateMachine(k8sClient, eventRecorder)
+
+				agent := &acp.Agent{}
+				err := k8sClient.Get(ctx, typeNamespacedName, agent)
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = stateMachine.Process(ctx, agent)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("verifying status transitions to Ready")
+				err = k8sClient.Get(ctx, typeNamespacedName, agent)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(agent.Status.Status).To(Equal(acp.AgentStatusReady))
+				Expect(agent.Status.Ready).To(BeTrue())
+				Expect(agent.Status.StatusDetail).To(Equal("All dependencies validated successfully"))
+				Expect(agent.Status.ValidHumanContactChannels).To(ContainElement(acp.ResolvedContactChannel{
+					Name: contactChannel.Name,
+					Type: "email",
+				}))
+
+				By("checking that a success event was created")
+				utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationSucceeded")
+			})
+		})
+	})
 
 	Context("'':'' -> Ready:Ready", func() {
 		It("moves to Ready:Ready when all dependencies are valid", func() {
@@ -67,11 +175,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("reconciling the agent")
 			eventRecorder := record.NewFakeRecorder(10)
-			reconciler := &AgentReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				recorder: eventRecorder,
-			}
+			reconciler := NewTestAgentReconciler(k8sClient, eventRecorder)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -122,11 +226,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("reconciling the agent")
 			eventRecorder := record.NewFakeRecorder(10)
-			reconciler := &AgentReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				recorder: eventRecorder,
-			}
+			reconciler := NewTestAgentReconciler(k8sClient, eventRecorder)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -181,12 +281,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("reconciling the agent")
 			eventRecorder := record.NewFakeRecorder(10)
-			reconciler := &AgentReconciler{
-				Client:     k8sClient,
-				Scheme:     k8sClient.Scheme(),
-				recorder:   eventRecorder,
-				MCPManager: &mcpmanager.MCPServerManager{},
-			}
+			reconciler := NewTestAgentReconciler(k8sClient, eventRecorder)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -226,11 +321,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("reconciling the agent")
 			eventRecorder := record.NewFakeRecorder(10)
-			reconciler := &AgentReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				recorder: eventRecorder,
-			}
+			reconciler := NewTestAgentReconciler(k8sClient, eventRecorder)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -286,11 +377,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("reconciling the parent agent")
 			eventRecorder := record.NewFakeRecorder(10)
-			reconciler := &AgentReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				recorder: eventRecorder,
-			}
+			reconciler := NewTestAgentReconciler(k8sClient, eventRecorder)
 
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -310,6 +397,68 @@ var _ = Describe("Agent Controller", func() {
 
 			By("checking that a pending event was created")
 			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("SubAgentsPending")
+		})
+
+		It("moves to Ready:Ready when MCP server is connected with tools", func() {
+			By("creating a test LLM")
+			llm.SetupWithStatus(ctx, k8sClient, acp.LLMStatus{
+				Ready:        true,
+				Status:       "Ready",
+				StatusDetail: "Ready for testing",
+			})
+			defer llm.Teardown(ctx)
+
+			By("creating a connected MCP server")
+			mcpServer := &utils.TestMCPServer{
+				Name:      "test-fetch",
+				Transport: "stdio",
+				Command:   "uvx",
+				Args:      []string{"mcp-server-fetch"},
+			}
+			mcpServer.SetupWithStatus(ctx, k8sClient, acp.MCPServerStatus{
+				Connected:    true,
+				Status:       "Ready",
+				StatusDetail: "Connected successfully with 1 tools",
+				Tools: []acp.MCPTool{{
+					Name:        "fetch",
+					Description: "Fetch a URL",
+				}},
+			})
+			defer mcpServer.Teardown(ctx)
+
+			By("creating a test agent with MCP server reference")
+			testAgent := &utils.TestAgent{
+				Name:         agentName,
+				SystemPrompt: "Test agent",
+				LLM:          llmName,
+				MCPServers:   []string{"test-fetch"},
+			}
+			testAgent.Setup(ctx, k8sClient)
+			defer testAgent.Teardown(ctx)
+
+			By("reconciling the agent")
+			eventRecorder := record.NewFakeRecorder(10)
+			reconciler := NewTestAgentReconciler(k8sClient, eventRecorder)
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking the agent status")
+			updatedAgent := &acp.Agent{}
+			err = k8sClient.Get(ctx, typeNamespacedName, updatedAgent)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedAgent.Status.Ready).To(BeTrue())
+			Expect(updatedAgent.Status.Status).To(Equal(acp.AgentStatusReady))
+			Expect(updatedAgent.Status.StatusDetail).To(Equal("All dependencies validated successfully"))
+			Expect(updatedAgent.Status.ValidMCPServers).To(ContainElement(acp.ResolvedMCPServer{
+				Name:  "test-fetch",
+				Tools: []string{"fetch"},
+			}))
+
+			By("checking that a success event was created")
+			utils.ExpectRecorder(eventRecorder).ToEmitEventContaining("ValidationSucceeded")
 		})
 	})
 
@@ -352,11 +501,7 @@ var _ = Describe("Agent Controller", func() {
 
 			By("reconciling the parent agent")
 			eventRecorder := record.NewFakeRecorder(10)
-			reconciler := &AgentReconciler{
-				Client:   k8sClient,
-				Scheme:   k8sClient.Scheme(),
-				recorder: eventRecorder,
-			}
+			reconciler := NewTestAgentReconciler(k8sClient, eventRecorder)
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,

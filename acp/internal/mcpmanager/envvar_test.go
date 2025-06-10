@@ -1,8 +1,4 @@
-//go:build secret
-// +build secret
-
-// This file is only built when the 'secret' build tag is used
-// It contains tests for the secret handling functionality
+// Environment variable testing for MCP manager
 
 package mcpmanager
 
@@ -147,7 +143,7 @@ func (m *MockStatusWriter) Create(ctx context.Context, obj client.Object, subRes
 func (m *MockClient) Scheme() *runtime.Scheme {
 	scheme := runtime.NewScheme()
 	// Add core types to scheme
-	corev1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
 	return scheme
 }
 

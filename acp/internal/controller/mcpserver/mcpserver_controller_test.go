@@ -29,6 +29,7 @@ func teardownContactChannel(ctx context.Context, contactChannel *acp.ContactChan
 type MockMCPServerManager struct {
 	ConnectServerFunc func(ctx context.Context, mcpServer *acp.MCPServer) error
 	GetToolsFunc      func(serverName string) ([]acp.MCPTool, bool)
+	GetConnectionFunc func(serverName string) (*mcpmanager.MCPConnection, bool)
 }
 
 func (m *MockMCPServerManager) ConnectServer(ctx context.Context, mcpServer *acp.MCPServer) error {
@@ -46,15 +47,14 @@ func (m *MockMCPServerManager) GetTools(serverName string) ([]acp.MCPTool, bool)
 }
 
 func (m *MockMCPServerManager) GetConnection(serverName string) (*mcpmanager.MCPConnection, bool) {
+	if m.GetConnectionFunc != nil {
+		return m.GetConnectionFunc(serverName)
+	}
 	return nil, false
 }
 
 func (m *MockMCPServerManager) DisconnectServer(serverName string) {
 	// No-op for testing
-}
-
-func (m *MockMCPServerManager) GetToolsForAgent(agent *acp.Agent) []acp.MCPTool {
-	return nil
 }
 
 func (m *MockMCPServerManager) CallTool(ctx context.Context, serverName, toolName string, arguments map[string]interface{}) (string, error) {
@@ -74,6 +74,253 @@ var _ = Describe("MCPServer Controller", func() {
 		MCPServerName      = "test-mcpserver"
 		MCPServerNamespace = "default"
 	)
+
+	Context("When using StateMachine", func() {
+		It("Should transition from empty to Pending:Pending", func() {
+			ctx := context.Background()
+
+			By("Creating a new MCPServer")
+			mcpServer := &acp.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "state-test-mcpserver",
+					Namespace: MCPServerNamespace,
+				},
+				Spec: acp.MCPServerSpec{
+					Transport: "stdio",
+					Command:   "test-command",
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+			defer teardownMCPServer(ctx, mcpServer)
+
+			By("Creating a StateMachine")
+			mockManager := &MockMCPServerManager{}
+			recorder := record.NewFakeRecorder(10)
+			stateMachine := NewStateMachine(k8sClient, recorder, mockManager, &defaultMCPClientFactory{}, &defaultEnvVarProcessor{client: k8sClient})
+
+			By("Processing empty state")
+			result, err := stateMachine.Process(ctx, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue())
+
+			By("Checking status was updated to Pending")
+			updatedMCPServer := &acp.MCPServer{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: "state-test-mcpserver", Namespace: MCPServerNamespace}, updatedMCPServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedMCPServer.Status.Status).To(Equal("Pending"))
+			Expect(updatedMCPServer.Status.StatusDetail).To(Equal("Initializing"))
+			Expect(updatedMCPServer.Status.Connected).To(BeFalse())
+		})
+
+		It("Should transition from Pending:Pending to Ready:Ready", func() {
+			ctx := context.Background()
+
+			By("Creating a new MCPServer in Pending state")
+			mcpServer := &acp.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "state-pending-ready",
+					Namespace: MCPServerNamespace,
+				},
+				Spec: acp.MCPServerSpec{
+					Transport: "stdio",
+					Command:   "test-command",
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+			defer teardownMCPServer(ctx, mcpServer)
+
+			By("Updating the status to Pending")
+			mcpServer.Status = acp.MCPServerStatus{
+				Status:       "Pending",
+				StatusDetail: "Initializing",
+				Connected:    false,
+			}
+			Expect(k8sClient.Status().Update(ctx, mcpServer)).To(Succeed())
+
+			By("Setting up a mock manager with successful connection")
+			mockManager := &MockMCPServerManager{
+				ConnectServerFunc: func(ctx context.Context, mcpServer *acp.MCPServer) error {
+					return nil // Simulate successful connection
+				},
+				GetToolsFunc: func(serverName string) ([]acp.MCPTool, bool) {
+					return []acp.MCPTool{
+						{
+							Name:        "test-tool",
+							Description: "A test tool",
+						},
+					}, true
+				},
+			}
+
+			By("Creating a StateMachine")
+			recorder := record.NewFakeRecorder(10)
+			stateMachine := NewStateMachine(k8sClient, recorder, mockManager, &defaultMCPClientFactory{}, &defaultEnvVarProcessor{client: k8sClient})
+
+			By("Processing Pending state")
+			result, err := stateMachine.Process(ctx, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Minute * 10))
+
+			By("Checking status was updated to Ready")
+			updatedMCPServer := &acp.MCPServer{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: "state-pending-ready", Namespace: MCPServerNamespace}, updatedMCPServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedMCPServer.Status.Status).To(Equal("Ready"))
+			Expect(updatedMCPServer.Status.Connected).To(BeTrue())
+			Expect(updatedMCPServer.Status.Tools).To(HaveLen(1))
+			Expect(updatedMCPServer.Status.StatusDetail).To(ContainSubstring("Connected successfully with 1 tools"))
+		})
+
+		It("Should transition from Pending:Pending to Error:Error on validation failure", func() {
+			ctx := context.Background()
+
+			By("Creating a new MCPServer with invalid spec")
+			mcpServer := &acp.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "state-pending-error",
+					Namespace: MCPServerNamespace,
+				},
+				Spec: acp.MCPServerSpec{
+					Transport: "stdio",
+					// Missing command - validation should fail
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+			defer teardownMCPServer(ctx, mcpServer)
+
+			By("Updating the status to Pending")
+			mcpServer.Status = acp.MCPServerStatus{
+				Status:       "Pending",
+				StatusDetail: "Initializing",
+				Connected:    false,
+			}
+			Expect(k8sClient.Status().Update(ctx, mcpServer)).To(Succeed())
+
+			By("Creating a StateMachine")
+			mockManager := &MockMCPServerManager{}
+			recorder := record.NewFakeRecorder(10)
+			stateMachine := NewStateMachine(k8sClient, recorder, mockManager, &defaultMCPClientFactory{}, &defaultEnvVarProcessor{client: k8sClient})
+
+			By("Processing Pending state with invalid spec")
+			result, err := stateMachine.Process(ctx, mcpServer)
+			Expect(err).To(HaveOccurred()) // Should return validation error
+			Expect(result.Requeue).To(BeFalse())
+
+			By("Checking status was updated to Error")
+			updatedMCPServer := &acp.MCPServer{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: "state-pending-error", Namespace: MCPServerNamespace}, updatedMCPServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedMCPServer.Status.Status).To(Equal("Error"))
+			Expect(updatedMCPServer.Status.Connected).To(BeFalse())
+			Expect(updatedMCPServer.Status.StatusDetail).To(ContainSubstring("Validation failed"))
+		})
+
+		It("Should transition from Ready:Ready to Ready:Ready (maintenance)", func() {
+			ctx := context.Background()
+
+			By("Creating a new MCPServer in Ready state")
+			mcpServer := &acp.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "state-ready-maintenance",
+					Namespace: MCPServerNamespace,
+				},
+				Spec: acp.MCPServerSpec{
+					Transport: "stdio",
+					Command:   "test-command",
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+			defer teardownMCPServer(ctx, mcpServer)
+
+			By("Updating the status to Ready")
+			mcpServer.Status = acp.MCPServerStatus{
+				Status:       "Ready",
+				StatusDetail: "Connected successfully",
+				Connected:    true,
+				Tools: []acp.MCPTool{
+					{Name: "existing-tool", Description: "An existing tool"},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, mcpServer)).To(Succeed())
+
+			By("Setting up a mock manager with connection and tools")
+			mockManager := &MockMCPServerManager{
+				GetToolsFunc: func(serverName string) ([]acp.MCPTool, bool) {
+					return []acp.MCPTool{
+						{Name: "existing-tool", Description: "An existing tool"},
+					}, true
+				},
+				GetConnectionFunc: func(serverName string) (*mcpmanager.MCPConnection, bool) {
+					return &mcpmanager.MCPConnection{}, true
+				},
+			}
+
+			By("Creating a StateMachine")
+			recorder := record.NewFakeRecorder(10)
+			stateMachine := NewStateMachine(k8sClient, recorder, mockManager, &defaultMCPClientFactory{}, &defaultEnvVarProcessor{client: k8sClient})
+
+			By("Processing Ready state for maintenance")
+			result, err := stateMachine.Process(ctx, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Minute * 10))
+
+			By("Checking status remains Ready")
+			updatedMCPServer := &acp.MCPServer{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: "state-ready-maintenance", Namespace: MCPServerNamespace}, updatedMCPServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedMCPServer.Status.Status).To(Equal("Ready"))
+			Expect(updatedMCPServer.Status.Connected).To(BeTrue())
+		})
+
+		It("Should transition from Error:Error to Pending:Pending (recovery)", func() {
+			ctx := context.Background()
+
+			By("Creating a new MCPServer in Error state")
+			mcpServer := &acp.MCPServer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "state-error-recovery",
+					Namespace: MCPServerNamespace,
+				},
+				Spec: acp.MCPServerSpec{
+					Transport: "stdio",
+					Command:   "test-command",
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, mcpServer)).To(Succeed())
+			defer teardownMCPServer(ctx, mcpServer)
+
+			By("Updating the status to Error")
+			mcpServer.Status = acp.MCPServerStatus{
+				Status:       "Error",
+				StatusDetail: "Connection failed",
+				Connected:    false,
+			}
+			Expect(k8sClient.Status().Update(ctx, mcpServer)).To(Succeed())
+
+			By("Creating a StateMachine")
+			mockManager := &MockMCPServerManager{}
+			recorder := record.NewFakeRecorder(10)
+			stateMachine := NewStateMachine(k8sClient, recorder, mockManager, &defaultMCPClientFactory{}, &defaultEnvVarProcessor{client: k8sClient})
+
+			By("Processing Error state for recovery")
+			result, err := stateMachine.Process(ctx, mcpServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(time.Second * 30))
+
+			By("Checking status was updated to Pending")
+			updatedMCPServer := &acp.MCPServer{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: "state-error-recovery", Namespace: MCPServerNamespace}, updatedMCPServer)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedMCPServer.Status.Status).To(Equal("Pending"))
+			Expect(updatedMCPServer.Status.StatusDetail).To(Equal("Retrying after error"))
+			Expect(updatedMCPServer.Status.Connected).To(BeFalse())
+		})
+	})
 
 	Context("When reconciling a MCPServer", func() {
 		It("Should validate and connect to the MCP server", func() {
@@ -134,7 +381,15 @@ var _ = Describe("MCPServer Controller", func() {
 			}
 
 			By("Reconciling the created MCPServer")
-			_, err := reconciler.Reconcile(ctx, ctrl.Request{
+			// First reconcile: empty → pending
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: mcpServerLookupKey,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue())
+
+			// Second reconcile: pending → ready (with mock success)
+			_, err = reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: mcpServerLookupKey,
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -187,7 +442,15 @@ var _ = Describe("MCPServer Controller", func() {
 			}
 
 			By("Reconciling the invalid MCPServer")
-			_, err := reconciler.Reconcile(ctx, ctrl.Request{
+			// First reconcile: empty → pending
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: invalidMCPServerLookupKey,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue())
+
+			// Second reconcile: pending → validation error
+			_, err = reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: invalidMCPServerLookupKey,
 			})
 			Expect(err).To(HaveOccurred()) // Validation should fail
@@ -234,7 +497,14 @@ var _ = Describe("MCPServer Controller", func() {
 			}
 
 			By("Reconciling the MCPServer with non-existent contact channel")
+			// First reconcile - sets status to Pending
 			_, err := reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: types.NamespacedName{Name: "mcpserver-missing-channel", Namespace: MCPServerNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred()) // First reconcile should not error, just set to Pending
+
+			// Second reconcile - validates and should fail
+			_, err = reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: types.NamespacedName{Name: "mcpserver-missing-channel", Namespace: MCPServerNamespace},
 			})
 			Expect(err).To(HaveOccurred()) // Should fail because contact channel doesn't exist
@@ -307,7 +577,15 @@ var _ = Describe("MCPServer Controller", func() {
 				MCPManager: &MockMCPServerManager{},
 			}
 
+			// First reconcile - sets status to Pending
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: types.NamespacedName{Name: "mcpserver-channel-ready", Namespace: MCPServerNamespace},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeTrue()) // First reconcile should requeue
+
+			// Second reconcile - validates contact channel and should wait
+			result, err = reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: types.NamespacedName{Name: "mcpserver-channel-ready", Namespace: MCPServerNamespace},
 			})
 			Expect(err).NotTo(HaveOccurred()) // Should stay in pending because contact channel is not ready
