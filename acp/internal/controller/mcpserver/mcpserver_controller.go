@@ -2,12 +2,9 @@ package mcpserver
 
 import (
 	"context"
-	"fmt"
-	"time"
 
-	corev1 "k8s.io/api/core/v1"
+	mcpclient "github.com/mark3labs/mcp-go/client"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,16 +20,57 @@ const (
 	StatusReady   = "Ready"
 )
 
+// MCPClientFactory defines the interface for creating MCP clients
+type MCPClientFactory interface {
+	CreateStdioClient(ctx context.Context, command string, env []string, args ...string) (mcpclient.MCPClient, error)
+	CreateHTTPClient(ctx context.Context, url string) (mcpclient.MCPClient, error)
+}
+
+// EnvVarProcessor defines the interface for processing environment variables
+type EnvVarProcessor interface {
+	ProcessEnvVars(ctx context.Context, envVars []acp.EnvVar, namespace string) ([]string, error)
+}
+
 // MCPServerManagerInterface defines the interface for MCP server management
 type MCPServerManagerInterface interface {
 	ConnectServer(ctx context.Context, mcpServer *acp.MCPServer) error
 	GetTools(serverName string) ([]acp.MCPTool, bool)
 	GetConnection(serverName string) (*mcpmanager.MCPConnection, bool)
 	DisconnectServer(serverName string)
-	GetToolsForAgent(agent *acp.Agent) []acp.MCPTool
 	CallTool(ctx context.Context, serverName, toolName string, arguments map[string]interface{}) (string, error)
 	FindServerForTool(fullToolName string) (serverName string, toolName string, found bool)
 	Close()
+}
+
+// MCPServerStatusUpdate defines consistent status update parameters
+type MCPServerStatusUpdate struct {
+	Connected    bool
+	Status       string
+	StatusDetail string
+	Tools        []acp.MCPTool
+	Error        string
+	EventType    string
+	EventReason  string
+	EventMessage string
+}
+
+// Default factory implementations
+type defaultMCPClientFactory struct{}
+
+func (f *defaultMCPClientFactory) CreateStdioClient(ctx context.Context, command string, env []string, args ...string) (mcpclient.MCPClient, error) {
+	return mcpclient.NewStdioMCPClient(command, env, args...)
+}
+
+func (f *defaultMCPClientFactory) CreateHTTPClient(ctx context.Context, url string) (mcpclient.MCPClient, error) {
+	return mcpclient.NewSSEMCPClient(url)
+}
+
+type defaultEnvVarProcessor struct {
+	client client.Client
+}
+
+func (p *defaultEnvVarProcessor) ProcessEnvVars(ctx context.Context, envVars []acp.EnvVar, namespace string) ([]string, error) {
+	return processEnvVars(ctx, p.client, envVars, namespace)
 }
 
 // +kubebuilder:rbac:groups=acp.humanlayer.dev,resources=mcpservers,verbs=get;list;watch;create;update;patch;delete
@@ -41,176 +79,82 @@ type MCPServerManagerInterface interface {
 // MCPServerReconciler reconciles a MCPServer object
 type MCPServerReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	recorder   record.EventRecorder
-	MCPManager MCPServerManagerInterface
+	Scheme          *runtime.Scheme
+	recorder        record.EventRecorder
+	MCPManager      MCPServerManagerInterface
+	clientFactory   MCPClientFactory
+	envVarProcessor EnvVarProcessor
+	stateMachine    *StateMachine
 }
 
-// updateStatus updates the status of the MCPServer resource with the latest version
-func (r *MCPServerReconciler) updateStatus(ctx context.Context, req ctrl.Request, statusUpdate *acp.MCPServer) error {
-	logger := log.FromContext(ctx)
-
-	// Get the latest version of the MCPServer
-	var latestMCPServer acp.MCPServer
-	if err := r.Get(ctx, req.NamespacedName, &latestMCPServer); err != nil {
-		logger.Error(err, "Failed to get latest MCPServer before status update")
-		return err
-	}
-
-	// Apply status updates to the latest version
-	latestMCPServer.Status.Connected = statusUpdate.Status.Connected
-	latestMCPServer.Status.Status = statusUpdate.Status.Status
-	latestMCPServer.Status.StatusDetail = statusUpdate.Status.StatusDetail
-	latestMCPServer.Status.Tools = statusUpdate.Status.Tools
-
-	// Update the status
-	if err := r.Status().Update(ctx, &latestMCPServer); err != nil {
-		logger.Error(err, "Failed to update MCPServer status")
-		return err
-	}
-
-	return nil
-}
-
-// Reconcile processes the MCPServer resource and establishes a connection to the MCP server
-func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Fetch the MCPServer instance
+// getMCPServer retrieves an MCPServer by namespaced name
+func (r *MCPServerReconciler) getMCPServer(ctx context.Context, namespacedName client.ObjectKey) (*acp.MCPServer, error) {
 	var mcpServer acp.MCPServer
-	if err := r.Get(ctx, req.NamespacedName, &mcpServer); err != nil {
+	if err := r.Get(ctx, namespacedName, &mcpServer); err != nil {
+		return nil, err
+	}
+	return &mcpServer, nil
+}
+
+// Reconcile processes the MCPServer resource using StateMachine
+func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	mcpServer, err := r.getMCPServer(ctx, req.NamespacedName)
+	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	logger.Info("Starting reconciliation", "name", mcpServer.Name)
+	log.FromContext(ctx).V(1).Info("Starting reconciliation", "name", mcpServer.Name)
 
-	// Create a status update copy
-	statusUpdate := mcpServer.DeepCopy()
-
-	if statusUpdate.Spec.ApprovalContactChannel != nil {
-		// validate the approval contact channel
-		approvalContactChannel := &acp.ContactChannel{}
-		err := r.Get(ctx, types.NamespacedName{Name: statusUpdate.Spec.ApprovalContactChannel.Name, Namespace: statusUpdate.Namespace}, approvalContactChannel)
-		if err != nil {
-			statusUpdate.Status.Connected = false
-			statusUpdate.Status.Status = StatusError
-			// todo handle other types of error, not just "not found"
-			statusUpdate.Status.StatusDetail = fmt.Sprintf("ContactChannel %q not found", statusUpdate.Spec.ApprovalContactChannel.Name)
-			r.recorder.Event(&mcpServer, corev1.EventTypeWarning, "ContactChannelNotFound", fmt.Sprintf("ContactChannel %q not found", statusUpdate.Spec.ApprovalContactChannel.Name))
-			if err := r.updateStatus(ctx, req, statusUpdate); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, err
-		}
-
-		if !approvalContactChannel.Status.Ready {
-			statusUpdate.Status.Connected = false
-			statusUpdate.Status.Status = StatusPending
-			statusUpdate.Status.StatusDetail = fmt.Sprintf("ContactChannel %q is not ready", statusUpdate.Spec.ApprovalContactChannel.Name)
-			r.recorder.Event(&mcpServer, corev1.EventTypeWarning, "ContactChannelNotReady", fmt.Sprintf("ContactChannel %q is not ready", statusUpdate.Spec.ApprovalContactChannel.Name))
-			if err := r.updateStatus(ctx, req, statusUpdate); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
-		}
+	// Ensure StateMachine is initialized
+	if r.stateMachine == nil {
+		r.ensureStateMachine()
 	}
 
-	// Basic validation
-	if err := r.validateMCPServer(&mcpServer); err != nil {
-		statusUpdate.Status.Connected = false
-		statusUpdate.Status.Status = StatusError
-		statusUpdate.Status.StatusDetail = fmt.Sprintf("Validation failed: %v", err)
-		r.recorder.Event(&mcpServer, corev1.EventTypeWarning, "ValidationFailed", err.Error())
-
-		if updateErr := r.updateStatus(ctx, req, statusUpdate); updateErr != nil {
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{}, err
-	}
-
-	// Try to connect to the MCP server
-	err := r.MCPManager.ConnectServer(ctx, &mcpServer)
-	if err != nil {
-		statusUpdate.Status.Connected = false
-		statusUpdate.Status.Status = StatusError
-		statusUpdate.Status.StatusDetail = fmt.Sprintf("Connection failed: %v", err)
-		r.recorder.Event(&mcpServer, corev1.EventTypeWarning, "ConnectionFailed", err.Error())
-
-		if updateErr := r.updateStatus(ctx, req, statusUpdate); updateErr != nil {
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{RequeueAfter: time.Second * 30}, nil // Retry after 30 seconds
-	}
-
-	// Get tools from the manager
-	tools, exists := r.MCPManager.GetTools(mcpServer.Name)
-	if !exists {
-		statusUpdate.Status.Connected = false
-		statusUpdate.Status.Status = StatusError
-		statusUpdate.Status.StatusDetail = "Failed to get tools from manager"
-		r.recorder.Event(&mcpServer, corev1.EventTypeWarning, "GetToolsFailed", "Failed to get tools from manager")
-
-		if updateErr := r.updateStatus(ctx, req, statusUpdate); updateErr != nil {
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{RequeueAfter: time.Second * 30}, nil // Retry after 30 seconds
-	}
-
-	// Update status with tools
-	statusUpdate.Status.Connected = true
-	statusUpdate.Status.Status = "Ready"
-	statusUpdate.Status.StatusDetail = fmt.Sprintf("Connected successfully with %d tools", len(tools))
-	statusUpdate.Status.Tools = tools
-	r.recorder.Event(&mcpServer, corev1.EventTypeNormal, "Connected", "MCP server connected successfully")
-
-	// Update status
-	if updateErr := r.updateStatus(ctx, req, statusUpdate); updateErr != nil {
-		return ctrl.Result{}, updateErr
-	}
-
-	logger.Info("Successfully reconciled MCPServer",
-		"name", mcpServer.Name,
-		"connected", statusUpdate.Status.Connected,
-		"toolCount", len(statusUpdate.Status.Tools))
-
-	// Schedule periodic reconciliation to refresh tool list
-	return ctrl.Result{RequeueAfter: time.Minute * 10}, nil
+	// Delegate to StateMachine
+	return r.stateMachine.Process(ctx, mcpServer)
 }
 
-// validateMCPServer performs basic validation on the MCPServer spec
-func (r *MCPServerReconciler) validateMCPServer(mcpServer *acp.MCPServer) error {
-	// Check server transport type
-	if mcpServer.Spec.Transport != "stdio" && mcpServer.Spec.Transport != "http" {
-		return fmt.Errorf("invalid server transport: %s", mcpServer.Spec.Transport)
+// ensureStateMachine initializes the state machine if not already initialized
+func (r *MCPServerReconciler) ensureStateMachine() {
+	if r.stateMachine != nil {
+		return
 	}
 
-	// Validate stdio transport
-	if mcpServer.Spec.Transport == "stdio" {
-		if mcpServer.Spec.Command == "" {
-			return fmt.Errorf("command is required for stdio servers")
-		}
-		// Other validations as needed
+	// Initialize dependencies if not provided
+	if r.MCPManager == nil {
+		r.MCPManager = mcpmanager.NewMCPServerManagerWithClient(r.Client)
+	}
+	if r.clientFactory == nil {
+		r.clientFactory = &defaultMCPClientFactory{}
+	}
+	if r.envVarProcessor == nil {
+		r.envVarProcessor = &defaultEnvVarProcessor{client: r.Client}
 	}
 
-	// Validate http transport
-	if mcpServer.Spec.Transport == "http" {
-		if mcpServer.Spec.URL == "" {
-			return fmt.Errorf("url is required for http servers")
-		}
-		// Other validations as needed
-	}
-
-	return nil
+	// Create StateMachine
+	r.stateMachine = NewStateMachine(r.Client, r.recorder, r.MCPManager, r.clientFactory, r.envVarProcessor)
 }
 
-// SetupWithManager sets up the controller with the Manager.
+// SetupWithManager sets up the controller with the Manager using factory defaults
 func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("mcpserver-controller")
+
+	// Initialize factories with defaults if not already set
+	if r.clientFactory == nil {
+		r.clientFactory = &defaultMCPClientFactory{}
+	}
+
+	if r.envVarProcessor == nil {
+		r.envVarProcessor = &defaultEnvVarProcessor{client: r.Client}
+	}
 
 	// Initialize the MCP manager if not already set
 	if r.MCPManager == nil {
 		r.MCPManager = mcpmanager.NewMCPServerManagerWithClient(r.Client)
 	}
+
+	// Initialize StateMachine
+	r.stateMachine = NewStateMachine(r.Client, r.recorder, r.MCPManager, r.clientFactory, r.envVarProcessor)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&acp.MCPServer{}).

@@ -258,62 +258,6 @@ var _ = Describe("MCPServerManager", func() {
 		})
 	})
 
-	Describe("GetToolsForAgent", func() {
-		It("should return tools from all referenced servers", func() {
-			// Add another server
-			anotherMock := NewMockMCPClient()
-			manager.connections["another-server"] = &MCPConnection{
-				ServerName: "another-server",
-				ServerType: "stdio",
-				Client:     anotherMock,
-				Tools: []acp.MCPTool{
-					{
-						Name:        "another_tool",
-						Description: "Another test tool",
-						InputSchema: runtime.RawExtension{Raw: []byte(`{"type":"object"}`)},
-					},
-				},
-			}
-
-			// Create a test agent that references both servers
-			agent := &acp.Agent{
-				Spec: acp.AgentSpec{
-					MCPServers: []acp.LocalObjectReference{
-						{Name: "test-server"},
-						{Name: "another-server"},
-					},
-				},
-			}
-
-			// Get tools for the agent
-			tools := manager.GetToolsForAgent(agent)
-			Expect(tools).To(HaveLen(2))
-
-			// Check both tools are present
-			foundTools := make(map[string]bool)
-			for _, tool := range tools {
-				foundTools[tool.Name] = true
-			}
-			Expect(foundTools).To(HaveKey("test_tool"))
-			Expect(foundTools).To(HaveKey("another_tool"))
-		})
-
-		It("should ignore references to non-existent servers", func() {
-			agent := &acp.Agent{
-				Spec: acp.AgentSpec{
-					MCPServers: []acp.LocalObjectReference{
-						{Name: "test-server"},
-						{Name: "non-existent"},
-					},
-				},
-			}
-
-			tools := manager.GetToolsForAgent(agent)
-			Expect(tools).To(HaveLen(1))
-			Expect(tools[0].Name).To(Equal("test_tool"))
-		})
-	})
-
 	Describe("CallTool", func() {
 		It("should successfully call a tool on an MCP server", func() {
 			// Set up response

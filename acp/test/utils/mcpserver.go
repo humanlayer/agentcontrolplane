@@ -13,6 +13,10 @@ import (
 
 type TestMCPServer struct {
 	Name                   string
+	Transport              string
+	Command                string
+	Args                   []string
+	URL                    string
 	ApprovalContactChannel string
 	MCPServer              *acp.MCPServer
 
@@ -29,8 +33,16 @@ func (t *TestMCPServer) Setup(ctx context.Context, k8sClient client.Client) *acp
 			Namespace: "default",
 		},
 		Spec: acp.MCPServerSpec{
-			Transport: "stdio",
+			Transport: t.Transport,
+			Command:   t.Command,
+			Args:      t.Args,
+			URL:       t.URL,
 		},
+	}
+
+	// Set default transport if not specified
+	if mcpServer.Spec.Transport == "" {
+		mcpServer.Spec.Transport = "stdio"
 	}
 
 	if t.ApprovalContactChannel != "" {

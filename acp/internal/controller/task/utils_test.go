@@ -76,11 +76,12 @@ func reconciler() (*TaskReconciler, *record.FakeRecorder) {
 	By("creating the reconciler")
 	recorder := record.NewFakeRecorder(10)
 	reconciler := &TaskReconciler{
-		Client:     k8sClient,
-		Scheme:     k8sClient.Scheme(),
-		recorder:   recorder,
-		MCPManager: &mcpmanager.MCPServerManager{},
-		Tracer:     noop.NewTracerProvider().Tracer("test"),
+		Client:      k8sClient,
+		Scheme:      k8sClient.Scheme(),
+		recorder:    recorder,
+		MCPManager:  &mcpmanager.MCPServerManager{},
+		toolAdapter: &defaultToolAdapter{},
+		Tracer:      noop.NewTracerProvider().Tracer("test"),
 	}
 	return reconciler, recorder
 }
