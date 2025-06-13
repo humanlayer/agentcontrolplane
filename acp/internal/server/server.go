@@ -3,14 +3,15 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 	"github.com/pkg/errors"
@@ -1320,7 +1321,13 @@ func (s *APIServer) createTask(c *gin.Context) {
 	var channelTokenFrom *acp.SecretKeyRef
 	if channelToken != "" {
 		// Generate a secret name based on the task
-		secretName := fmt.Sprintf("channel-token-%s", uuid.New().String()[:8])
+		secretSuffix, err := generateK8sRandomString(8)
+		if err != nil {
+			logger.Error(err, "Failed to generate secret name")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate secret name: " + err.Error()})
+			return
+		}
+		secretName := fmt.Sprintf("channel-token-%s", secretSuffix)
 
 		// Create the secret
 		secret := &corev1.Secret{
@@ -1359,7 +1366,13 @@ func (s *APIServer) createTask(c *gin.Context) {
 	}
 
 	// Generate task name with agent name prefix for easier tracking
-	taskName := fmt.Sprintf("%s-task-%s", req.AgentName, uuid.New().String()[:8])
+	taskSuffix, err := generateK8sRandomString(8)
+	if err != nil {
+		logger.Error(err, "Failed to generate task name")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate task name: " + err.Error()})
+		return
+	}
+	taskName := fmt.Sprintf("%s-task-%s", req.AgentName, taskSuffix)
 
 	// Create task
 	task := &acp.Task{
@@ -1390,4 +1403,33 @@ func (s *APIServer) createTask(c *gin.Context) {
 
 	// Return the created task
 	c.JSON(http.StatusCreated, sanitizeTask(*task))
+}
+
+// generateK8sRandomString returns a k8s-compliant secure random string (6-8 chars, lowercase letters and numbers, starts with letter)
+func generateK8sRandomString(n int) (string, error) {
+	if n < 1 || n > 8 {
+		n = 6 // Default to 6 characters for k8s style
+	}
+
+	const letters = "abcdefghijklmnopqrstuvwxyz"
+	const alphanumeric = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+	ret := make([]byte, n)
+
+	// First character must be a letter (k8s naming convention)
+	num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+	if err != nil {
+		return "", err
+	}
+	ret[0] = letters[num.Int64()]
+
+	// Remaining characters can be letters or numbers
+	for i := 1; i < n; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphanumeric))))
+		if err != nil {
+			return "", err
+		}
+		ret[i] = alphanumeric[num.Int64()]
+	}
+	return string(ret), nil
 }
