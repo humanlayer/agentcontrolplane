@@ -4,14 +4,13 @@ package humanlayer
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"net/url"
 	"os"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	humanlayerapi "github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 )
 
 // NewHumanLayerClientFactory creates a new API client using either the provided API key
@@ -144,7 +143,7 @@ func (h *RealHumanLayerClientWrapper) RequestApproval(ctx context.Context) (func
 	h.functionCallSpecInput.SetChannel(*channel)
 	// For initial approval requests, generate a short unique callID since the API requires it to be non-empty
 	// and the combination of run_id + call_id must be <= 64 bytes
-	callID, err := generateK8sRandomString(8)
+	callID, err := validation.GenerateK8sRandomString(8)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to generate random call ID: %w", err)
 	}
@@ -196,33 +195,4 @@ func (h *RealHumanLayerClientWrapper) GetHumanContactStatus(ctx context.Context)
 		Execute()
 
 	return humanContact, resp.StatusCode, err
-}
-
-// generateK8sRandomString returns a k8s-compliant secure random string (6-8 chars, lowercase letters and numbers, starts with letter)
-func generateK8sRandomString(n int) (string, error) {
-	if n < 1 || n > 8 {
-		n = 6 // Default to 6 characters for k8s style
-	}
-
-	const letters = "abcdefghijklmnopqrstuvwxyz"
-	const alphanumeric = "abcdefghijklmnopqrstuvwxyz0123456789"
-
-	ret := make([]byte, n)
-
-	// First character must be a letter (k8s naming convention)
-	num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
-	if err != nil {
-		return "", err
-	}
-	ret[0] = letters[num.Int64()]
-
-	// Remaining characters can be letters or numbers
-	for i := 1; i < n; i++ {
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphanumeric))))
-		if err != nil {
-			return "", err
-		}
-		ret[i] = alphanumeric[num.Int64()]
-	}
-	return string(ret), nil
 }

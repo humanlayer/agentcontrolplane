@@ -572,7 +572,7 @@ func (sm *StateMachine) processLLMResponse(ctx context.Context, output *acp.Mess
 		// so we might not need to call it here. Let's follow the plan's structure.
 	} else {
 		// Generate a unique ID for this set of tool calls
-		toolCallRequestId, err := generateK8sRandomString(7)
+		toolCallRequestId, err := validation.GenerateK8sRandomString(7)
 		if err != nil {
 			logger.Error(err, "Failed to generate toolCallRequestId")
 			return ctrl.Result{}, err
@@ -818,7 +818,7 @@ func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, tas
 	client.SetRunID(task.Spec.AgentRef.Name) // Use agent name as runID
 
 	// Generate a random callID
-	callID, err := generateK8sRandomString(7)
+	callID, err := validation.GenerateK8sRandomString(7)
 	if err != nil {
 		return fmt.Errorf("failed to generate callID: %w", err)
 	}

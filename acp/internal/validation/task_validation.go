@@ -1,7 +1,9 @@
 package validation
 
 import (
+	"crypto/rand"
 	"fmt"
+	"math/big"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 )
@@ -51,4 +53,33 @@ func GetUserMessagePreview(userMessage string, contextWindow []acp.Message) stri
 		preview = preview[:47] + "..."
 	}
 	return preview
+}
+
+// GenerateK8sRandomString returns a k8s-compliant secure random string (6-8 chars, lowercase letters and numbers, starts with letter)
+func GenerateK8sRandomString(n int) (string, error) {
+	if n < 1 || n > 8 {
+		n = 6 // Default to 6 characters for k8s style
+	}
+
+	const letters = "abcdefghijklmnopqrstuvwxyz"
+	const alphanumeric = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+	ret := make([]byte, n)
+
+	// First character must be a letter (k8s naming convention)
+	num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+	if err != nil {
+		return "", err
+	}
+	ret[0] = letters[num.Int64()]
+
+	// Remaining characters can be letters or numbers
+	for i := 1; i < n; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphanumeric))))
+		if err != nil {
+			return "", err
+		}
+		ret[i] = alphanumeric[num.Int64()]
+	}
+	return string(ret), nil
 }
