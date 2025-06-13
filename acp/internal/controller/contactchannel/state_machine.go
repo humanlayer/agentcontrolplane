@@ -163,11 +163,17 @@ func (sm *StateMachine) updateStatus(ctx context.Context, channel *acp.ContactCh
 
 // Helper validation methods
 
+// ProjectInfo holds project and organization information from HumanLayer API
+type ProjectInfo struct {
+	ProjectSlug string
+	OrgSlug     string
+}
+
 // validateHumanLayerAPIKey checks if the HumanLayer API key is valid and gets project info
-func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (string, error) {
+func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (*ProjectInfo, error) {
 	req, err := http.NewRequest("GET", humanLayerAPIURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -175,7 +181,7 @@ func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (string, error) 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to make request: %w", err)
+		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -185,24 +191,29 @@ func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (string, error) 
 
 	// For HumanLayer API, a 401 would indicate invalid token
 	if resp.StatusCode == http.StatusUnauthorized {
-		return "", fmt.Errorf("invalid HumanLayer API key")
+		return nil, fmt.Errorf("invalid HumanLayer API key")
 	}
 
 	// Read the project details response
 	var responseMap map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&responseMap); err != nil {
-		return "", fmt.Errorf("failed to decode project response: %w", err)
+		return nil, fmt.Errorf("failed to decode project response: %w", err)
 	}
 
-	// Extract project ID if available
-	projectID := ""
-	if project, ok := responseMap["id"]; ok {
-		if id, ok := project.(string); ok {
-			projectID = id
+	// Extract project and org slugs from response
+	projectInfo := &ProjectInfo{}
+	if projectSlug, ok := responseMap["project_slug"]; ok {
+		if slug, ok := projectSlug.(string); ok {
+			projectInfo.ProjectSlug = slug
+		}
+	}
+	if orgSlug, ok := responseMap["org_slug"]; ok {
+		if slug, ok := orgSlug.(string); ok {
+			projectInfo.OrgSlug = slug
 		}
 	}
 
-	return projectID, nil
+	return projectInfo, nil
 }
 
 // validateEmailAddress checks if the email address is valid
@@ -258,13 +269,14 @@ func (sm *StateMachine) validateSecret(ctx context.Context, channel *acp.Contact
 	}
 
 	// First validate the HumanLayer API key and get project info
-	projectID, err := sm.validateHumanLayerAPIKey(apiKey)
+	projectInfo, err := sm.validateHumanLayerAPIKey(apiKey)
 	if err != nil {
 		return err
 	}
 
-	// Store the project ID for status update
-	channel.Status.HumanLayerProject = projectID
+	// Store the project and org slugs for status update
+	channel.Status.ProjectSlug = projectInfo.ProjectSlug
+	channel.Status.OrgSlug = projectInfo.OrgSlug
 
 	// Also validate channel-specific credential if needed
 	switch channel.Spec.Type {

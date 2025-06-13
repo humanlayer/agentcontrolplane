@@ -124,8 +124,11 @@ spec:
           status:
             description: ContactChannelStatus defines the observed state of ContactChannel.
             properties:
-              humanLayerProject:
-                description: HumanLayerProject is the project ID from HumanLayer API
+              orgSlug:
+                description: OrgSlug is the organization slug from HumanLayer API
+                type: string
+              projectSlug:
+                description: ProjectSlug is the project slug from HumanLayer API
                 type: string
               ready:
                 description: Ready indicates if the ContactChannel is ready to be

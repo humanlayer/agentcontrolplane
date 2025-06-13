@@ -227,7 +227,8 @@ spec:
 			var delegateTaskName string
 			Eventually(func(g Gomega) {
 				// First, find any delegated tasks
-				cmd := exec.Command("kubectl", "get", "task", "-n", testNamespace, "-l", "acp.humanlayer.dev/parent-toolcall", "-o", "name")
+				cmd := exec.Command("kubectl", "get", "task", "-n", testNamespace,
+					"-l", "acp.humanlayer.dev/parent-toolcall", "-o", "name")
 				output, err := utils.Run(cmd)
 				if err == nil && output != "" {
 					lines := strings.Split(strings.TrimSpace(output), "\n")
@@ -249,7 +250,8 @@ spec:
 			By("checking if delegate task has proper context window with tool responses")
 			Eventually(func(g Gomega) {
 				// Find delegate tasks
-				cmd := exec.Command("kubectl", "get", "task", "-n", testNamespace, "-l", "acp.humanlayer.dev/parent-toolcall", "-o", "name")
+				cmd := exec.Command("kubectl", "get", "task", "-n", testNamespace,
+					"-l", "acp.humanlayer.dev/parent-toolcall", "-o", "name")
 				output, err := utils.Run(cmd)
 				if err == nil && output != "" {
 					lines := strings.Split(strings.TrimSpace(output), "\n")
@@ -270,7 +272,8 @@ spec:
 						_, _ = fmt.Fprintf(GinkgoWriter, "REPRODUCING BUG: Delegate task with 400 error:\n%s\n", output)
 
 						// Check for tool calls in the task
-						cmd = exec.Command("kubectl", "get", "toolcall", "-n", testNamespace, "-l", fmt.Sprintf("acp.humanlayer.dev/task=%s", delegateTaskName), "-o", "yaml")
+						cmd = exec.Command("kubectl", "get", "toolcall", "-n", testNamespace,
+							"-l", fmt.Sprintf("acp.humanlayer.dev/task=%s", delegateTaskName), "-o", "yaml")
 						toolCallOutput, err := utils.Run(cmd)
 						if err == nil {
 							_, _ = fmt.Fprintf(GinkgoWriter, "Related ToolCalls:\n%s\n", toolCallOutput)
