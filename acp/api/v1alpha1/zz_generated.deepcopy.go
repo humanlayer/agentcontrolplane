@@ -987,9 +987,9 @@ func (in *TaskSpec) DeepCopyInto(out *TaskSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.ChannelTokenFrom != nil {
-		in, out := &in.ChannelTokenFrom, &out.ChannelTokenFrom
-		*out = new(SecretKeyRef)
+	if in.ContactChannelRef != nil {
+		in, out := &in.ContactChannelRef, &out.ContactChannelRef
+		*out = new(LocalObjectReference)
 		**out = **in
 	}
 }

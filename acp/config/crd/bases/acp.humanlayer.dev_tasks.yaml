@@ -85,22 +85,15 @@ spec:
                 required:
                 - name
                 type: object
-              baseURL:
-                description: BaseURL specifies the base URL for the human contact
-                  channel.
-                type: string
-              channelTokenFrom:
-                description: ChannelTokenFrom references a secret containing the token
-                  for the human contact channel.
+              contactChannelRef:
+                description: ContactChannelRef references a ContactChannel resource
+                  for human interactions.
                 properties:
-                  key:
-                    description: Key is the key in the secret
-                    type: string
                   name:
-                    description: Name is the name of the secret
+                    description: Name of the referent
+                    minLength: 1
                     type: string
                 required:
-                - key
                 - name
                 type: object
               contextWindow:

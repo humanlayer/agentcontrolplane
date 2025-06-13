@@ -399,6 +399,10 @@ func (sm *StateMachine) prepareForLLM(ctx context.Context, task *acp.Task, statu
 			return sm.setValidationError(ctx, task, statusUpdate, err)
 		}
 
+		if err := validation.ValidateContactChannelRef(ctx, sm.client, task); err != nil {
+			return sm.setValidationError(ctx, task, statusUpdate, err)
+		}
+
 		initialContextWindow := buildInitialContextWindow(task.Spec.ContextWindow, agent.Spec.System, task.Spec.UserMessage)
 
 		statusUpdate.Status.UserMsgPreview = validation.GetUserMessagePreview(task.Spec.UserMessage, task.Spec.ContextWindow)
@@ -587,8 +591,8 @@ func (sm *StateMachine) processLLMResponse(ctx context.Context, output *acp.Mess
 			sm.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
 		}
 
-		// If task has BaseURL and ChannelTokenFrom, send the final result via HumanLayer API
-		if task.Spec.BaseURL != "" && task.Spec.ChannelTokenFrom != nil {
+		// If task has contactChannelRef, send the final result via HumanLayer API
+		if task.Spec.ContactChannelRef != nil {
 			sm.notifyHumanLayerAPIAsync(ctx, task, output.Content)
 		}
 
@@ -806,9 +810,13 @@ func (sm *StateMachine) notifyHumanLayerAPIAsync(ctx context.Context, task *acp.
 
 		if err := sm.sendFinalResultViaHumanLayerAPI(notifyCtx, taskCopy, result); err != nil {
 			// Use structured logging instead of recorder in goroutine
+			contactChannelName := ""
+			if taskCopy.Spec.ContactChannelRef != nil {
+				contactChannelName = taskCopy.Spec.ContactChannelRef.Name
+			}
 			log.FromContext(notifyCtx).Error(err, "Failed to send final result via HumanLayer API",
 				"taskName", task.Name,
-				"baseURL", task.Spec.BaseURL)
+				"contactChannel", contactChannelName)
 		}
 	}()
 }
@@ -816,32 +824,40 @@ func (sm *StateMachine) notifyHumanLayerAPIAsync(ctx context.Context, task *acp.
 func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, task *acp.Task, result string) error {
 	logger := log.FromContext(ctx)
 
-	if task.Spec.BaseURL == "" || task.Spec.ChannelTokenFrom == nil {
-		logger.Info("Skipping result notification, BaseURL or ChannelTokenFrom not set")
+	if task.Spec.ContactChannelRef == nil {
+		logger.Info("Skipping result notification, ContactChannelRef not set")
 		return nil
 	}
 
-	// Get the channel token from the secret
+	// Get the ContactChannel
+	var contactChannel acp.ContactChannel
+	if err := sm.client.Get(ctx, client.ObjectKey{
+		Namespace: task.Namespace,
+		Name:      task.Spec.ContactChannelRef.Name,
+	}, &contactChannel); err != nil {
+		return fmt.Errorf("failed to get ContactChannel: %w", err)
+	}
+
+	// Get the API key from the ContactChannel's secret
 	var secret corev1.Secret
 	if err := sm.client.Get(ctx, client.ObjectKey{
 		Namespace: task.Namespace,
-		Name:      task.Spec.ChannelTokenFrom.Name,
+		Name:      contactChannel.Spec.APIKeyFrom.SecretKeyRef.Name,
 	}, &secret); err != nil {
-		return fmt.Errorf("failed to get channel token secret: %w", err)
+		return fmt.Errorf("failed to get ContactChannel API key secret: %w", err)
 	}
 
-	channelToken := string(secret.Data[task.Spec.ChannelTokenFrom.Key])
-	if channelToken == "" {
-		return fmt.Errorf("channel token is empty in secret %s/%s key %s",
-			task.Namespace, task.Spec.ChannelTokenFrom.Name, task.Spec.ChannelTokenFrom.Key)
+	apiKey := string(secret.Data[contactChannel.Spec.APIKeyFrom.SecretKeyRef.Key])
+	if apiKey == "" {
+		return fmt.Errorf("API key is empty in ContactChannel secret")
 	}
 
-	// Create HumanLayer client using the injected factory
-	client, err := sm.humanLayerFactory.NewClient(task.Spec.BaseURL)
+	// Create HumanLayer client - use a hardcoded URL for now (need to determine baseURL source)
+	client, err := sm.humanLayerFactory.NewClient("https://api.humanlayer.dev")
 	if err != nil {
 		return fmt.Errorf("failed to create HumanLayer client: %w", err)
 	}
-	client.SetAPIKey(channelToken)           // Use token from secret
+	client.SetAPIKey(apiKey)                 // Use API key from ContactChannel secret
 	client.SetRunID(task.Spec.AgentRef.Name) // Use agent name as runID
 
 	// Generate a random callID
@@ -860,7 +876,7 @@ func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, tas
 		// Check for success
 		if err == nil && statusCode >= 200 && statusCode < 300 {
 			logger.Info("Successfully sent final result via HumanLayer API",
-				"baseURL", task.Spec.BaseURL,
+				"contactChannel", task.Spec.ContactChannelRef.Name,
 				"statusCode", statusCode,
 				"humanContactID", humanContact.GetCallId())
 			return nil
@@ -870,12 +886,12 @@ func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, tas
 		if err != nil {
 			logger.Error(err, "Failed to send human contact request",
 				"attempt", attempt+1,
-				"baseURL", task.Spec.BaseURL)
+				"contactChannel", task.Spec.ContactChannelRef.Name)
 		} else {
 			logger.Error(fmt.Errorf("HTTP error %d", statusCode),
 				"Failed to send human contact request",
 				"attempt", attempt+1,
-				"baseURL", task.Spec.BaseURL)
+				"contactChannel", task.Spec.ContactChannelRef.Name)
 		}
 
 		// Exponential backoff
