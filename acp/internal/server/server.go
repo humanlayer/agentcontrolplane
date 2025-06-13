@@ -40,6 +40,18 @@ type ChannelTokenRef struct {
 	Key  string `json:"key"`  // Key in the secret data
 }
 
+// V1Beta3ConversationCreated defines the structure for V1Beta3 conversation events
+type V1Beta3ConversationCreated struct {
+	IsTest        bool   `json:"is_test"`
+	Type          string `json:"type"`
+	ChannelAPIKey string `json:"channel_api_key"`
+	Event         struct {
+		UserMessage      string `json:"user_message"`
+		ContactChannelID int    `json:"contact_channel_id"`
+		AgentName        string `json:"agent_name"`
+	} `json:"event"`
+}
+
 // CreateTaskRequest defines the structure of the request body for creating a task
 type CreateTaskRequest struct {
 	Namespace     string        `json:"namespace,omitempty"`     // Optional, defaults to "default"
@@ -137,6 +149,10 @@ func (s *APIServer) registerRoutes() {
 	agents.POST("", s.createAgent)
 	agents.PUT("/:name", s.updateAgent)
 	agents.DELETE("/:name", s.deleteAgent)
+
+	// V1Beta3 events endpoint
+	v1beta3 := v1.Group("/beta3")
+	v1beta3.POST("/events", s.handleV1Beta3Event)
 }
 
 // processMCPServers creates MCP servers and their secrets based on the given configuration
@@ -1390,4 +1406,161 @@ func (s *APIServer) createTask(c *gin.Context) {
 
 	// Return the created task
 	c.JSON(http.StatusCreated, sanitizeTask(*task))
+}
+
+// handleV1Beta3Event handles incoming v1Beta3 conversation events
+func (s *APIServer) handleV1Beta3Event(c *gin.Context) {
+	ctx := c.Request.Context()
+	logger := log.FromContext(ctx)
+
+	// Read and parse the request
+	var rawData []byte
+	if data, err := c.GetRawData(); err == nil {
+		rawData = data
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body: " + err.Error()})
+		return
+	}
+
+	var event V1Beta3ConversationCreated
+	if err := json.Unmarshal(rawData, &event); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+
+	// Validate required fields
+	if event.ChannelAPIKey == "" || event.Event.UserMessage == "" || event.Event.AgentName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel_api_key, event.user_message, and event.agent_name are required"})
+		return
+	}
+
+	namespace := "default" // Use default namespace for v1beta3 events
+
+	// Ensure the namespace exists
+	if err := s.ensureNamespaceExists(ctx, namespace); err != nil {
+		logger.Error(err, "Failed to ensure namespace exists")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to ensure namespace exists: " + err.Error()})
+		return
+	}
+
+	// Create ContactChannel dynamically
+	contactChannelName := fmt.Sprintf("v1beta3-channel-%d", event.Event.ContactChannelID)
+
+	// Create secret for the channel API key
+	secretName := fmt.Sprintf("%s-secret", contactChannelName)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: namespace,
+		},
+		Data: map[string][]byte{
+			"api-key": []byte(event.ChannelAPIKey),
+		},
+	}
+
+	// Check if secret already exists, create if not
+	var existingSecret corev1.Secret
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: secretName}, &existingSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			if err := s.client.Create(ctx, secret); err != nil {
+				logger.Error(err, "Failed to create channel secret", "name", secretName)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create channel secret: " + err.Error()})
+				return
+			}
+		} else {
+			logger.Error(err, "Failed to check secret existence", "name", secretName)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check secret existence: " + err.Error()})
+			return
+		}
+	}
+
+	// Create ContactChannel if it doesn't exist
+	contactChannel := &acp.ContactChannel{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      contactChannelName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"acp.humanlayer.dev/v1beta3":    "true",
+				"acp.humanlayer.dev/channel-id": fmt.Sprintf("%d", event.Event.ContactChannelID),
+			},
+		},
+		Spec: acp.ContactChannelSpec{
+			Type: acp.ContactChannelTypeEmail, // Default to email type for v1beta3
+			APIKeyFrom: acp.APIKeySource{
+				SecretKeyRef: acp.SecretKeyRef{
+					Name: secretName,
+					Key:  "api-key",
+				},
+			},
+		},
+	}
+
+	var existingChannel acp.ContactChannel
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: contactChannelName}, &existingChannel); err != nil {
+		if apierrors.IsNotFound(err) {
+			if err := s.client.Create(ctx, contactChannel); err != nil {
+				logger.Error(err, "Failed to create contact channel", "name", contactChannelName)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create contact channel: " + err.Error()})
+				return
+			}
+		} else {
+			logger.Error(err, "Failed to check contact channel existence", "name", contactChannelName)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check contact channel existence: " + err.Error()})
+			return
+		}
+	}
+
+	// Check if agent exists
+	var agent acp.Agent
+	if err := s.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: event.Event.AgentName}, &agent); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found: " + event.Event.AgentName})
+		} else {
+			logger.Error(err, "Failed to check agent existence")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check agent existence: " + err.Error()})
+		}
+		return
+	}
+
+	// Generate task name
+	taskName := fmt.Sprintf("%s-v1beta3-%d-%s", event.Event.AgentName, event.Event.ContactChannelID, uuid.New().String()[:8])
+
+	// Create task
+	task := &acp.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      taskName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"acp.humanlayer.dev/agent":      event.Event.AgentName,
+				"acp.humanlayer.dev/v1beta3":    "true",
+				"acp.humanlayer.dev/channel-id": fmt.Sprintf("%d", event.Event.ContactChannelID),
+			},
+		},
+		Spec: acp.TaskSpec{
+			AgentRef: acp.LocalObjectReference{
+				Name: event.Event.AgentName,
+			},
+			UserMessage: event.Event.UserMessage,
+			ChannelTokenFrom: &acp.SecretKeyRef{
+				Name: secretName,
+				Key:  "api-key",
+			},
+		},
+	}
+
+	// Create the task
+	if err := s.client.Create(ctx, task); err != nil {
+		logger.Error(err, "Failed to create task from v1beta3 event")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task: " + err.Error()})
+		return
+	}
+
+	logger.Info("Created task from v1beta3 event", "task", taskName, "agent", event.Event.AgentName, "channelID", event.Event.ContactChannelID)
+
+	// Return success response
+	c.JSON(http.StatusCreated, gin.H{
+		"taskName":           taskName,
+		"status":             "created",
+		"contactChannelName": contactChannelName,
+	})
 }
