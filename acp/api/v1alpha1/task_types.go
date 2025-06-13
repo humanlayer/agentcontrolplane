@@ -45,6 +45,10 @@ type TaskSpec struct {
 	// ChannelTokenFrom references a secret containing the token for the human contact channel.
 	// +optional
 	ChannelTokenFrom *SecretKeyRef `json:"channelTokenFrom,omitempty"`
+
+	// ThreadID is used for conversation continuity in v1beta3 events
+	// +optional
+	ThreadID string `json:"threadID,omitempty"`
 }
 
 // Message represents a single message in the conversation

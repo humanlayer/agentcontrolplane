@@ -49,6 +49,7 @@ type V1Beta3ConversationCreated struct {
 		UserMessage      string `json:"user_message"`
 		ContactChannelID int    `json:"contact_channel_id"`
 		AgentName        string `json:"agent_name"`
+		ThreadID         string `json:"thread_id,omitempty"` // Optional thread ID for conversation continuity
 	} `json:"event"`
 }
 
@@ -1545,6 +1546,7 @@ func (s *APIServer) handleV1Beta3Event(c *gin.Context) {
 				Name: secretName,
 				Key:  "api-key",
 			},
+			ThreadID: event.Event.ThreadID, // Store thread ID for conversation continuity
 		},
 	}
 

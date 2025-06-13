@@ -348,6 +348,11 @@ func (e *ToolExecutor) executeRespondToHuman(ctx context.Context, tc *acp.ToolCa
 	hlClient.SetCallID(tc.Spec.ToolCallID)  // Use tool call ID
 	hlClient.SetAPIKey(channelToken)        // Use token from secret
 
+	// Set thread ID for conversation continuity if available
+	if task.Spec.ThreadID != "" {
+		hlClient.SetThreadID(task.Spec.ThreadID)
+	}
+
 	// Send the response via HumanLayer API
 	humanContact, statusCode, err := hlClient.RequestHumanContact(ctx, content)
 	if err != nil {

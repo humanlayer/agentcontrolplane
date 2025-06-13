@@ -50,6 +50,9 @@ func (m *mockHumanLayerClient) SetAPIKey(apiKey string) {
 	m.setAPIKeyCalled = true
 	m.lastAPIKey = apiKey
 }
+func (m *mockHumanLayerClient) SetThreadID(threadID string) {
+	// Mock implementation
+}
 func (m *mockHumanLayerClient) RequestApproval(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
 	return nil, 200, nil
 }
