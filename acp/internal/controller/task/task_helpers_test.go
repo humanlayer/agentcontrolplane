@@ -235,7 +235,7 @@ func TestGenerateK8sRandomString(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "valid length 8", 
+			name:        "valid length 8",
 			length:      8,
 			expectError: false,
 		},

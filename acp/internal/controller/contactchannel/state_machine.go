@@ -163,6 +163,12 @@ func (sm *StateMachine) updateStatus(ctx context.Context, channel *acp.ContactCh
 
 // Helper validation methods
 
+// ProjectInfo holds project and organization information from HumanLayer API
+type ProjectInfo struct {
+	ProjectSlug string
+	OrgSlug     string
+}
+
 // verifyChannelExists verifies that a channel exists and is ready via the HumanLayer API
 func (sm *StateMachine) verifyChannelExists(channelAPIKey, channelID string) (map[string]interface{}, error) {
 	channelURL := fmt.Sprintf("https://api.humanlayer.dev/humanlayer/v1/contact_channel/%s", channelID)
@@ -205,10 +211,10 @@ func (sm *StateMachine) verifyChannelExists(channelAPIKey, channelID string) (ma
 }
 
 // validateHumanLayerAPIKey checks if the HumanLayer API key is valid and gets project info
-func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (string, error) {
+func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (*ProjectInfo, error) {
 	req, err := http.NewRequest("GET", humanLayerAPIURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -216,40 +222,40 @@ func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (string, error) 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to make request: %w", err)
+		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
-		}
-	}()
+	defer func() { _ = resp.Body.Close() }()
 
 	// For HumanLayer API, a 401 would indicate invalid token
 	if resp.StatusCode == http.StatusUnauthorized {
-		return "", fmt.Errorf("invalid HumanLayer API key")
+		return nil, fmt.Errorf("invalid HumanLayer API key")
 	}
 
 	// Read the project details response
 	var responseMap map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&responseMap); err != nil {
-		return "", fmt.Errorf("failed to decode project response: %w", err)
+		return nil, fmt.Errorf("failed to decode project response: %w", err)
 	}
 
-	// Extract project ID if available
-	projectID := ""
-	if project, ok := responseMap["id"]; ok {
-		if id, ok := project.(string); ok {
-			projectID = id
+	// Extract project and org slugs from response
+	projectInfo := &ProjectInfo{}
+	if projectSlug, ok := responseMap["project_slug"]; ok {
+		if slug, ok := projectSlug.(string); ok {
+			projectInfo.ProjectSlug = slug
+		}
+	}
+	if orgSlug, ok := responseMap["org_slug"]; ok {
+		if slug, ok := orgSlug.(string); ok {
+			projectInfo.OrgSlug = slug
 		}
 	}
 
-	return projectID, nil
+	return projectInfo, nil
 }
 
 // validateEmailAddress checks if the email address is valid
 func (sm *StateMachine) validateEmailAddress(email string) error {
-	_, err := mail.ParseAddress(email)
-	if err != nil {
+	if _, err := mail.ParseAddress(email); err != nil {
 		return fmt.Errorf("invalid email address: %w", err)
 	}
 	return nil
@@ -342,14 +348,15 @@ func (sm *StateMachine) validateProjectAuth(ctx context.Context, channel *acp.Co
 		return fmt.Errorf("empty API key provided")
 	}
 
-	// Validate the HumanLayer API key and get project info
-	projectID, err := sm.validateHumanLayerAPIKey(apiKey)
+	// First validate the HumanLayer API key and get project info
+	projectInfo, err := sm.validateHumanLayerAPIKey(apiKey)
 	if err != nil {
 		return err
 	}
 
-	// Store the project ID for status update
-	channel.Status.HumanLayerProject = projectID
+	// Store the project and org slugs for status update
+	channel.Status.ProjectSlug = projectInfo.ProjectSlug
+	channel.Status.OrgSlug = projectInfo.OrgSlug
 
 	return nil
 }
@@ -384,11 +391,11 @@ func (sm *StateMachine) validateChannelAuth(ctx context.Context, channel *acp.Co
 
 	// Store channel verification info in status
 	channel.Status.VerifiedChannelID = channel.Spec.ChannelID
-	if orgID, ok := channelInfo["organization_id"].(string); ok {
-		channel.Status.HumanLayerOrganization = orgID
+	if orgSlug, ok := channelInfo["org_slug"].(string); ok {
+		channel.Status.OrgSlug = orgSlug
 	}
-	if projectID, ok := channelInfo["project_id"].(string); ok {
-		channel.Status.HumanLayerProject = projectID
+	if projectSlug, ok := channelInfo["project_slug"].(string); ok {
+		channel.Status.ProjectSlug = projectSlug
 	}
 
 	return nil

@@ -98,11 +98,11 @@ type ContactChannelStatus struct {
 	// StatusDetail provides additional details about the current status
 	StatusDetail string `json:"statusDetail,omitempty"`
 
-	// HumanLayerProject is the project ID from HumanLayer API
-	HumanLayerProject string `json:"humanLayerProject,omitempty"`
+	// ProjectSlug is the project slug from HumanLayer API
+	ProjectSlug string `json:"projectSlug,omitempty"`
 
-	// HumanLayerOrganization is the organization ID from HumanLayer API
-	HumanLayerOrganization string `json:"humanLayerOrganization,omitempty"`
+	// OrgSlug is the organization slug from HumanLayer API
+	OrgSlug string `json:"orgSlug,omitempty"`
 
 	// VerifiedChannelID is the verified channel ID when using channel-specific auth
 	VerifiedChannelID string `json:"verifiedChannelId,omitempty"`

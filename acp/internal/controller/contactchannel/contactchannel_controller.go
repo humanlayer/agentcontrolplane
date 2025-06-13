@@ -33,7 +33,6 @@ var (
 	statusError   = "Error"
 	statusPending = "Pending"
 
-	// API endpoints - variables so they can be overridden in tests
 	humanLayerAPIURL = "https://api.humanlayer.dev/humanlayer/v1/project"
 
 	// Event reasons
