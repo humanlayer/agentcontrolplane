@@ -603,8 +603,7 @@ func sanitizeTask(task acp.Task) acp.Task {
 	// Create a copy to avoid modifying the original
 	sanitized := task.DeepCopy()
 
-	// Remove sensitive fields
-	sanitized.Spec.ChannelTokenFrom = nil
+	// Remove sensitive fields (none currently)
 
 	return *sanitized
 }
@@ -1312,39 +1311,7 @@ func (s *APIServer) createTask(c *gin.Context) {
 		return
 	}
 
-	// Extract the baseURL and channelToken fields
-	baseURL := req.BaseURL
-	channelToken := req.ChannelToken
-
-	// Create a secret for the channel token if provided
-	var channelTokenFrom *acp.SecretKeyRef
-	if channelToken != "" {
-		// Generate a secret name based on the task
-		secretName := fmt.Sprintf("channel-token-%s", uuid.New().String()[:8])
-
-		// Create the secret
-		secret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      secretName,
-				Namespace: namespace,
-			},
-			Data: map[string][]byte{
-				"token": []byte(channelToken),
-			},
-		}
-
-		if err := s.client.Create(ctx, secret); err != nil {
-			logger.Error(err, "Failed to create channel token secret")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create channel token secret: " + err.Error()})
-			return
-		}
-
-		// Reference the secret
-		channelTokenFrom = &acp.SecretKeyRef{
-			Name: secretName,
-			Key:  "token",
-		}
-	}
+	// TODO: Handle ContactChannelRef from request if provided
 
 	// Check if agent exists
 	var agent acp.Agent
@@ -1374,10 +1341,9 @@ func (s *APIServer) createTask(c *gin.Context) {
 			AgentRef: acp.LocalObjectReference{
 				Name: req.AgentName,
 			},
-			UserMessage:      req.UserMessage,
-			ContextWindow:    req.ContextWindow,
-			BaseURL:          baseURL,
-			ChannelTokenFrom: channelTokenFrom,
+			UserMessage:   req.UserMessage,
+			ContextWindow: req.ContextWindow,
+			// TODO: Need to implement ContactChannelRef integration for API
 		},
 	}
 

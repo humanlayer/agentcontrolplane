@@ -1,9 +1,11 @@
 package validation
 
 import (
+	"context"
 	"fmt"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ValidateTaskMessageInput ensures exactly one of userMessage or contextWindow is provided
@@ -51,4 +53,27 @@ func GetUserMessagePreview(userMessage string, contextWindow []acp.Message) stri
 		preview = preview[:47] + "..."
 	}
 	return preview
+}
+
+// ValidateContactChannelRef validates that the referenced ContactChannel exists and is ready
+func ValidateContactChannelRef(ctx context.Context, k8sClient client.Client, task *acp.Task) error {
+	if task.Spec.ContactChannelRef == nil {
+		return nil // No contactChannelRef is valid
+	}
+
+	var contactChannel acp.ContactChannel
+	err := k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: task.Namespace,
+		Name:      task.Spec.ContactChannelRef.Name,
+	}, &contactChannel)
+	if err != nil {
+		return fmt.Errorf("referenced ContactChannel %q not found: %w", task.Spec.ContactChannelRef.Name, err)
+	}
+
+	if !contactChannel.Status.Ready {
+		return fmt.Errorf("referenced ContactChannel %q is not ready (status: %s)",
+			task.Spec.ContactChannelRef.Name, contactChannel.Status.Status)
+	}
+
+	return nil
 }
