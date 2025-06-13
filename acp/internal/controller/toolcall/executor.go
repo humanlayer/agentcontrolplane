@@ -262,15 +262,25 @@ func (e *ToolExecutor) executeHumanContact(ctx context.Context, tc *acp.ToolCall
 }
 
 func (e *ToolExecutor) getAPIKey(ctx context.Context, contactChannel *acp.ContactChannel, namespace string) (string, error) {
+	// Determine which authentication method to use
+	var apiKeySource *acp.APIKeySource
+	if contactChannel.Spec.ChannelAPIKeyFrom != nil {
+		apiKeySource = contactChannel.Spec.ChannelAPIKeyFrom
+	} else if contactChannel.Spec.APIKeyFrom != nil {
+		apiKeySource = contactChannel.Spec.APIKeyFrom
+	} else {
+		return "", fmt.Errorf("no API key source configured")
+	}
+
 	var secret corev1.Secret
 	if err := e.client.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
-		Name:      contactChannel.Spec.APIKeyFrom.SecretKeyRef.Name,
+		Name:      apiKeySource.SecretKeyRef.Name,
 	}, &secret); err != nil {
 		return "", fmt.Errorf("failed to get API key secret: %w", err)
 	}
 
-	apiKey, exists := secret.Data[contactChannel.Spec.APIKeyFrom.SecretKeyRef.Key]
+	apiKey, exists := secret.Data[apiKeySource.SecretKeyRef.Key]
 	if !exists {
 		return "", fmt.Errorf("API key not found in secret")
 	}
@@ -279,10 +289,20 @@ func (e *ToolExecutor) getAPIKey(ctx context.Context, contactChannel *acp.Contac
 }
 
 func (e *ToolExecutor) configureContactChannel(client humanlayer.HumanLayerClientWrapper, contactChannel *acp.ContactChannel) {
+	// Set channel ID if using channel-specific authentication
+	if contactChannel.Spec.ChannelID != "" {
+		client.SetChannelID(contactChannel.Spec.ChannelID)
+	}
+
+	// Set channel configuration for traditional authentication or as fallback
 	switch contactChannel.Spec.Type {
 	case acp.ContactChannelTypeSlack:
-		client.SetSlackConfig(contactChannel.Spec.Slack)
+		if contactChannel.Spec.Slack != nil {
+			client.SetSlackConfig(contactChannel.Spec.Slack)
+		}
 	case acp.ContactChannelTypeEmail:
-		client.SetEmailConfig(contactChannel.Spec.Email)
+		if contactChannel.Spec.Email != nil {
+			client.SetEmailConfig(contactChannel.Spec.Email)
+		}
 	}
 }

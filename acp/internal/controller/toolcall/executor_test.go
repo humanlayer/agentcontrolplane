@@ -50,6 +50,9 @@ func (m *mockHumanLayerClient) SetAPIKey(apiKey string) {
 	m.setAPIKeyCalled = true
 	m.lastAPIKey = apiKey
 }
+func (m *mockHumanLayerClient) SetChannelID(channelID string) {
+	// Mock implementation - could add tracking if needed
+}
 func (m *mockHumanLayerClient) RequestApproval(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
 	return nil, 200, nil
 }
