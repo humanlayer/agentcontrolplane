@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 	"github.com/pkg/errors"
@@ -1320,7 +1319,13 @@ func (s *APIServer) createTask(c *gin.Context) {
 	var channelTokenFrom *acp.SecretKeyRef
 	if channelToken != "" {
 		// Generate a secret name based on the task
-		secretName := fmt.Sprintf("channel-token-%s", uuid.New().String()[:8])
+		secretSuffix, err := validation.GenerateK8sRandomString(8)
+		if err != nil {
+			logger.Error(err, "Failed to generate secret name")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate secret name: " + err.Error()})
+			return
+		}
+		secretName := fmt.Sprintf("channel-token-%s", secretSuffix)
 
 		// Create the secret
 		secret := &corev1.Secret{
@@ -1359,7 +1364,13 @@ func (s *APIServer) createTask(c *gin.Context) {
 	}
 
 	// Generate task name with agent name prefix for easier tracking
-	taskName := fmt.Sprintf("%s-task-%s", req.AgentName, uuid.New().String()[:8])
+	taskSuffix, err := validation.GenerateK8sRandomString(8)
+	if err != nil {
+		logger.Error(err, "Failed to generate task name")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate task name: " + err.Error()})
+		return
+	}
+	taskName := fmt.Sprintf("%s-task-%s", req.AgentName, taskSuffix)
 
 	// Create task
 	task := &acp.Task{

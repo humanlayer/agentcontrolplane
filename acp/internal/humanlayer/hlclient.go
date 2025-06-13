@@ -4,14 +4,13 @@ package humanlayer
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	humanlayerapi "github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 )
 
 // NewHumanLayerClientFactory creates a new API client using either the provided API key
@@ -144,11 +143,10 @@ func (h *RealHumanLayerClientWrapper) RequestApproval(ctx context.Context) (func
 	h.functionCallSpecInput.SetChannel(*channel)
 	// For initial approval requests, generate a short unique callID since the API requires it to be non-empty
 	// and the combination of run_id + call_id must be <= 64 bytes
-	randomBytes := make([]byte, 8)
-	if _, err := rand.Read(randomBytes); err != nil {
+	callID, err := validation.GenerateK8sRandomString(8)
+	if err != nil {
 		return nil, 0, fmt.Errorf("failed to generate random call ID: %w", err)
 	}
-	callID := hex.EncodeToString(randomBytes) // 16 character hex string
 	functionCallInput := humanlayerapi.NewFunctionCallInput(h.runID, callID, *h.functionCallSpecInput)
 
 	functionCall, resp, err := h.client.DefaultAPI.RequestApproval(ctx).

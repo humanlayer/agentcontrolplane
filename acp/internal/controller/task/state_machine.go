@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -573,7 +572,11 @@ func (sm *StateMachine) processLLMResponse(ctx context.Context, output *acp.Mess
 		// so we might not need to call it here. Let's follow the plan's structure.
 	} else {
 		// Generate a unique ID for this set of tool calls
-		toolCallRequestId := uuid.New().String()[:7] // Using first 7 characters for brevity
+		toolCallRequestId, err := validation.GenerateK8sRandomString(7)
+		if err != nil {
+			logger.Error(err, "Failed to generate toolCallRequestId")
+			return ctrl.Result{}, err
+		}
 		logger.Info("Generated toolCallRequestId for tool calls", "id", toolCallRequestId)
 
 		// tool call branch: create ToolCall objects for each tool call returned by the LLM.
@@ -815,7 +818,7 @@ func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, tas
 	client.SetRunID(task.Spec.AgentRef.Name) // Use agent name as runID
 
 	// Generate a random callID
-	callID, err := generateRandomString(7)
+	callID, err := validation.GenerateK8sRandomString(7)
 	if err != nil {
 		return fmt.Errorf("failed to generate callID: %w", err)
 	}
