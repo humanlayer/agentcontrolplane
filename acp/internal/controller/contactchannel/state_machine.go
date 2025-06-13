@@ -183,11 +183,7 @@ func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (*ProjectInfo, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
-		}
-	}()
+	defer func() { _ = resp.Body.Close() }()
 
 	// For HumanLayer API, a 401 would indicate invalid token
 	if resp.StatusCode == http.StatusUnauthorized {
@@ -218,8 +214,7 @@ func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (*ProjectInfo, e
 
 // validateEmailAddress checks if the email address is valid
 func (sm *StateMachine) validateEmailAddress(email string) error {
-	_, err := mail.ParseAddress(email)
-	if err != nil {
+	if _, err := mail.ParseAddress(email); err != nil {
 		return fmt.Errorf("invalid email address: %w", err)
 	}
 	return nil
