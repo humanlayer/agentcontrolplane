@@ -114,7 +114,7 @@ var _ = Describe("ToolExecutor Unit Tests", func() {
 					Address:          "test@example.com",
 					ContextAboutUser: "Test user",
 				},
-				APIKeyFrom: acp.APIKeySource{
+				APIKeyFrom: &acp.APIKeySource{
 					SecretKeyRef: acp.SecretKeyRef{
 						Name: "test-secret",
 						Key:  "HUMANLAYER_API_KEY",
@@ -266,7 +266,7 @@ var _ = Describe("ToolExecutor Unit Tests", func() {
 		It("should retrieve API key from secret", func() {
 			contactChannel := &acp.ContactChannel{
 				Spec: acp.ContactChannelSpec{
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "HUMANLAYER_API_KEY",
@@ -284,7 +284,7 @@ var _ = Describe("ToolExecutor Unit Tests", func() {
 		It("should fail when secret is not found", func() {
 			contactChannel := &acp.ContactChannel{
 				Spec: acp.ContactChannelSpec{
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "nonexistent-secret",
 							Key:  "HUMANLAYER_API_KEY",
@@ -303,7 +303,7 @@ var _ = Describe("ToolExecutor Unit Tests", func() {
 		It("should fail when API key is not found in secret", func() {
 			contactChannel := &acp.ContactChannel{
 				Spec: acp.ContactChannelSpec{
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "NONEXISTENT_KEY",
