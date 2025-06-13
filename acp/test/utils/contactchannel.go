@@ -33,7 +33,7 @@ func (t *TestContactChannel) Setup(ctx context.Context, k8sClient client.Client)
 		},
 		Spec: acp.ContactChannelSpec{
 			Type: t.ChannelType,
-			APIKeyFrom: acp.APIKeySource{
+			APIKeyFrom: &acp.APIKeySource{
 				SecretKeyRef: acp.SecretKeyRef{
 					Name: t.SecretName,
 					Key:  "api-key",

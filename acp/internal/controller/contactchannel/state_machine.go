@@ -163,6 +163,47 @@ func (sm *StateMachine) updateStatus(ctx context.Context, channel *acp.ContactCh
 
 // Helper validation methods
 
+// verifyChannelExists verifies that a channel exists and is ready via the HumanLayer API
+func (sm *StateMachine) verifyChannelExists(channelAPIKey, channelID string) (map[string]interface{}, error) {
+	channelURL := fmt.Sprintf("https://api.humanlayer.dev/humanlayer/v1/contact_channel/%s", channelID)
+	req, err := http.NewRequest("GET", channelURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create channel verification request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+channelAPIKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify channel: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Printf("Error closing response body: %v\n", err)
+		}
+	}()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("channel %s not found", channelID)
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("invalid channel API key for channel %s", channelID)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("channel verification failed with status %d", resp.StatusCode)
+	}
+
+	var responseMap map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&responseMap); err != nil {
+		return nil, fmt.Errorf("failed to decode channel response: %w", err)
+	}
+
+	return responseMap, nil
+}
+
 // validateHumanLayerAPIKey checks if the HumanLayer API key is valid and gets project info
 func (sm *StateMachine) validateHumanLayerAPIKey(apiKey string) (string, error) {
 	req, err := http.NewRequest("GET", humanLayerAPIURL, nil)
@@ -237,6 +278,50 @@ func (sm *StateMachine) validateChannelConfig(channel *acp.ContactChannel) error
 
 // validateSecret validates the secret and the API key
 func (sm *StateMachine) validateSecret(ctx context.Context, channel *acp.ContactChannel) error {
+	// First validate field requirements
+	if err := sm.validateFieldRequirements(channel); err != nil {
+		return err
+	}
+
+	// Determine which authentication method to use
+	if channel.Spec.ChannelAPIKeyFrom != nil {
+		return sm.validateChannelAuth(ctx, channel)
+	} else {
+		return sm.validateProjectAuth(ctx, channel)
+	}
+}
+
+// validateFieldRequirements validates the field combination requirements
+func (sm *StateMachine) validateFieldRequirements(channel *acp.ContactChannel) error {
+	hasAPIKey := channel.Spec.APIKeyFrom != nil
+	hasChannelAPIKey := channel.Spec.ChannelAPIKeyFrom != nil
+	hasChannelID := channel.Spec.ChannelID != ""
+
+	// Either apiKey OR (channelApiKey + channelId) must be provided
+	if !hasAPIKey && !hasChannelAPIKey {
+		return fmt.Errorf("either apiKeyFrom or channelApiKeyFrom must be provided")
+	}
+
+	// apiKey and channelApiKey are mutually exclusive
+	if hasAPIKey && hasChannelAPIKey {
+		return fmt.Errorf("apiKeyFrom and channelApiKeyFrom are mutually exclusive")
+	}
+
+	// channelApiKey requires channelId
+	if hasChannelAPIKey && !hasChannelID {
+		return fmt.Errorf("channelId is required when channelApiKeyFrom is set")
+	}
+
+	// channelId without channelApiKey is invalid
+	if hasChannelID && !hasChannelAPIKey {
+		return fmt.Errorf("channelId can only be used with channelApiKeyFrom")
+	}
+
+	return nil
+}
+
+// validateProjectAuth validates using the traditional project-level API key
+func (sm *StateMachine) validateProjectAuth(ctx context.Context, channel *acp.ContactChannel) error {
 	secret := &corev1.Secret{}
 	err := sm.client.Get(ctx, types.NamespacedName{
 		Name:      channel.Spec.APIKeyFrom.SecretKeyRef.Name,
@@ -257,7 +342,7 @@ func (sm *StateMachine) validateSecret(ctx context.Context, channel *acp.Contact
 		return fmt.Errorf("empty API key provided")
 	}
 
-	// First validate the HumanLayer API key and get project info
+	// Validate the HumanLayer API key and get project info
 	projectID, err := sm.validateHumanLayerAPIKey(apiKey)
 	if err != nil {
 		return err
@@ -266,19 +351,45 @@ func (sm *StateMachine) validateSecret(ctx context.Context, channel *acp.Contact
 	// Store the project ID for status update
 	channel.Status.HumanLayerProject = projectID
 
-	// Also validate channel-specific credential if needed
-	switch channel.Spec.Type {
-	case acp.ContactChannelTypeSlack:
-		// For Slack channels, we may need to validate Slack token separately
-		// if the implementation requires a separate Slack token
-		// This would depend on how HumanLayer handles the integration
-		return nil
+	return nil
+}
 
-	case acp.ContactChannelTypeEmail:
-		// Email validation doesn't require additional API key validation
-		return nil
-
-	default:
-		return fmt.Errorf("unsupported channel type: %s", channel.Spec.Type)
+// validateChannelAuth validates using channel-specific authentication
+func (sm *StateMachine) validateChannelAuth(ctx context.Context, channel *acp.ContactChannel) error {
+	secret := &corev1.Secret{}
+	err := sm.client.Get(ctx, types.NamespacedName{
+		Name:      channel.Spec.ChannelAPIKeyFrom.SecretKeyRef.Name,
+		Namespace: channel.Namespace,
+	}, secret)
+	if err != nil {
+		return fmt.Errorf("failed to get channel secret: %w", err)
 	}
+
+	key := channel.Spec.ChannelAPIKeyFrom.SecretKeyRef.Key
+	apiKeyBytes, exists := secret.Data[key]
+	if !exists {
+		return fmt.Errorf("key %q not found in channel secret", key)
+	}
+
+	channelAPIKey := string(apiKeyBytes)
+	if channelAPIKey == "" {
+		return fmt.Errorf("empty channel API key provided")
+	}
+
+	// Verify the channel exists and is ready
+	channelInfo, err := sm.verifyChannelExists(channelAPIKey, channel.Spec.ChannelID)
+	if err != nil {
+		return fmt.Errorf("channel verification failed: %w", err)
+	}
+
+	// Store channel verification info in status
+	channel.Status.VerifiedChannelID = channel.Spec.ChannelID
+	if orgID, ok := channelInfo["organization_id"].(string); ok {
+		channel.Status.HumanLayerOrganization = orgID
+	}
+	if projectID, ok := channelInfo["project_id"].(string); ok {
+		channel.Status.HumanLayerProject = projectID
+	}
+
+	return nil
 }

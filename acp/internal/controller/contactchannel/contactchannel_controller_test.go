@@ -102,7 +102,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "slack",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: secretName,
 							Key:  secretKey,
@@ -159,7 +159,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "email",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: secretName,
 							Key:  secretKey,
@@ -217,7 +217,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "slack",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: secretName,
 							Key:  secretKey,
@@ -271,7 +271,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "slack",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: secretName,
 							Key:  secretKey,
@@ -315,7 +315,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "slack",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "nonexistent-secret",
 							Key:  secretKey,
@@ -371,7 +371,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "email",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: secretName,
 							Key:  secretKey,
@@ -428,7 +428,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "slack",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: secretName,
 							Key:  secretKey,
@@ -477,7 +477,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "slack",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: secretName,
 							Key:  secretKey,
@@ -518,7 +518,7 @@ var _ = Describe("ContactChannel Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "slack",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "dummy-secret",
 							Key:  "dummy-key",
