@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,6 +34,9 @@ type StateMachine struct {
 	humanLayerFactory HumanLayerClientFactory
 	toolAdapter       ToolAdapter
 	tracer            trace.Tracer
+	// Task-level mutexes to prevent concurrent LLM requests
+	taskMutexes  map[string]*sync.Mutex
+	mutexMapLock sync.RWMutex
 }
 
 // NewStateMachine creates a new state machine with all dependencies
@@ -53,6 +57,8 @@ func NewStateMachine(
 		humanLayerFactory: humanLayerFactory,
 		toolAdapter:       toolAdapter,
 		tracer:            tracer,
+		taskMutexes:       make(map[string]*sync.Mutex),
+		mutexMapLock:      sync.RWMutex{},
 	}
 }
 
@@ -138,6 +144,11 @@ func (sm *StateMachine) sendLLMRequest(ctx context.Context, task *acp.Task) (ctr
 	logger := log.FromContext(ctx)
 	statusUpdate := task.DeepCopy()
 
+	// Acquire task-specific mutex to serialize LLM requests
+	mutex := sm.getTaskMutex(task.Name)
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	// Get agent and credentials
 	agent, result, err := sm.validateTaskAndAgent(ctx, task, statusUpdate)
 	if err != nil || !result.IsZero() {
@@ -176,7 +187,16 @@ func (sm *StateMachine) sendLLMRequest(ctx context.Context, task *acp.Task) (ctr
 
 	// Collect tools and send LLM request
 	tools := sm.collectTools(ctx, agent)
-	sm.recorder.Event(task, corev1.EventTypeNormal, "SendingContextWindowToLLM", "Sending context window to LLM")
+
+	// Only send event if not already in this phase to prevent duplicates
+	if task.Status.Phase != acp.TaskPhaseReadyForLLM || statusUpdate.Status.StatusDetail != "Sending request to LLM" {
+		sm.recorder.Event(task, corev1.EventTypeNormal, "SendingContextWindowToLLM", "Sending context window to LLM")
+		// Update status to indicate we're sending to LLM
+		statusUpdate.Status.StatusDetail = "Sending request to LLM"
+		if err := sm.client.Status().Update(ctx, statusUpdate); err != nil {
+			logger.Error(err, "Failed to update Task status before LLM request")
+		}
+	}
 
 	// Create child span for LLM call
 	llmCtx, llmSpan := sm.createLLMRequestSpan(ctx, task, len(task.Status.ContextWindow), len(tools))
@@ -390,7 +410,10 @@ func (sm *StateMachine) prepareForLLM(ctx context.Context, task *acp.Task, statu
 		statusUpdate.Status.StatusDetail = "Ready to send to LLM"
 		statusUpdate.Status.Error = ""
 
-		sm.recorder.Event(task, corev1.EventTypeNormal, "ValidationSucceeded", "Task validation succeeded")
+		// Only send event if not already validated to prevent duplicates
+		if task.Status.Phase != acp.TaskPhaseReadyForLLM {
+			sm.recorder.Event(task, corev1.EventTypeNormal, "ValidationSucceeded", "Task validation succeeded")
+		}
 		if err := sm.client.Status().Update(ctx, statusUpdate); err != nil {
 			logger.Error(err, "Failed to update Task status")
 			return ctrl.Result{}, err
@@ -559,7 +582,11 @@ func (sm *StateMachine) processLLMResponse(ctx context.Context, output *acp.Mess
 		statusUpdate.Status.Status = acp.TaskStatusTypeReady
 		statusUpdate.Status.StatusDetail = "LLM final response received"
 		statusUpdate.Status.Error = ""
-		sm.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
+
+		// Only send event if not already in final answer phase to prevent duplicates
+		if task.Status.Phase != acp.TaskPhaseFinalAnswer {
+			sm.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
+		}
 
 		// If task has BaseURL and ChannelTokenFrom, send the final result via HumanLayer API
 		if task.Spec.BaseURL != "" && task.Spec.ChannelTokenFrom != nil {
@@ -855,4 +882,28 @@ func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, tas
 	}
 
 	return fmt.Errorf("failed to send human contact request after %d attempts", maxRetries)
+}
+
+// getTaskMutex returns or creates a mutex for a specific task
+func (sm *StateMachine) getTaskMutex(taskName string) *sync.Mutex {
+	sm.mutexMapLock.RLock()
+	mutex, exists := sm.taskMutexes[taskName]
+	sm.mutexMapLock.RUnlock()
+
+	if exists {
+		return mutex
+	}
+
+	// Need to create a new mutex
+	sm.mutexMapLock.Lock()
+	defer sm.mutexMapLock.Unlock()
+
+	// Double-check after acquiring write lock
+	if mutex, exists := sm.taskMutexes[taskName]; exists {
+		return mutex
+	}
+
+	mutex = &sync.Mutex{}
+	sm.taskMutexes[taskName] = mutex
+	return mutex
 }
