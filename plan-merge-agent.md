@@ -1,7 +1,7 @@
 # Merge Agent Plan
 
 ## Objective
-Monitor the progress of 6 worker agents and incrementally merge their changes into the integration branch, handling conflicts and ensuring clean builds.
+Monitor the progress of 7 worker agents and incrementally merge their changes into the integration branch, handling conflicts and ensuring clean builds.
 
 ## Context
 Seven worker agents are implementing different features in parallel:
@@ -18,6 +18,7 @@ Seven worker agents are implementing different features in parallel:
 ### Phase 1: Foundation Changes (No Dependencies)
 1. **SRS Implementation** - Can be merged first as it's a utility change
 2. **Parallel LLM Calls Fix** - Bug fix that doesn't depend on other changes
+3. **Kustomization Template Fix** - Build system improvement, independent of other changes
 
 ### Phase 2: ContactChannel Enhancements (Dependent on Each Other)
 1. **Channel API Key/ID** - Adds new fields to ContactChannel
@@ -68,6 +69,7 @@ Seven worker agents are implementing different features in parallel:
 - acp-channelapikey-[suffix]
 - acp-v1beta3-[suffix]
 - acp-parallel-[suffix]
+- acp-kustomize-[suffix]
 
 ## Success Criteria
 - All changes merged without conflicts
