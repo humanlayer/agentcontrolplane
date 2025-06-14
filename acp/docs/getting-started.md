@@ -583,7 +583,7 @@ graph RL
     MCPServers --> MCPServer
 ```
 
-Let's make a new task that uses the fetch tool. In this case, we'll use https://swapi.dev, a public API for Star Wars data.
+Let's make a new task that uses the fetch tool. In this case, we'll use https://lotrapi.co, a public API for Lord of the Rings data.
 
 ```bash
 echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
@@ -1048,7 +1048,7 @@ metadata:
 spec:
   agentRef:
     name: agent-with-fetch
-  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
+  userMessage: "Write me a haiku about the character found at https://lotrapi.co/api/v1/characters/2"
 ' | kubectl apply -f -
 ```
 
@@ -1076,24 +1076,24 @@ $ kubectl describe task approved-fetch-task
     Content:  You are a helpful assistant. Your job is to help the user with their tasks.
 
     Role:     system
-    Content:  Write me a haiku about the character found at https://swapi.dev/api/people/2?
+    Content:  Write me a haiku about the character found at https://lotrapi.co/api/v1/characters/2
     Role:     user
     Content:
     Role:     assistant
     Tool Calls:
       Function:
-        Arguments:  {"url":"https://swapi.dev/api/people/2"}
+        Arguments:  {"url":"https://lotrapi.co/api/v1/characters/2"}
         Name:       fetch__fetch
       Id:           call_FZaXJq1FKuBVLYr9HHJwcnOb
       Type:         function
     Content:        Content type application/json cannot be simplified to markdown, but here is the raw content:
-Contents of https://swapi.dev/api/people/2:
-{"name":"C-3PO","height":"167","mass":"75","hair_color":"n/a","skin_color":"gold","eye_color":"yellow","birth_year":"112BBY","gender":"n/a","homeworld":"https://swapi.dev/api/planets/1/","films":["https://swapi.dev/api/films/1/","https://swapi.dev/api/films/2/","https://swapi.dev/api/films/3/","https://swapi.dev/api/films/4/","https://swapi.dev/api/films/5/","https://swapi.dev/api/films/6/"],"species":["https://swapi.dev/api/species/2/"],"vehicles":[],"starships":[],"created":"2014-12-10T15:10:51.357000Z","edited":"2014-12-20T21:17:50.309000Z","url":"https://swapi.dev/api/people/2/"}
+Contents of https://lotrapi.co/api/v1/characters/2:
+{"id":2,"name":"Samwise Gamgee","realm":"https://lotrapi.co/api/v1/realms/1","height":"1.22m","hair_color":"Brown","eye_color":"Brown","date_of_birth":"6 April, TA 2980","date_of_death":"Unknown","gender":"Male","species":"https://lotrapi.co/api/v1/species/1","race":"https://lotrapi.co/api/v1/races/1","group":"https://lotrapi.co/api/v1/groups/1","weapons":["Sting","Barrow-blade"],"languages":["https://lotrapi.co/api/v1/languages/1"],"films":["https://lotrapi.co/api/v1/films/1","https://lotrapi.co/api/v1/films/2","https://lotrapi.co/api/v1/films/3"],"books":["https://lotrapi.co/api/v1/books/1","https://lotrapi.co/api/v1/books/2","https://lotrapi.co/api/v1/books/3"],"url":"https://lotrapi.co/api/v1/characters/2"}
     Role:          tool
     Tool Call Id:  call_FZaXJq1FKuBVLYr9HHJwcnOb
-    Content:       Golden C-3PO,
-Speaks in many languages,
-Droid with gentle heart.
+    Content:       Faithful Samwise,
+Gardener with loyal heart,
+Friend through darkest paths.
     Role:  assistant
  # ...snip...
 Events:

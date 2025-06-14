@@ -119,6 +119,22 @@ func (e *ToolExecutor) CheckApprovalStatus(ctx context.Context, callID string, c
 	return functionCall, err
 }
 
+// CheckHumanContactStatus checks if human contact is complete
+func (e *ToolExecutor) CheckHumanContactStatus(ctx context.Context, callID string, contactChannel *acp.ContactChannel, namespace string) (*humanlayerapi.HumanContactOutput, error) {
+	apiKey, err := e.getAPIKey(ctx, contactChannel, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	client := e.hlFactory.NewHumanLayerClient()
+	e.configureContactChannel(client, contactChannel)
+	client.SetCallID(callID)
+	client.SetAPIKey(apiKey)
+
+	humanContact, _, err := client.GetHumanContactStatus(ctx)
+	return humanContact, err
+}
+
 // Internal helper methods
 
 func (e *ToolExecutor) parseArguments(argsJSON string) (map[string]interface{}, error) {
