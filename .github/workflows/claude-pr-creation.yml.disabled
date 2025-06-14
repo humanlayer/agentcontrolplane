@@ -19,11 +19,24 @@ jobs:
       issues: write
       id-token: write
     steps:
-      # Set environment variables for Claude Code Action
-      - name: Set up environment
+      - name: Check authorization
+        id: auth-check
         run: |
-          echo "OVERRIDE_GITHUB_TOKEN=${{ secrets.CLAUDE_PAT_TOKEN }}" >> $GITHUB_ENV
-          echo "Setting up PAT token for Claude Code Action"
+          # Get the comment author
+          COMMENT_AUTHOR="${{ github.event.comment.user.login }}"
+          echo "Comment author: $COMMENT_AUTHOR"
+          
+          # List of authorized users from CODEOWNERS
+          AUTHORIZED_USERS=$(cat .github/CODEOWNERS | grep !!claudecode | cut -d' ' -f3-)
+          
+          # Check if user is authorized
+          if echo "$AUTHORIZED_USERS" | grep -w "$COMMENT_AUTHOR" > /dev/null; then
+            echo "User $COMMENT_AUTHOR is authorized"
+            echo "authorized=true" >> $GITHUB_OUTPUT
+          else
+            echo "User $COMMENT_AUTHOR is not authorized to trigger Claude workflows"
+            echo "authorized=false" >> $GITHUB_OUTPUT
+          fi
       
       # Simply checking out the repository is sufficient
       - name: Checkout code
@@ -33,7 +46,7 @@ jobs:
           
       # If running on a PR comment, we need to explicitly check out the PR branch
       - name: Checkout PR branch if needed
-        if: github.event.issue.pull_request
+        if: github.event.issue.pull_request && steps.auth-check.outputs.authorized == 'true'
         run: |
           # Get the PR number from the issue object
           PR_NUMBER="${{ github.event.issue.number }}"
@@ -53,14 +66,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
           
       - name: Claude PR Creation
+        if: steps.auth-check.outputs.authorized == 'true'
         uses: anthropics/claude-code-action@beta
         with:
           # Your Anthropic API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           
+          # GitHub token for API access
+          github_token: ${{ secrets.CLAUDE_PAT_TOKEN }}
+          
           # Explicitly set the trigger phrase
           trigger_phrase: "@claude"
-          # Note: Token is provided via OVERRIDE_GITHUB_TOKEN environment variable
           
           # Timeout for execution (longer for PR creation)
           timeout_minutes: 30

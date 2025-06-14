@@ -12,9 +12,25 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-    env:
-      OVERRIDE_GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
     steps:
+      - name: Check authorization
+        id: auth-check
+        run: |
+          # Get the PR author
+          PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+          echo "PR author: $PR_AUTHOR"
+          
+          # List of authorized users from CODEOWNERS
+          AUTHORIZED_USERS=$(cat .github/CODEOWNERS | grep !!claudecode | cut -d' ' -f3-)
+          
+          # Check if user is authorized
+          if echo "$AUTHORIZED_USERS" | grep -w "$PR_AUTHOR" > /dev/null; then
+            echo "User $PR_AUTHOR is authorized"
+            echo "authorized=true" >> $GITHUB_OUTPUT
+          else
+            echo "User $PR_AUTHOR is not authorized to trigger Claude workflows"
+            echo "authorized=false" >> $GITHUB_OUTPUT
+          fi
       # Simply checking out the repository is sufficient - the action handles the PR code
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,12 +39,14 @@ jobs:
 
 
       - name: Run Code Review with Claude
+        if: steps.auth-check.outputs.authorized == 'true'
         uses: anthropics/claude-code-action@beta
-        env:
-          OVERRIDE_GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
         with:
           # Your Anthropic API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+          # GitHub token for API access
+          github_token: ${{ secrets.CLAUDE_PAT_TOKEN }}
           
           # Direct prompt for Claude to execute
           direct_prompt: "Review the PR changes. Focus on code quality, potential bugs, and performance issues. Suggest improvements where appropriate. Pay special attention to Kubernetes operator patterns and Go best practices according to the CLAUDE.md file."
