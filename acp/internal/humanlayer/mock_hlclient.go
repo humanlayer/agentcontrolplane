@@ -33,6 +33,7 @@ type MockHumanLayerClientWrapper struct {
 	callID       string
 	runID        string
 	apiKey       string
+	channelID    string
 }
 
 // NewHumanLayerClient creates a new mock client
@@ -80,6 +81,16 @@ func (m *MockHumanLayerClientWrapper) SetRunID(runID string) {
 // SetAPIKey implements HumanLayerClientWrapper
 func (m *MockHumanLayerClientWrapper) SetAPIKey(apiKey string) {
 	m.apiKey = apiKey
+}
+
+// SetChannelID implements HumanLayerClientWrapper
+func (m *MockHumanLayerClientWrapper) SetChannelID(channelID string) {
+	m.channelID = channelID
+}
+
+// SetThreadID implements HumanLayerClientWrapper
+func (m *MockHumanLayerClientWrapper) SetThreadID(threadID string) {
+	// Mock implementation - just store it if needed for testing
 }
 
 // GetFunctionCallStatus implements HumanLayerClientWrapper
@@ -133,7 +144,13 @@ func (m *MockHumanLayerClientWrapper) RequestApproval(ctx context.Context) (*hum
 
 // RequestHumanContact implements HumanLayerClientWrapper
 func (m *MockHumanLayerClientWrapper) RequestHumanContact(ctx context.Context, userMsg string) (*humanlayerapi.HumanContactOutput, int, error) {
-	return nil, m.parent.StatusCode, m.parent.ReturnError
+	if m.parent.ShouldFail {
+		return nil, m.parent.StatusCode, m.parent.ReturnError
+	}
+
+	// Return a successful mock response
+	output := humanlayerapi.NewHumanContactOutput(m.runID, m.callID, *humanlayerapi.NewHumanContactSpecOutput(userMsg))
+	return output, m.parent.StatusCode, nil
 }
 
 // GetHumanContactStatus implements HumanLayerClientWrapper

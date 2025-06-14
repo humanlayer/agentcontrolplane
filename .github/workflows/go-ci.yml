@@ -33,6 +33,10 @@ jobs:
           path: acp/bin
           key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
 
+      - name: Generate mocks
+        working-directory: acp
+        run: make mocks
+
       - name: Install golangci-lint
         working-directory: acp
         run: make golangci-lint
@@ -71,6 +75,10 @@ jobs:
           path: acp/bin
           key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
 
+      - name: Generate mocks
+        working-directory: acp
+        run: make mocks
+
       - name: Run tests
         working-directory: acp
         run: make test
@@ -101,6 +109,10 @@ jobs:
         with:
           path: acp/bin
           key: ${{ runner.os }}-acp-bin-${{ hashFiles('acp/Makefile') }}
+
+      - name: Generate mocks
+        working-directory: acp
+        run: make mocks
 
       - name: Build
         working-directory: acp

@@ -38,6 +38,21 @@ all: build
 # More info on the awk command:
 # http://linuxcommand.org/lc3_adv_awk.php
 
+check-keys-set:
+	@if [ -z "${HUMANLAYER_API_KEY}" ]; then \
+		echo "HUMANLAYER_API_KEY is not set"; \
+		exit 1; \
+	fi
+	@if [ -z "${OPENAI_API_KEY}" ]; then \
+		echo "OPENAI_API_KEY is not set"; \
+		exit 1; \
+	fi
+	@if [ -z "${ANTHROPIC_API_KEY}" ]; then \
+		echo "ANTHROPIC_API_KEY is not set"; \
+		exit 1; \
+	fi
+	@echo "Keys are set"
+
 .PHONY: help
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
@@ -61,7 +76,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet setup-envtest ## Run tests.
+test: mocks manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out -failfast
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
@@ -93,11 +108,28 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	$(GOLANGCI_LINT) config verify
 
-.PHONY: ask-dex
-ask-dex: ## Ask Dex a question about the project
-	cd hack/ask-dex && bun ask-dex.js $(filter-out $@,$(MAKECMDGOALS))
+.PHONY: mocks
+mocks: mockgen ## Generate all mocks using mockgen
+	@echo "Generating mocks..."
+	$(MOCKGEN) -source=internal/humanlayer/hlclient.go -destination=internal/humanlayer/mocks/mock_hlclient.go -package=mocks
+	$(MOCKGEN) -source=internal/llmclient/llm_client.go -destination=internal/llmclient/mocks/mock_llm_client.go -package=mocks  
+	$(MOCKGEN) -source=internal/mcpmanager/mcpmanager.go -destination=internal/mcpmanager/mocks/mock_mcpmanager.go -package=mocks
+	@echo "Mock generation complete"
 
+.PHONY: clean-mocks
+clean-mocks: ## Remove all generated mock files
+	@echo "Cleaning mocks..."
+	rm -rf internal/humanlayer/mocks/
+	rm -rf internal/llmclient/mocks/
+	rm -rf internal/mcpmanager/mocks/
+	@echo "Mock cleanup complete"
 ##@ Build
+
+.PHONY: deps
+deps: ## Install dependencies
+	go mod tidy
+	go mod download
+	go mod verify
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
@@ -192,10 +224,14 @@ deploy: manifests docker-build kustomize ## Deploy controller to the K8s cluster
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
+namespace ?= default
 .PHONY: deploy-local-kind
 deploy-local-kind: manifests docker-build docker-load-kind kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	if [ ! -f config/localdev/kustomization.yaml ]; then \
+		cp config/localdev/kustomization.tpl.yaml config/localdev/kustomization.yaml; \
+	fi
 	cd config/localdev && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/localdev | $(KUBECTL) apply -f -
+	$(KUSTOMIZE) build config/localdev | $(KUBECTL) apply -f - --namespace=$(namespace)
 
 .PHONY: deploy-samples
 deploy-samples: kustomize ## Deploy samples to the K8s cluster specified in ~/.kube/config.
@@ -232,6 +268,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+MOCKGEN = $(LOCALBIN)/mockgen
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.5.0
@@ -241,6 +278,7 @@ ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 GOLANGCI_LINT_VERSION ?= v1.63.4
+MOCKGEN_VERSION ?= v0.5.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -270,6 +308,11 @@ golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
+.PHONY: mockgen
+mockgen: $(MOCKGEN) ## Download mockgen locally if necessary.
+$(MOCKGEN): $(LOCALBIN)
+	$(call go-install-tool,$(MOCKGEN),go.uber.org/mock/mockgen,$(MOCKGEN_VERSION))
+
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
 # $2 - package url which can be installed
@@ -282,6 +325,7 @@ echo "Downloading $${package}" ;\
 rm -f $(1) || true ;\
 GOBIN=$(LOCALBIN) go install $${package} ;\
 mv $(1) $(1)-$(3) ;\
+chmod 755 $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef

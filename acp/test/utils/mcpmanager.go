@@ -3,6 +3,8 @@ package utils
 import (
 	"context"
 	"fmt"
+
+	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 )
 
 type MockMCPManager struct {
@@ -28,4 +30,16 @@ func (m *MockMCPManager) CallTool(
 	}
 
 	return "5", nil // Default result
+}
+
+// GetTools implements the MCPManager.GetTools method
+func (m *MockMCPManager) GetTools(serverName string) ([]acp.MCPTool, bool) {
+	// Return some mock tools for testing
+	tools := []acp.MCPTool{
+		{
+			Name:        "add",
+			Description: "Add two numbers",
+		},
+	}
+	return tools, true
 }

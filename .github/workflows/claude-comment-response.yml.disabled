@@ -1,0 +1,56 @@
+name: Claude Comment Response
+on:
+  issue_comment:
+    types: [created]  # Triggers when someone comments on an issue or PR
+
+jobs:
+  respond-to-claude-mention:
+    # Only run if the comment mentions @claude
+    if: contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Check authorization
+        id: auth-check
+        run: |
+          # Get the comment author
+          COMMENT_AUTHOR="${{ github.event.comment.user.login }}"
+          echo "Comment author: $COMMENT_AUTHOR"
+          
+          # List of authorized users from CODEOWNERS
+          AUTHORIZED_USERS=$(cat .github/CODEOWNERS | grep !!claudecode | cut -d' ' -f3-)
+          
+          # Check if user is authorized
+          if echo "$AUTHORIZED_USERS" | grep -w "$COMMENT_AUTHOR" > /dev/null; then
+            echo "User $COMMENT_AUTHOR is authorized"
+            echo "authorized=true" >> $GITHUB_OUTPUT
+          else
+            echo "User $COMMENT_AUTHOR is not authorized to trigger Claude workflows"
+            echo "authorized=false" >> $GITHUB_OUTPUT
+          fi
+      
+      # Simply checking out the repository is sufficient
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get full history for accurate diffs
+          
+      - name: Claude Response
+        if: steps.auth-check.outputs.authorized == 'true'
+        uses: anthropics/claude-code-action@beta
+        with:
+          # Your Anthropic API key
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+          # GitHub token for API access
+          github_token: ${{ secrets.CLAUDE_PAT_TOKEN }}
+          
+          # Explicitly set the trigger phrase
+          trigger_phrase: "@claude"
+          
+          # Timeout for execution
+          timeout_minutes: 20

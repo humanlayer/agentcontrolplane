@@ -47,6 +47,11 @@ func (f *MockHumanLayerClientFactory) NewHumanLayerClient() humanlayer.HumanLaye
 	return f.client
 }
 
+func (f *MockHumanLayerClientFactory) NewClient(baseURL string) (humanlayer.HumanLayerClientWrapper, error) {
+	f.client.baseURL = baseURL
+	return f.client, nil
+}
+
 func (c *MockHumanLayerClient) SetSlackConfig(slackConfig *acp.SlackChannelConfig) {}
 func (c *MockHumanLayerClient) SetEmailConfig(emailConfig *acp.EmailChannelConfig) {}
 func (c *MockHumanLayerClient) SetFunctionCallSpec(functionName string, args map[string]interface{}) {
@@ -62,6 +67,14 @@ func (c *MockHumanLayerClient) SetRunID(runID string) {
 
 func (c *MockHumanLayerClient) SetAPIKey(apiKey string) {
 	c.apiKey = apiKey
+}
+
+func (c *MockHumanLayerClient) SetChannelID(channelID string) {
+	// Mock implementation - could add tracking if needed
+}
+
+func (c *MockHumanLayerClient) SetThreadID(threadID string) {
+	// Mock implementation
 }
 
 func (c *MockHumanLayerClient) RequestApproval(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
@@ -92,25 +105,26 @@ func (c *MockHumanLayerClient) GetHumanContactStatus(ctx context.Context) (*huma
 	return nil, 200, nil
 }
 
-func reconcilerWithMockLLM(newLLMClient func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error)) (*TaskReconciler, *record.FakeRecorder) {
+func reconcilerWithMockFactories(createFunc func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error), humanLayerFactory HumanLayerClientFactory) (*TaskReconciler, *record.FakeRecorder) {
 	recorder := record.NewFakeRecorder(10)
 	tracer := noop.NewTracerProvider().Tracer("test")
 	return &TaskReconciler{
-		Client:       k8sClient,
-		Scheme:       k8sClient.Scheme(),
-		recorder:     recorder,
-		newLLMClient: newLLMClient,
-		Tracer:       tracer,
+		Client:                  k8sClient,
+		Scheme:                  k8sClient.Scheme(),
+		recorder:                recorder,
+		llmClientFactory:        &mockLLMClientFactory{createFunc: createFunc},
+		humanLayerClientFactory: humanLayerFactory,
+		toolAdapter:             &defaultToolAdapter{},
+		Tracer:                  tracer,
 	}, recorder
 }
 
 var _ = Describe("Task Controller with HumanLayer API", func() {
 	Context("using ChannelTokenFrom with secret reference", func() {
 		var (
-			mockLLMClient           *MockLLMClient
-			mockHumanLayerClient    *MockHumanLayerClient
-			mockHumanLayerFactory   *MockHumanLayerClientFactory
-			originalFactoryFunction func(string) (humanlayer.HumanLayerClientFactory, error)
+			mockLLMClient         *MockLLMClient
+			mockHumanLayerClient  *MockHumanLayerClient
+			mockHumanLayerFactory *MockHumanLayerClientFactory
 		)
 
 		BeforeEach(func() {
@@ -130,18 +144,6 @@ var _ = Describe("Task Controller with HumanLayer API", func() {
 			mockHumanLayerFactory = &MockHumanLayerClientFactory{
 				client: mockHumanLayerClient,
 			}
-
-			// Save original factory function and replace with mock
-			originalFactoryFunction = newHumanLayerClientFactory
-			newHumanLayerClientFactory = func(baseURL string) (humanlayer.HumanLayerClientFactory, error) {
-				mockHumanLayerClient.baseURL = baseURL
-				return mockHumanLayerFactory, nil
-			}
-
-			DeferCleanup(func() {
-				// Restore original factory function
-				newHumanLayerClientFactory = originalFactoryFunction
-			})
 		})
 
 		It("retrieves channel token from secret and uses it as API key", func() {
@@ -155,15 +157,41 @@ var _ = Describe("Task Controller with HumanLayer API", func() {
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 			DeferCleanup(func() { Expect(k8sClient.Delete(ctx, secret)).To(Succeed()) })
 
+			// Create a ContactChannel that references the secret
+			contactChannel := &acp.ContactChannel{
+				ObjectMeta: v1.ObjectMeta{Name: "test-contact-channel", Namespace: "default"},
+				Spec: acp.ContactChannelSpec{
+					Type: acp.ContactChannelTypeSlack,
+					APIKeyFrom: &acp.APIKeySource{
+						SecretKeyRef: acp.SecretKeyRef{
+							Name: "test-channel-token",
+							Key:  "token",
+						},
+					},
+					Slack: &acp.SlackChannelConfig{
+						ChannelOrUserID: "C123456789",
+					},
+				},
+				Status: acp.ContactChannelStatus{
+					Ready:  true,
+					Status: "Ready",
+				},
+			}
+			Expect(k8sClient.Create(ctx, contactChannel)).To(Succeed())
+			DeferCleanup(func() { Expect(k8sClient.Delete(ctx, contactChannel)).To(Succeed()) })
+
+			// Update the ContactChannel status to Ready manually (since the controller isn't running)
+			contactChannel.Status.Ready = true
+			contactChannel.Status.Status = "Ready"
+			Expect(k8sClient.Status().Update(ctx, contactChannel)).To(Succeed())
+
 			task := &acp.Task{
 				ObjectMeta: v1.ObjectMeta{Name: "test-task", Namespace: "default"},
 				Spec: acp.TaskSpec{
 					AgentRef:    acp.LocalObjectReference{Name: testAgent.Name},
 					UserMessage: "Test message",
-					BaseURL:     "https://api.example.com",
-					ChannelTokenFrom: &acp.SecretKeyRef{
-						Name: "test-channel-token",
-						Key:  "token",
+					ContactChannelRef: &acp.LocalObjectReference{
+						Name: "test-contact-channel",
 					},
 				},
 			}
@@ -173,7 +201,7 @@ var _ = Describe("Task Controller with HumanLayer API", func() {
 			mockLLMClientFn := func(ctx context.Context, llm acp.LLM, apiKey string) (llmclient.LLMClient, error) {
 				return mockLLMClient, nil
 			}
-			reconciler, _ := reconcilerWithMockLLM(mockLLMClientFn)
+			reconciler, _ := reconcilerWithMockFactories(mockLLMClientFn, mockHumanLayerFactory)
 
 			for i := 0; i < 3; i++ {
 				result, err := reconciler.Reconcile(ctx, reconcile.Request{
@@ -189,8 +217,9 @@ var _ = Describe("Task Controller with HumanLayer API", func() {
 			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFinalAnswer))
 			Expect(task.Status.Output).To(Equal("Test result"))
 
-			// Verify that the token from the secret was correctly used as the API key
-			Expect(mockHumanLayerClient.baseURL).To(Equal("https://api.example.com"))
+			// Verify that the HumanLayer client was called correctly
+			// Note: baseURL is now hardcoded to "https://api.humanlayer.dev" in the implementation
+			Expect(mockHumanLayerClient.baseURL).To(Equal("https://api.humanlayer.dev"))
 			Expect(mockHumanLayerClient.apiKey).To(Equal("hl_testtoken"))
 			Expect(mockHumanLayerClient.runID).To(Equal(testAgent.Name))
 		})

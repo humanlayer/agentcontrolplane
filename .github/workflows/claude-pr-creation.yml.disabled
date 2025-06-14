@@ -1,0 +1,82 @@
+name: Claude PR Creation
+
+on:
+  issue_comment:
+    types: [created]  # Triggers when someone comments on an issue
+
+jobs:
+  create-pr:
+    # Only run if the comment mentions specific PR creation prompts
+    if: >
+      contains(github.event.comment.body, '@claude create pr') || 
+      contains(github.event.comment.body, '@claude create a pr') || 
+      contains(github.event.comment.body, '@claude implement') ||
+      contains(github.event.comment.body, '@claude fix')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Check authorization
+        id: auth-check
+        run: |
+          # Get the comment author
+          COMMENT_AUTHOR="${{ github.event.comment.user.login }}"
+          echo "Comment author: $COMMENT_AUTHOR"
+          
+          # List of authorized users from CODEOWNERS
+          AUTHORIZED_USERS=$(cat .github/CODEOWNERS | grep !!claudecode | cut -d' ' -f3-)
+          
+          # Check if user is authorized
+          if echo "$AUTHORIZED_USERS" | grep -w "$COMMENT_AUTHOR" > /dev/null; then
+            echo "User $COMMENT_AUTHOR is authorized"
+            echo "authorized=true" >> $GITHUB_OUTPUT
+          else
+            echo "User $COMMENT_AUTHOR is not authorized to trigger Claude workflows"
+            echo "authorized=false" >> $GITHUB_OUTPUT
+          fi
+      
+      # Simply checking out the repository is sufficient
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for accurate diffs
+          
+      # If running on a PR comment, we need to explicitly check out the PR branch
+      - name: Checkout PR branch if needed
+        if: github.event.issue.pull_request && steps.auth-check.outputs.authorized == 'true'
+        run: |
+          # Get the PR number from the issue object
+          PR_NUMBER="${{ github.event.issue.number }}"
+          echo "Fetching PR #${PR_NUMBER} details..."
+          
+          # Use the GitHub CLI to get PR details
+          gh pr view "$PR_NUMBER" --json headRefName,headRepository --jq '.headRefName, .headRepository.nameWithOwner'
+          
+          # Checkout the PR using the GitHub CLI - this handles forks automatically
+          echo "Checking out PR #${PR_NUMBER}..."
+          gh pr checkout $PR_NUMBER
+          
+          echo "Current branch details:"
+          git status
+          git branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.CLAUDE_PAT_TOKEN }}
+          
+      - name: Claude PR Creation
+        if: steps.auth-check.outputs.authorized == 'true'
+        uses: anthropics/claude-code-action@beta
+        with:
+          # Your Anthropic API key
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+          # GitHub token for API access
+          github_token: ${{ secrets.CLAUDE_PAT_TOKEN }}
+          
+          # Explicitly set the trigger phrase
+          trigger_phrase: "@claude"
+          
+          # Timeout for execution (longer for PR creation)
+          timeout_minutes: 30

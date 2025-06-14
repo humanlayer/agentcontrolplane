@@ -27,7 +27,30 @@ example-%: ## Run any acp-example Makefile target: make example-<target>
 
 build: acp-build ## Build acp components
 
+
+branchname := $(shell git branch --show-current)
+dirname := $(shell basename ${PWD})
+setup: 
+	@echo "BRANCH: ${branchname}"
+	@echo "DIRNAME: ${dirname}"
+
+	$(MAKE) -C $(ACP_DIR) mocks deps 
+
+worktree-cluster:
+	# replicated cluster create --distribution kind --instance-type r1.small --disk 50 --version 1.33.1 --wait 5m --name ${dirname} 
+	# replicated cluster kuebconfig ${dirname} --output ./kubeconfig 
+	# kubectl --kubeconfig ./kubeconfig get node
+	# kubectl --kubeconfig ./kubeconfig create secret generic openai --from-literal=OPENAI_API_KEY=${OPENAI_API_KEY}
+	# kubectl --kubeconfig ./kubeconfig create secret generic anthropic --from-literal=ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+	# kubectl --kubeconfig ./kubeconfig create secret generic humanlayer --from-literal=HUMANLAYER_API_KEY=${HUMANLAYER_API_KEY}
+	# KUBECONFIG=./kubeconfig $(MAKE) -C $(ACP_DIR) generate deploy-local-kind
+
+check: 
+	# $(MAKE) -C $(ACP_DIR) fmt vet lint test generate 
+
 test: acp-test ## Run tests for acp components
+
+check-keys-set: acp-check-keys-set
 
 ##@ Cluster Management
 

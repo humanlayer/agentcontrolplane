@@ -54,8 +54,9 @@ spec:
             description: ContactChannelSpec defines the desired state of ContactChannel.
             properties:
               apiKeyFrom:
-                description: APIKeyFrom references the secret containing the API key
-                  or token
+                description: |-
+                  APIKeyFrom references the secret containing the API key or token
+                  Required unless ChannelAPIKeyFrom and ChannelID are provided
                 properties:
                   secretKeyRef:
                     description: SecretKeyRef references a key in a secret
@@ -73,6 +74,32 @@ spec:
                 required:
                 - secretKeyRef
                 type: object
+              channelApiKeyFrom:
+                description: |-
+                  ChannelAPIKeyFrom references the secret containing the channel-specific API key
+                  Mutually exclusive with APIKeyFrom. Requires ChannelID when set.
+                properties:
+                  secretKeyRef:
+                    description: SecretKeyRef references a key in a secret
+                    properties:
+                      key:
+                        description: Key is the key in the secret
+                        type: string
+                      name:
+                        description: Name is the name of the secret
+                        type: string
+                    required:
+                    - key
+                    - name
+                    type: object
+                required:
+                - secretKeyRef
+                type: object
+              channelId:
+                description: |-
+                  ChannelID specifies the channel ID when using channel-specific authentication
+                  Required when ChannelAPIKeyFrom is set
+                type: string
               email:
                 description: Email holds configuration specific to Email channels
                 properties:
@@ -118,14 +145,16 @@ spec:
                 - email
                 type: string
             required:
-            - apiKeyFrom
             - type
             type: object
           status:
             description: ContactChannelStatus defines the observed state of ContactChannel.
             properties:
-              humanLayerProject:
-                description: HumanLayerProject is the project ID from HumanLayer API
+              orgSlug:
+                description: OrgSlug is the organization slug from HumanLayer API
+                type: string
+              projectSlug:
+                description: ProjectSlug is the project slug from HumanLayer API
                 type: string
               ready:
                 description: Ready indicates if the ContactChannel is ready to be
@@ -141,6 +170,10 @@ spec:
               statusDetail:
                 description: StatusDetail provides additional details about the current
                   status
+                type: string
+              verifiedChannelId:
+                description: VerifiedChannelID is the verified channel ID when using
+                  channel-specific auth
                 type: string
             type: object
         type: object

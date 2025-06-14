@@ -1,0 +1,11 @@
+# CODEOWNERS file for authorized Claude CI users
+# This file defines who can trigger Claude workflows via comments and PRs
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners - these users can trigger Claude workflows
+* @dexhorthy @balanceiskey @AdjectiveAllison
+
+# !!claudecode @dexhorthy @balanceiskey @AdjectiveAllison
+
+.github/workflows/ @dexhorthy 
+.github/CODEOWNERS @dexhorthy 

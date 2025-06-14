@@ -119,7 +119,7 @@ var _ = Describe("ToolCall Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedTRTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanApproval))
 			Expect(updatedTRTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
-			Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Waiting for human approval via contact channel"))
+			Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Awaiting approval via"))
 
 			_ = k8sClient.Get(ctx, types.NamespacedName{
 				Name:      tc.Name,
@@ -205,7 +205,7 @@ var _ = Describe("ToolCall Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedTRTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanApproval))
 			Expect(updatedTRTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
-			Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Waiting for human approval via contact channel"))
+			Expect(updatedTRTC.Status.StatusDetail).To(ContainSubstring("Awaiting approval via"))
 
 			By("checking that appropriate events were emitted")
 			utils.ExpectRecorder(recorder).ToEmitEventContaining("AwaitingHumanApproval")
@@ -242,10 +242,11 @@ var _ = Describe("ToolCall Controller", func() {
 			defer testMCPServer.Teardown(ctx)
 
 			testHumanContactTool := &utils.TestToolCall{
-				Name:     "test-human-contact-tool",
-				ToolRef:  fmt.Sprintf("%s__%s", testSlackContactChannel.Name, "test-human-contact-tool"),
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeHumanContact,
+				Name:      "test-human-contact-tool",
+				ToolRef:   fmt.Sprintf("%s__%s", testSlackContactChannel.Name, "test-human-contact-tool"),
+				TaskName:  "task-party-2025",
+				ToolType:  acp.ToolTypeHumanContact,
+				Arguments: `{"message": "Test human contact message"}`,
 			}
 
 			tc := testHumanContactTool.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
@@ -286,7 +287,7 @@ var _ = Describe("ToolCall Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedToolCall.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingHumanInput))
 			Expect(updatedToolCall.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
-			Expect(updatedToolCall.Status.StatusDetail).To(ContainSubstring("Waiting for human input via contact channel"))
+			Expect(updatedToolCall.Status.StatusDetail).To(ContainSubstring("Awaiting human input"))
 
 			By("checking that appropriate events were emitted")
 			utils.ExpectRecorder(recorder).ToEmitEventContaining("AwaitingHumanContact")
@@ -313,10 +314,11 @@ var _ = Describe("ToolCall Controller", func() {
 			defer testMCPServer.Teardown(ctx)
 
 			testHumanContactTool := &utils.TestToolCall{
-				Name:     "test-human-contact-tool",
-				ToolRef:  fmt.Sprintf("%s__%s", testSlackContactChannel.Name, "test-human-contact-tool"),
-				TaskName: "task-party-2025",
-				ToolType: acp.ToolTypeHumanContact,
+				Name:      "test-human-contact-tool",
+				ToolRef:   fmt.Sprintf("%s__%s", testSlackContactChannel.Name, "test-human-contact-tool"),
+				TaskName:  "task-party-2025",
+				ToolType:  acp.ToolTypeHumanContact,
+				Arguments: `{"message": "Test human contact message"}`,
 			}
 
 			tc := testHumanContactTool.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
@@ -835,6 +837,148 @@ var _ = Describe("ToolCall Controller", func() {
 
 			By("checking that appropriate events were emitted")
 			utils.ExpectRecorder(recorder).ToEmitEventContaining("SubAgentFailed")
+		})
+	})
+
+	Context("Ready:Pending -> Ready:AwaitingSubAgent (Delegation with existing task - idempotent fix)", func() {
+		It("succeeds when delegation reuses existing task with same parent", func() {
+			By("setting up test resources")
+			testSecret.Setup(ctx, k8sClient)
+			defer testSecret.Teardown(ctx)
+
+			// First create a child task manually to simulate existing task
+			existingTask := &utils.TestTask{
+				Name:        "delegate-test-duplicate-delegate-web-search",
+				AgentName:   "web-search",
+				UserMessage: "existing task message",
+				Labels: map[string]string{
+					"acp.humanlayer.dev/parent-toolcall": "test-duplicate-delegate",
+				},
+			}
+			existingTask.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
+				Phase:  acp.TaskPhaseInitializing,
+				Status: acp.TaskStatusTypePending,
+			})
+			defer existingTask.Teardown(ctx)
+
+			By("creating a toolcall that will reuse the existing task")
+			toolCall := &utils.TestToolCall{
+				Name:      "test-duplicate-delegate",
+				TaskName:  "task-party-2025",
+				ToolRef:   "delegate_to_agent__web-search",
+				ToolType:  acp.ToolTypeDelegateToAgent,
+				Arguments: `{"message": "test message"}`,
+			}
+			tc := toolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
+				Phase:        acp.ToolCallPhasePending,
+				Status:       acp.ToolCallStatusTypeReady,
+				StatusDetail: "Setup complete",
+				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				SpanContext:  fakeSpanContext,
+			})
+			defer toolCall.Teardown(ctx)
+
+			By("reconciling the toolcall - should succeed by reusing existing task")
+			reconciler, recorder := reconciler()
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(5 * time.Second))
+
+			By("checking the toolcall status should be AwaitingSubAgent")
+			updatedTC := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedTC)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseAwaitingSubAgent))
+			Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeReady))
+			Expect(updatedTC.Status.StatusDetail).To(ContainSubstring("Delegating to sub-agent"))
+
+			By("checking that appropriate events were emitted")
+			utils.ExpectRecorder(recorder).ToEmitEventContaining("DelegatingToSubAgent")
+
+			By("verifying the existing task is still there (not duplicated)")
+			var taskList acp.TaskList
+			err = k8sClient.List(ctx, &taskList, client.InNamespace(tc.Namespace),
+				client.MatchingLabels{"acp.humanlayer.dev/parent-toolcall": tc.Name})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(taskList.Items).To(HaveLen(1))
+			Expect(taskList.Items[0].Name).To(Equal("delegate-test-duplicate-delegate-web-search"))
+			Expect(taskList.Items[0].Spec.AgentRef.Name).To(Equal("web-search"))
+		})
+	})
+
+	Context("Ready:Pending -> Failed:Error (Delegation with non-child existing task)", func() {
+		It("fails when delegation finds existing task that's not a child of this toolcall", func() {
+			By("setting up test resources")
+			testSecret.Setup(ctx, k8sClient)
+			defer testSecret.Teardown(ctx)
+
+			// Create a task with the same name but different parent
+			existingTask := &utils.TestTask{
+				Name:        "delegate-test-different-parent-web-search",
+				AgentName:   "web-search",
+				UserMessage: "existing task message",
+				Labels: map[string]string{
+					"acp.humanlayer.dev/parent-toolcall": "some-other-toolcall",
+				},
+			}
+			existingTask.SetupWithStatus(ctx, k8sClient, acp.TaskStatus{
+				Phase:  acp.TaskPhaseInitializing,
+				Status: acp.TaskStatusTypePending,
+			})
+			defer existingTask.Teardown(ctx)
+
+			By("creating a toolcall that will conflict with the existing task")
+			toolCall := &utils.TestToolCall{
+				Name:      "test-different-parent",
+				TaskName:  "task-party-2025",
+				ToolRef:   "delegate_to_agent__web-search",
+				ToolType:  acp.ToolTypeDelegateToAgent,
+				Arguments: `{"message": "test message"}`,
+			}
+			tc := toolCall.SetupWithStatus(ctx, k8sClient, acp.ToolCallStatus{
+				Phase:        acp.ToolCallPhasePending,
+				Status:       acp.ToolCallStatusTypeReady,
+				StatusDetail: "Setup complete",
+				StartTime:    &metav1.Time{Time: time.Now().Add(-1 * time.Minute)},
+				SpanContext:  fakeSpanContext,
+			})
+			defer toolCall.Teardown(ctx)
+
+			By("reconciling the toolcall - should fail due to name conflict")
+			reconciler, _ := reconciler()
+
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      tc.Name,
+					Namespace: tc.Namespace,
+				},
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Requeue).To(BeFalse())
+
+			By("checking the toolcall status should be Failed")
+			updatedTC := &acp.ToolCall{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      tc.Name,
+				Namespace: tc.Namespace,
+			}, updatedTC)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updatedTC.Status.Phase).To(Equal(acp.ToolCallPhaseFailed))
+			Expect(updatedTC.Status.Status).To(Equal(acp.ToolCallStatusTypeError))
+			Expect(updatedTC.Status.Error).To(ContainSubstring("already exists but is not a child"))
 		})
 	})
 })
