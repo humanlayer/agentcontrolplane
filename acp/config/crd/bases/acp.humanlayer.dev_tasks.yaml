@@ -171,6 +171,10 @@ spec:
                   - role
                   type: object
                 type: array
+              threadID:
+                description: ThreadID is used for conversation continuity in v1beta3
+                  events
+                type: string
               userMessage:
                 description: |-
                   UserMessage is the message to send to the agent.
