@@ -41,6 +41,7 @@ declare -a PLAN_FILES=(
     "plan-channel-apikey-id.md"
     "plan-v1beta3-events.md"
     "plan-parallel-llm-calls-fix.md"
+    "plan-kustomization-template.md"
 )
 
 declare -a BRANCH_NAMES=(
@@ -50,6 +51,7 @@ declare -a BRANCH_NAMES=(
     "acp-channelapikey-$SUFFIX"
     "acp-v1beta3-$SUFFIX"
     "acp-parallel-$SUFFIX"
+    "acp-kustomize-$SUFFIX"
 )
 
 # Merge agent configuration

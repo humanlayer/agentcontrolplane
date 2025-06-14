@@ -50,20 +50,7 @@ check:
 
 test: acp-test ## Run tests for acp components
 
-check-keys-set:
-	@if [ -z "${HUMANLAYER_API_KEY}" ]; then \
-		echo "HUMANLAYER_API_KEY is not set"; \
-		exit 1; \
-	fi
-	@if [ -z "${OPENAI_API_KEY}" ]; then \
-		echo "OPENAI_API_KEY is not set"; \
-		exit 1; \
-	fi
-	@if [ -z "${ANTHROPIC_API_KEY}" ]; then \
-		echo "ANTHROPIC_API_KEY is not set"; \
-		exit 1; \
-	fi
-	@echo "Keys are set"
+check-keys-set: acp-check-keys-set
 
 ##@ Cluster Management
 
