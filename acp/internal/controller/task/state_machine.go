@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,9 +35,13 @@ type StateMachine struct {
 	humanLayerFactory HumanLayerClientFactory
 	toolAdapter       ToolAdapter
 	tracer            trace.Tracer
-	// Task-level mutexes to prevent concurrent LLM requests
+	// Task-level mutexes to prevent concurrent LLM requests (single-pod optimization)
 	taskMutexes  map[string]*sync.Mutex
 	mutexMapLock sync.RWMutex
+	// Distributed locking for multi-pod deployments
+	namespace     string
+	podName       string
+	leaseDuration time.Duration
 }
 
 // NewStateMachine creates a new state machine with all dependencies
@@ -48,6 +54,17 @@ func NewStateMachine(
 	toolAdapter ToolAdapter,
 	tracer trace.Tracer,
 ) *StateMachine {
+	// Get pod identity for distributed locking
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		namespace = "default"
+	}
+	podName := os.Getenv("POD_NAME")
+	if podName == "" {
+		suffix, _ := validation.GenerateK8sRandomString(8)
+		podName = "acp-controller-manager-" + suffix
+	}
+
 	return &StateMachine{
 		client:            client,
 		recorder:          recorder,
@@ -58,6 +75,9 @@ func NewStateMachine(
 		tracer:            tracer,
 		taskMutexes:       make(map[string]*sync.Mutex),
 		mutexMapLock:      sync.RWMutex{},
+		namespace:         namespace,
+		podName:           podName,
+		leaseDuration:     30 * time.Second, // 30 second lease duration
 	}
 }
 
@@ -143,10 +163,22 @@ func (sm *StateMachine) sendLLMRequest(ctx context.Context, task *acp.Task) (ctr
 	logger := log.FromContext(ctx)
 	statusUpdate := task.DeepCopy()
 
-	// Acquire task-specific mutex to serialize LLM requests
+	// Acquire task-specific mutex to serialize LLM requests (single-pod optimization)
 	mutex := sm.getTaskMutex(task.Name)
 	mutex.Lock()
 	defer mutex.Unlock()
+
+	// Acquire distributed lease for multi-pod coordination
+	lease, acquired, err := sm.acquireTaskLease(ctx, task.Name)
+	if err != nil {
+		logger.Error(err, "Failed to acquire distributed task lease")
+		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+	}
+	if !acquired {
+		logger.V(1).Info("Task lease held by another pod, requeuing", "task", task.Name)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+	defer sm.releaseTaskLease(ctx, lease)
 
 	// Get agent and credentials
 	agent, result, err := sm.validateTaskAndAgent(ctx, task, statusUpdate)
@@ -1031,4 +1063,83 @@ func (sm *StateMachine) createV1Beta3ToolCall(ctx context.Context, task *acp.Tas
 	sm.recorder.Event(task, corev1.EventTypeNormal, "V1Beta3ToolCallCreated", "Created respond_to_human ToolCall "+newName)
 
 	return ctrl.Result{RequeueAfter: DefaultRequeueDelay}, nil
+}
+
+// acquireTaskLease attempts to acquire a distributed lease for a task
+func (sm *StateMachine) acquireTaskLease(ctx context.Context, taskName string) (*coordinationv1.Lease, bool, error) {
+	leaseName := "task-llm-" + taskName
+	now := metav1.NewMicroTime(time.Now())
+
+	lease := &coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      leaseName,
+			Namespace: sm.namespace,
+		},
+		Spec: coordinationv1.LeaseSpec{
+			HolderIdentity:       &sm.podName,
+			LeaseDurationSeconds: ptr.To(int32(sm.leaseDuration.Seconds())),
+			AcquireTime:          &now,
+			RenewTime:            &now,
+		},
+	}
+
+	// Try to create the lease
+	err := sm.client.Create(ctx, lease)
+	if err == nil {
+		return lease, true, nil
+	}
+
+	// If lease already exists, try to acquire it if expired
+	if apierrors.IsAlreadyExists(err) {
+		existingLease := &coordinationv1.Lease{}
+		if err := sm.client.Get(ctx, client.ObjectKey{
+			Namespace: sm.namespace,
+			Name:      leaseName,
+		}, existingLease); err != nil {
+			return nil, false, err
+		}
+
+		// Check if lease is expired or we already hold it
+		if sm.canAcquireLease(existingLease) {
+			existingLease.Spec.HolderIdentity = &sm.podName
+			existingLease.Spec.AcquireTime = &now
+			existingLease.Spec.RenewTime = &now
+
+			if err := sm.client.Update(ctx, existingLease); err != nil {
+				return nil, false, err
+			}
+			return existingLease, true, nil
+		}
+
+		return nil, false, nil // Lease held by another pod
+	}
+
+	return nil, false, err
+}
+
+// canAcquireLease checks if we can acquire the lease (expired or we already hold it)
+func (sm *StateMachine) canAcquireLease(lease *coordinationv1.Lease) bool {
+	if lease.Spec.HolderIdentity != nil && *lease.Spec.HolderIdentity == sm.podName {
+		return true // We already hold it
+	}
+
+	if lease.Spec.RenewTime == nil {
+		return true // No renew time, assume expired
+	}
+
+	expireTime := lease.Spec.RenewTime.Add(sm.leaseDuration)
+	return time.Now().After(expireTime)
+}
+
+// releaseTaskLease releases a distributed lease
+func (sm *StateMachine) releaseTaskLease(ctx context.Context, lease *coordinationv1.Lease) {
+	if lease == nil {
+		return
+	}
+
+	// Delete the lease to release it
+	if err := sm.client.Delete(ctx, lease); err != nil {
+		// Log but don't fail - lease will expire naturally
+		log.FromContext(ctx).V(1).Info("Failed to delete task lease", "lease", lease.Name, "error", err)
+	}
 }
