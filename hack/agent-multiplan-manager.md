@@ -101,3 +101,90 @@ All agents must commit every 5-10 minutes after meaningful progress. No work >10
 - Leverage tmux for session management
 - Follow the established pattern of using $HOME/.humanlayer/worktrees/
 
+## Handy Commands
+
+### Adding a New Agent to Existing Session
+When you need to add another agent to an already running session:
+
+```bash
+# 1. Create worktree manually
+./hack/create_worktree.sh acp-newfeature-dev
+
+# 2. Copy plan file to worktree
+cp plan-newfeature.md /Users/dex/.humanlayer/worktrees/agentcontrolplane_acp-newfeature-dev/
+
+# 3. Create prompt file
+cat > /Users/dex/.humanlayer/worktrees/agentcontrolplane_acp-newfeature-dev/prompt.md << 'EOF'
+Adopt the persona from hack/agent-developer.md
+Your task is to implement the features described in plan-newfeature.md
+[... standard prompt content ...]
+EOF
+
+# 4. Add new tmux window (increment window number)
+tmux new-window -t acp-coding-dev:9 -n "plan-newfeature" -c "/Users/dex/.humanlayer/worktrees/agentcontrolplane_acp-newfeature-dev"
+
+# 5. Split and setup panes
+tmux split-window -t acp-coding-dev:9 -v -c "/Users/dex/.humanlayer/worktrees/agentcontrolplane_acp-newfeature-dev"
+tmux send-keys -t acp-coding-dev:9.1 "echo 'Troubleshooting terminal'" C-m
+tmux send-keys -t acp-coding-dev:9.1 "git status" C-m
+tmux select-pane -t acp-coding-dev:9.2
+tmux send-keys -t acp-coding-dev:9.2 'claude "$(cat prompt.md)"' C-m
+sleep 1
+tmux send-keys -t acp-coding-dev:9.2 C-m
+```
+
+### Monitoring Agent Progress
+```bash
+# View all tmux windows
+tmux list-windows -t acp-coding-dev
+
+# Check commits on agent branches
+for branch in acp-srs-dev acp-projectid-dev acp-taskspec-dev; do
+  echo "=== $branch ==="
+  git log --oneline -3 $branch
+done
+
+# Watch a specific agent's work
+tmux attach -t acp-coding-dev
+# Then use Ctrl-b [window-number] to switch
+
+# Monitor merge agent's activity
+git log --oneline -10 acp-merge-dev
+```
+
+### Updating Merge Agent's Plan
+When adding new branches for the merge agent to monitor:
+```bash
+# Edit the merge agent's plan directly
+vim /Users/dex/.humanlayer/worktrees/agentcontrolplane_acp-merge-dev/plan-merge-agent.md
+
+# The merge agent will pick up changes on its next monitoring cycle
+```
+
+### Emergency Stop/Restart
+```bash
+# Kill a specific window (agent)
+tmux kill-window -t acp-coding-dev:5
+
+# Restart an agent in existing window
+tmux respawn-pane -t acp-coding-dev:5.2 -c "/path/to/worktree"
+tmux send-keys -t acp-coding-dev:5.2 'claude "$(cat prompt.md)"' C-m
+
+# Kill entire session
+tmux kill-session -t acp-coding-dev
+```
+
+### Debugging Agent Issues
+```bash
+# View agent's terminal output
+tmux capture-pane -t acp-coding-dev:3.2 -p | less
+
+# Check worktree status
+git worktree list | grep acp-
+
+# View agent's git status
+cd /Users/dex/.humanlayer/worktrees/agentcontrolplane_acp-srs-dev
+git status
+git log --oneline -5
+```
+
