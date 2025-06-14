@@ -83,6 +83,8 @@ remove_worktree() {
     
     if [ -d "$worktree_dir" ]; then
         log "Removing worktree: $worktree_dir"
+        # Fix permissions before removal to handle any permission issues
+        chmod -R 755 "$worktree_dir" 2>/dev/null || warn "Failed to fix permissions on $worktree_dir"
         git worktree remove --force "$worktree_dir" 2>/dev/null || {
             warn "Failed to remove worktree with git, removing directory manually"
             rm -rf "$worktree_dir"
