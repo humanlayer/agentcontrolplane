@@ -158,7 +158,7 @@ var _ = Describe("Task Controller with HumanLayer API", func() {
 				ObjectMeta: v1.ObjectMeta{Name: "test-contact-channel", Namespace: "default"},
 				Spec: acp.ContactChannelSpec{
 					Type: acp.ContactChannelTypeSlack,
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "test-channel-token",
 							Key:  "token",
