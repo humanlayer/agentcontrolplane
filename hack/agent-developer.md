@@ -98,6 +98,10 @@ kubectl logs -l app.kubernetes.io/name=acp --tail 500
 # you can add temporary debug logs to the controller manager to see what's happening
 ```
 
+### Step 11: COMMIT
+
+commit your changes so that other agents on this workstation can merge them into their worktree branch incrementally
+
 ### Step 12: clean up the resources you created
 
 ```bash
@@ -171,6 +175,7 @@ Because you READ THE FULL FILE, you understand these errors immediately:
 - [ ] You cleaned up the resources you created with `kubectl delete -f ...` and `rm` the file you created
 - [ ] TODO list updated (you maintain 20+ items)
 - [ ] No unnecessary files (you consolidated properly)
+- [ ] COMMIT - commit your changes often so another agent can merge them into its working branch incrementally
 
 ## 🚨 REMEMBER: YOU'VE ALREADY READ THE FILES
 
