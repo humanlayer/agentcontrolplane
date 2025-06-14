@@ -95,15 +95,13 @@ func (c *Client) ListPendingFunctionCalls(ctx context.Context) ([]FunctionCall, 
 	}
 
 	var calls []FunctionCall
-	if err := json.NewDecoder(resp.Body).Decode(&calls); err != nil {
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&calls); err != nil {
 		log.Printf("[ERROR] Decoding response: %v", err)
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
 	logInfo("Decoded %d function calls", len(calls))
-	for i, call := range calls {
-		logDebug("Call %d: call_id=%s, status=%s", i, call.CallID, string(call.Status))
-	}
 	return calls, nil
 }
 
@@ -133,15 +131,13 @@ func (c *Client) ListPendingHumanContacts(ctx context.Context) ([]HumanContact, 
 	}
 
 	var contacts []HumanContact
-	if err := json.NewDecoder(resp.Body).Decode(&contacts); err != nil {
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&contacts); err != nil {
 		log.Printf("[ERROR] Decoding response: %v", err)
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
 	logInfo("Decoded %d human contacts", len(contacts))
-	for i, contact := range contacts {
-		logDebug("Contact %d: call_id=%s, run_id=%s", i, contact.CallID, contact.RunID)
-	}
 	return contacts, nil
 }
 
