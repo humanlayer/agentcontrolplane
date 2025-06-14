@@ -4,13 +4,14 @@
 Monitor the progress of 6 worker agents and incrementally merge their changes into the integration branch, handling conflicts and ensuring clean builds.
 
 ## Context
-Six worker agents are implementing different features in parallel:
+Seven worker agents are implementing different features in parallel:
 1. SRS Implementation (acp-srs-*)
 2. ContactChannel Project ID (acp-projectid-*)
 3. ContactChannel Task Spec (acp-taskspec-*)
 4. Channel API Key/ID (acp-channelapikey-*)
 5. V1Beta3 Events Support (acp-v1beta3-*)
 6. Parallel LLM Calls Fix (acp-parallel-*)
+7. Kustomization Template Fix (acp-kustomize-*)
 
 ## Merge Strategy and Dependencies
 
