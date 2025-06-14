@@ -85,6 +85,22 @@ spec:
                 required:
                 - name
                 type: object
+              baseURL:
+                type: string
+              channelTokenFrom:
+                description: ChannelTokenFrom references a secret containing the token
+                  for the human contact channel.
+                properties:
+                  key:
+                    description: Key is the key in the secret
+                    type: string
+                  name:
+                    description: Name is the name of the secret
+                    type: string
+                required:
+                - key
+                - name
+                type: object
               contactChannelRef:
                 description: ContactChannelRef references a ContactChannel resource
                   for human interactions.
@@ -164,6 +180,10 @@ spec:
                   - role
                   type: object
                 type: array
+              threadID:
+                description: ThreadID is used for conversation continuity in v1beta3
+                  events
+                type: string
               userMessage:
                 description: |-
                   UserMessage is the message to send to the agent.
