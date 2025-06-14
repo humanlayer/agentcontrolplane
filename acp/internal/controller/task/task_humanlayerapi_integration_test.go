@@ -73,6 +73,10 @@ func (c *MockHumanLayerClient) SetChannelID(channelID string) {
 	// Mock implementation - could add tracking if needed
 }
 
+func (c *MockHumanLayerClient) SetThreadID(threadID string) {
+	// Mock implementation
+}
+
 func (c *MockHumanLayerClient) RequestApproval(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
 	return nil, 200, nil
 }

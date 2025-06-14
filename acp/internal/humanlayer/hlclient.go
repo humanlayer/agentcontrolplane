@@ -60,6 +60,7 @@ type HumanLayerClientWrapper interface {
 	SetCallID(callID string)
 	SetRunID(runID string)
 	SetAPIKey(apiKey string)
+	SetThreadID(threadID string) // For conversation continuity
 
 	RequestApproval(ctx context.Context) (functionCall *humanlayerapi.FunctionCallOutput, statusCode int, err error)
 	RequestHumanContact(ctx context.Context, userMsg string) (humanContact *humanlayerapi.HumanContactOutput, statusCode int, err error)
@@ -80,6 +81,7 @@ type RealHumanLayerClientWrapper struct {
 	runID                 string
 	apiKey                string
 	channelID             string
+	threadID              string // For conversation continuity
 }
 
 type RealHumanLayerClientFactory struct {
@@ -97,6 +99,11 @@ func (h *RealHumanLayerClientWrapper) SetSlackConfig(slackConfig *acp.SlackChann
 
 	if slackConfig.ContextAboutChannelOrUser != "" {
 		slackChannelInput.SetContextAboutChannelOrUser(slackConfig.ContextAboutChannelOrUser)
+	}
+
+	// Set thread ID if available for conversation continuity
+	if h.threadID != "" {
+		slackChannelInput.SetThreadTs(h.threadID)
 	}
 
 	h.slackChannelInput = slackChannelInput
@@ -133,6 +140,10 @@ func (h *RealHumanLayerClientWrapper) SetAPIKey(apiKey string) {
 
 func (h *RealHumanLayerClientWrapper) SetChannelID(channelID string) {
 	h.channelID = channelID
+}
+
+func (h *RealHumanLayerClientWrapper) SetThreadID(threadID string) {
+	h.threadID = threadID
 }
 
 func (h *RealHumanLayerClientWrapper) RequestApproval(ctx context.Context) (functionCall *humanlayerapi.FunctionCallOutput, statusCode int, err error) {

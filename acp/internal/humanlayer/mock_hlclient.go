@@ -88,6 +88,11 @@ func (m *MockHumanLayerClientWrapper) SetChannelID(channelID string) {
 	m.channelID = channelID
 }
 
+// SetThreadID implements HumanLayerClientWrapper
+func (m *MockHumanLayerClientWrapper) SetThreadID(threadID string) {
+	// Mock implementation - just store it if needed for testing
+}
+
 // GetFunctionCallStatus implements HumanLayerClientWrapper
 func (m *MockHumanLayerClientWrapper) GetFunctionCallStatus(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
 	if m.parent.ShouldReturnApproval {

@@ -574,6 +574,11 @@ func (sm *StateMachine) processLLMResponse(ctx context.Context, output *acp.Mess
 	logger := log.FromContext(ctx)
 
 	if output.Content != "" {
+		// Check if this is a v1beta3 task - if so, create respond_to_human tool call instead of normal final answer
+		if task.Labels != nil && task.Labels["acp.humanlayer.dev/v1beta3"] == "true" {
+			return sm.handleV1Beta3FinalAnswer(ctx, output, task, statusUpdate, tools)
+		}
+
 		// final answer branch
 		statusUpdate.Status.Output = output.Content
 		statusUpdate.Status.Phase = acp.TaskPhaseFinalAnswer
@@ -925,4 +930,105 @@ func (sm *StateMachine) getTaskMutex(taskName string) *sync.Mutex {
 	mutex = &sync.Mutex{}
 	sm.taskMutexes[taskName] = mutex
 	return mutex
+}
+
+// handleV1Beta3FinalAnswer handles final answers for v1beta3 tasks by creating a respond_to_human tool call
+func (sm *StateMachine) handleV1Beta3FinalAnswer(ctx context.Context, output *acp.Message, task *acp.Task, statusUpdate *acp.Task, _ []llmclient.Tool) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Handling v1beta3 final answer by creating respond_to_human tool call")
+
+	// Generate a unique ID for this tool call using k8s-style random strings
+	toolCallRequestId, err := validation.GenerateK8sRandomString(7)
+	if err != nil {
+		logger.Error(err, "Failed to generate toolCallRequestId")
+		return ctrl.Result{}, err
+	}
+	toolCallID, err := validation.GenerateK8sRandomString(8)
+	if err != nil {
+		logger.Error(err, "Failed to generate toolCallID")
+		return ctrl.Result{}, err
+	}
+
+	// Create a respond_to_human tool call instead of final answer
+	respondToHumanCall := acp.MessageToolCall{
+		ID: toolCallID,
+		Function: acp.ToolCallFunction{
+			Name:      "respond_to_human",
+			Arguments: fmt.Sprintf(`{"content": "%s"}`, output.Content),
+		},
+		Type: "function",
+	}
+
+	// Set status to tool calls pending instead of final answer
+	statusUpdate.Status.Output = ""
+	statusUpdate.Status.Phase = acp.TaskPhaseToolCallsPending
+	statusUpdate.Status.ToolCallRequestID = toolCallRequestId
+	statusUpdate.Status.ContextWindow = append(statusUpdate.Status.ContextWindow, acp.Message{
+		Role:      "assistant",
+		ToolCalls: []acp.MessageToolCall{respondToHumanCall},
+	})
+	statusUpdate.Status.Ready = true
+	statusUpdate.Status.Status = acp.TaskStatusTypeReady
+	statusUpdate.Status.StatusDetail = "Creating respond_to_human tool call for v1beta3 final answer"
+	statusUpdate.Status.Error = ""
+	sm.recorder.Event(task, corev1.EventTypeNormal, "V1Beta3RespondToHuman", "Creating respond_to_human tool call for final answer")
+
+	// Update the status before creating tool call
+	if err := sm.client.Status().Update(ctx, statusUpdate); err != nil {
+		logger.Error(err, "Unable to update Task status for v1beta3 respond_to_human")
+		return ctrl.Result{}, err
+	}
+
+	// Create the respond_to_human ToolCall resource
+	return sm.createV1Beta3ToolCall(ctx, task, statusUpdate, respondToHumanCall)
+}
+
+// createV1Beta3ToolCall creates a special respond_to_human ToolCall for v1beta3 tasks
+func (sm *StateMachine) createV1Beta3ToolCall(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, toolCall acp.MessageToolCall) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	newName := fmt.Sprintf("%s-%s-respond-to-human", statusUpdate.Name, statusUpdate.Status.ToolCallRequestID)
+
+	newTC := &acp.ToolCall{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      newName,
+			Namespace: statusUpdate.Namespace,
+			Labels: map[string]string{
+				"acp.humanlayer.dev/task":            statusUpdate.Name,
+				"acp.humanlayer.dev/toolcallrequest": statusUpdate.Status.ToolCallRequestID,
+				"acp.humanlayer.dev/v1beta3":         "true",
+				"acp.humanlayer.dev/tool-type":       "respond_to_human",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "acp.humanlayer.dev/v1alpha1",
+					Kind:       "Task",
+					Name:       statusUpdate.Name,
+					UID:        statusUpdate.UID,
+					Controller: ptr.To(true),
+				},
+			},
+		},
+		Spec: acp.ToolCallSpec{
+			ToolCallID: toolCall.ID,
+			TaskRef: acp.LocalObjectReference{
+				Name: statusUpdate.Name,
+			},
+			ToolRef: acp.LocalObjectReference{
+				Name: "respond_to_human",
+			},
+			ToolType:  acp.ToolTypeHumanContact,
+			Arguments: toolCall.Function.Arguments,
+		},
+	}
+
+	if err := sm.client.Create(ctx, newTC); err != nil {
+		logger.Error(err, "Failed to create respond_to_human ToolCall", "name", newName)
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Created respond_to_human ToolCall for v1beta3 task", "name", newName, "requestId", statusUpdate.Status.ToolCallRequestID)
+	sm.recorder.Event(task, corev1.EventTypeNormal, "V1Beta3ToolCallCreated", "Created respond_to_human ToolCall "+newName)
+
+	return ctrl.Result{RequeueAfter: DefaultRequeueDelay}, nil
 }
