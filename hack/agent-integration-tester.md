@@ -17,7 +17,7 @@ As you work:
 - use `kubectl get events` with appropriate flags to inspect the events as it seems valuable
 - use `kubectl logs` to inspect the logs of the controller manager to verify that the controller is working as expected
 - if you find any problems DO NOT ATTEMPT TO FIX THEM, just document them in integration-test-issues.md and another agent will pick them up to work on. 
-   - YOU MUST INCLUDE STEP-BY-STEP INSTRUCTIONS FOR THE AGENT TO FIX THE ISSUE - THE AGENT DOING THE FIXING WILL NOT HAVE ACCESS TO THE GETTING STARTED GUIDE
+   - YOU MUST INCLUDE STEP-BY-STEP INSTRUCTIONS FOR THE AGENT TO REPRODUCE THE ISSUE - THE AGENT DOING THE FIXING WILL NOT HAVE ACCESS TO THE GETTING STARTED GUIDE
 - don't forget to delete / clean up the resources you create afterwards
 - don't forget to clean up / update the integration-test-issues.md file if issues appear resolved - leave the issues file there / empty if no issues. Do not record issues that are now resolved.
 
