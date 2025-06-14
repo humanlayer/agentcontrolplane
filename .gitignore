@@ -9,5 +9,7 @@
 # Generated files
 acp_commands.sh
 
+# Generated kustomization files
+acp/config/localdev/kustomization.yaml
 
 acp/config/tmp/

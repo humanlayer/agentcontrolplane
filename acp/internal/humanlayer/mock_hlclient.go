@@ -33,6 +33,7 @@ type MockHumanLayerClientWrapper struct {
 	callID       string
 	runID        string
 	apiKey       string
+	channelID    string
 }
 
 // NewHumanLayerClient creates a new mock client
@@ -80,6 +81,16 @@ func (m *MockHumanLayerClientWrapper) SetRunID(runID string) {
 // SetAPIKey implements HumanLayerClientWrapper
 func (m *MockHumanLayerClientWrapper) SetAPIKey(apiKey string) {
 	m.apiKey = apiKey
+}
+
+// SetChannelID implements HumanLayerClientWrapper
+func (m *MockHumanLayerClientWrapper) SetChannelID(channelID string) {
+	m.channelID = channelID
+}
+
+// SetThreadID implements HumanLayerClientWrapper
+func (m *MockHumanLayerClientWrapper) SetThreadID(threadID string) {
+	// Mock implementation - just store it if needed for testing
 }
 
 // GetFunctionCallStatus implements HumanLayerClientWrapper

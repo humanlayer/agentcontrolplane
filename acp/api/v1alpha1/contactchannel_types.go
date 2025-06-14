@@ -58,16 +58,24 @@ type EmailChannelConfig struct {
 // ContactChannelSpec defines the desired state of ContactChannel.
 type ContactChannelSpec struct {
 	// Type is the type of channel (e.g. "slack", "email")
-	// TODO(4) - consider removing this, HumanLayer ContactChannel models don't include it
-
-	// Type is the type of channel (e.g. "slack", "email")
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=slack;email
 	Type ContactChannelType `json:"type"`
 
 	// APIKeyFrom references the secret containing the API key or token
-	// +kubebuilder:validation:Required
-	APIKeyFrom APIKeySource `json:"apiKeyFrom"`
+	// Required unless ChannelAPIKeyFrom and ChannelID are provided
+	// +optional
+	APIKeyFrom *APIKeySource `json:"apiKeyFrom,omitempty"`
+
+	// ChannelAPIKeyFrom references the secret containing the channel-specific API key
+	// Mutually exclusive with APIKeyFrom. Requires ChannelID when set.
+	// +optional
+	ChannelAPIKeyFrom *APIKeySource `json:"channelApiKeyFrom,omitempty"`
+
+	// ChannelID specifies the channel ID when using channel-specific authentication
+	// Required when ChannelAPIKeyFrom is set
+	// +optional
+	ChannelID string `json:"channelId,omitempty"`
 
 	// Slack holds configuration specific to Slack channels
 	// +optional
@@ -90,8 +98,14 @@ type ContactChannelStatus struct {
 	// StatusDetail provides additional details about the current status
 	StatusDetail string `json:"statusDetail,omitempty"`
 
-	// HumanLayerProject is the project ID from HumanLayer API
-	HumanLayerProject string `json:"humanLayerProject,omitempty"`
+	// ProjectSlug is the project slug from HumanLayer API
+	ProjectSlug string `json:"projectSlug,omitempty"`
+
+	// OrgSlug is the organization slug from HumanLayer API
+	OrgSlug string `json:"orgSlug,omitempty"`
+
+	// VerifiedChannelID is the verified channel ID when using channel-specific auth
+	VerifiedChannelID string `json:"verifiedChannelId,omitempty"`
 }
 
 // +kubebuilder:object:root=true

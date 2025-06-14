@@ -50,6 +50,12 @@ func (m *mockHumanLayerClient) SetAPIKey(apiKey string) {
 	m.setAPIKeyCalled = true
 	m.lastAPIKey = apiKey
 }
+func (m *mockHumanLayerClient) SetChannelID(channelID string) {
+	// Mock implementation - could add tracking if needed
+}
+func (m *mockHumanLayerClient) SetThreadID(threadID string) {
+	// Mock implementation
+}
 func (m *mockHumanLayerClient) RequestApproval(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
 	return nil, 200, nil
 }
@@ -114,7 +120,7 @@ var _ = Describe("ToolExecutor Unit Tests", func() {
 					Address:          "test@example.com",
 					ContextAboutUser: "Test user",
 				},
-				APIKeyFrom: acp.APIKeySource{
+				APIKeyFrom: &acp.APIKeySource{
 					SecretKeyRef: acp.SecretKeyRef{
 						Name: "test-secret",
 						Key:  "HUMANLAYER_API_KEY",
@@ -266,7 +272,7 @@ var _ = Describe("ToolExecutor Unit Tests", func() {
 		It("should retrieve API key from secret", func() {
 			contactChannel := &acp.ContactChannel{
 				Spec: acp.ContactChannelSpec{
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "HUMANLAYER_API_KEY",
@@ -284,7 +290,7 @@ var _ = Describe("ToolExecutor Unit Tests", func() {
 		It("should fail when secret is not found", func() {
 			contactChannel := &acp.ContactChannel{
 				Spec: acp.ContactChannelSpec{
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "nonexistent-secret",
 							Key:  "HUMANLAYER_API_KEY",
@@ -303,7 +309,7 @@ var _ = Describe("ToolExecutor Unit Tests", func() {
 		It("should fail when API key is not found in secret", func() {
 			contactChannel := &acp.ContactChannel{
 				Spec: acp.ContactChannelSpec{
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "NONEXISTENT_KEY",

@@ -69,6 +69,14 @@ func (c *MockHumanLayerClient) SetAPIKey(apiKey string) {
 	c.apiKey = apiKey
 }
 
+func (c *MockHumanLayerClient) SetChannelID(channelID string) {
+	// Mock implementation - could add tracking if needed
+}
+
+func (c *MockHumanLayerClient) SetThreadID(threadID string) {
+	// Mock implementation
+}
+
 func (c *MockHumanLayerClient) RequestApproval(ctx context.Context) (*humanlayerapi.FunctionCallOutput, int, error) {
 	return nil, 200, nil
 }
@@ -149,15 +157,41 @@ var _ = Describe("Task Controller with HumanLayer API", func() {
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 			DeferCleanup(func() { Expect(k8sClient.Delete(ctx, secret)).To(Succeed()) })
 
+			// Create a ContactChannel that references the secret
+			contactChannel := &acp.ContactChannel{
+				ObjectMeta: v1.ObjectMeta{Name: "test-contact-channel", Namespace: "default"},
+				Spec: acp.ContactChannelSpec{
+					Type: acp.ContactChannelTypeSlack,
+					APIKeyFrom: &acp.APIKeySource{
+						SecretKeyRef: acp.SecretKeyRef{
+							Name: "test-channel-token",
+							Key:  "token",
+						},
+					},
+					Slack: &acp.SlackChannelConfig{
+						ChannelOrUserID: "C123456789",
+					},
+				},
+				Status: acp.ContactChannelStatus{
+					Ready:  true,
+					Status: "Ready",
+				},
+			}
+			Expect(k8sClient.Create(ctx, contactChannel)).To(Succeed())
+			DeferCleanup(func() { Expect(k8sClient.Delete(ctx, contactChannel)).To(Succeed()) })
+
+			// Update the ContactChannel status to Ready manually (since the controller isn't running)
+			contactChannel.Status.Ready = true
+			contactChannel.Status.Status = "Ready"
+			Expect(k8sClient.Status().Update(ctx, contactChannel)).To(Succeed())
+
 			task := &acp.Task{
 				ObjectMeta: v1.ObjectMeta{Name: "test-task", Namespace: "default"},
 				Spec: acp.TaskSpec{
 					AgentRef:    acp.LocalObjectReference{Name: testAgent.Name},
 					UserMessage: "Test message",
-					BaseURL:     "https://api.example.com",
-					ChannelTokenFrom: &acp.SecretKeyRef{
-						Name: "test-channel-token",
-						Key:  "token",
+					ContactChannelRef: &acp.LocalObjectReference{
+						Name: "test-contact-channel",
 					},
 				},
 			}
@@ -183,8 +217,9 @@ var _ = Describe("Task Controller with HumanLayer API", func() {
 			Expect(task.Status.Phase).To(Equal(acp.TaskPhaseFinalAnswer))
 			Expect(task.Status.Output).To(Equal("Test result"))
 
-			// Verify that the token from the secret was correctly used as the API key
-			Expect(mockHumanLayerClient.baseURL).To(Equal("https://api.example.com"))
+			// Verify that the HumanLayer client was called correctly
+			// Note: baseURL is now hardcoded to "https://api.humanlayer.dev" in the implementation
+			Expect(mockHumanLayerClient.baseURL).To(Equal("https://api.humanlayer.dev"))
 			Expect(mockHumanLayerClient.apiKey).To(Equal("hl_testtoken"))
 			Expect(mockHumanLayerClient.runID).To(Equal(testAgent.Name))
 		})

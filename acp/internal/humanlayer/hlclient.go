@@ -4,14 +4,13 @@ package humanlayer
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	humanlayerapi "github.com/humanlayer/agentcontrolplane/acp/internal/humanlayerapi"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 )
 
 // NewHumanLayerClientFactory creates a new API client using either the provided API key
@@ -56,10 +55,12 @@ func NewHumanLayerClientFactory(optionalApiBase string) (HumanLayerClientFactory
 type HumanLayerClientWrapper interface {
 	SetSlackConfig(slackConfig *acp.SlackChannelConfig)
 	SetEmailConfig(emailConfig *acp.EmailChannelConfig)
+	SetChannelID(channelID string)
 	SetFunctionCallSpec(functionName string, args map[string]interface{})
 	SetCallID(callID string)
 	SetRunID(runID string)
 	SetAPIKey(apiKey string)
+	SetThreadID(threadID string) // For conversation continuity
 
 	RequestApproval(ctx context.Context) (functionCall *humanlayerapi.FunctionCallOutput, statusCode int, err error)
 	RequestHumanContact(ctx context.Context, userMsg string) (humanContact *humanlayerapi.HumanContactOutput, statusCode int, err error)
@@ -79,6 +80,8 @@ type RealHumanLayerClientWrapper struct {
 	callID                string
 	runID                 string
 	apiKey                string
+	channelID             string
+	threadID              string // For conversation continuity
 }
 
 type RealHumanLayerClientFactory struct {
@@ -96,6 +99,11 @@ func (h *RealHumanLayerClientWrapper) SetSlackConfig(slackConfig *acp.SlackChann
 
 	if slackConfig.ContextAboutChannelOrUser != "" {
 		slackChannelInput.SetContextAboutChannelOrUser(slackConfig.ContextAboutChannelOrUser)
+	}
+
+	// Set thread ID if available for conversation continuity
+	if h.threadID != "" {
+		slackChannelInput.SetThreadTs(h.threadID)
 	}
 
 	h.slackChannelInput = slackChannelInput
@@ -130,25 +138,35 @@ func (h *RealHumanLayerClientWrapper) SetAPIKey(apiKey string) {
 	h.apiKey = apiKey
 }
 
+func (h *RealHumanLayerClientWrapper) SetChannelID(channelID string) {
+	h.channelID = channelID
+}
+
+func (h *RealHumanLayerClientWrapper) SetThreadID(threadID string) {
+	h.threadID = threadID
+}
+
 func (h *RealHumanLayerClientWrapper) RequestApproval(ctx context.Context) (functionCall *humanlayerapi.FunctionCallOutput, statusCode int, err error) {
-	channel := humanlayerapi.NewContactChannelInput()
+	// Only set channel configuration if not using channel-specific auth
+	if h.channelID == "" {
+		channel := humanlayerapi.NewContactChannelInput()
 
-	if h.slackChannelInput != nil {
-		channel.SetSlack(*h.slackChannelInput)
+		if h.slackChannelInput != nil {
+			channel.SetSlack(*h.slackChannelInput)
+		}
+
+		if h.emailContactChannel != nil {
+			channel.SetEmail(*h.emailContactChannel)
+		}
+
+		h.functionCallSpecInput.SetChannel(*channel)
 	}
-
-	if h.emailContactChannel != nil {
-		channel.SetEmail(*h.emailContactChannel)
-	}
-
-	h.functionCallSpecInput.SetChannel(*channel)
 	// For initial approval requests, generate a short unique callID since the API requires it to be non-empty
 	// and the combination of run_id + call_id must be <= 64 bytes
-	randomBytes := make([]byte, 8)
-	if _, err := rand.Read(randomBytes); err != nil {
+	callID, err := validation.GenerateK8sRandomString(8)
+	if err != nil {
 		return nil, 0, fmt.Errorf("failed to generate random call ID: %w", err)
 	}
-	callID := hex.EncodeToString(randomBytes) // 16 character hex string
 	functionCallInput := humanlayerapi.NewFunctionCallInput(h.runID, callID, *h.functionCallSpecInput)
 
 	functionCall, resp, err := h.client.DefaultAPI.RequestApproval(ctx).
@@ -160,18 +178,22 @@ func (h *RealHumanLayerClientWrapper) RequestApproval(ctx context.Context) (func
 }
 
 func (h *RealHumanLayerClientWrapper) RequestHumanContact(ctx context.Context, userMsg string) (humanContact *humanlayerapi.HumanContactOutput, statusCode int, err error) {
-	channel := humanlayerapi.NewContactChannelInput()
-
-	if h.slackChannelInput != nil {
-		channel.SetSlack(*h.slackChannelInput)
-	}
-
-	if h.emailContactChannel != nil {
-		channel.SetEmail(*h.emailContactChannel)
-	}
-
 	humanContactSpecInput := humanlayerapi.NewHumanContactSpecInput(userMsg)
-	humanContactSpecInput.SetChannel(*channel)
+
+	// Only set channel configuration if not using channel-specific auth
+	if h.channelID == "" {
+		channel := humanlayerapi.NewContactChannelInput()
+
+		if h.slackChannelInput != nil {
+			channel.SetSlack(*h.slackChannelInput)
+		}
+
+		if h.emailContactChannel != nil {
+			channel.SetEmail(*h.emailContactChannel)
+		}
+
+		humanContactSpecInput.SetChannel(*channel)
+	}
 
 	humanContactInput := humanlayerapi.NewHumanContactInput(h.runID, h.callID, *humanContactSpecInput)
 

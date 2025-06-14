@@ -227,6 +227,9 @@ deploy: manifests docker-build kustomize ## Deploy controller to the K8s cluster
 namespace ?= default
 .PHONY: deploy-local-kind
 deploy-local-kind: manifests docker-build docker-load-kind kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	if [ ! -f config/localdev/kustomization.yaml ]; then \
+		cp config/localdev/kustomization.tpl.yaml config/localdev/kustomization.yaml; \
+	fi
 	cd config/localdev && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/localdev | $(KUBECTL) apply -f - --namespace=$(namespace)
 

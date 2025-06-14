@@ -549,7 +549,7 @@ var _ = Describe("MCPServer Controller", func() {
 				},
 				Spec: acp.ContactChannelSpec{
 					Type: "slack",
-					APIKeyFrom: acp.APIKeySource{
+					APIKeyFrom: &acp.APIKeySource{
 						SecretKeyRef: acp.SecretKeyRef{
 							Name: "test-secret",
 							Key:  "token",

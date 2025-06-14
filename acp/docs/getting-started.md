@@ -583,7 +583,7 @@ graph RL
     MCPServers --> MCPServer
 ```
 
-Let's make a new task that uses the fetch tool. In this case, we'll use https://swapi.dev, a public API for Star Wars data.
+Let's make a new task that uses the fetch tool. In this case, we'll use https://lotrapi.co, a public API for Lord of the Rings data.
 
 ```bash
 echo 'apiVersion: acp.humanlayer.dev/v1alpha1 
@@ -606,7 +606,7 @@ kubectl get events --field-selector "involvedObject.kind=Task" --sort-by='.lastT
 ```
 91s         Normal    ValidationSucceeded         task/fetch-task   Task validation succeeded
 82s         Normal    ToolCallsPending            task/fetch-task   LLM response received, tool calls pending
-82s         Normal    ToolCallCreated             task/fetch-task   Created ToolCall fetch-task-2fe18aa-tc-01
+82s         Normal    ToolCallCreated             task/fetch-task   Created ToolCall fetch-task-h3k7mn2-tc-01
 77s         Normal    AllToolCallsCompleted       task/fetch-task   All tool calls completed
 62s         Normal    SendingContextWindowToLLM   task/fetch-task   Sending context window to LLM
 57s         Normal    LLMFinalAnswer              task/fetch-task   LLM response received successfully
@@ -773,7 +773,7 @@ Events:
   ----    ------                     ----                 ----                -------
   Normal  ValidationSucceeded        114s                 task-controller  Task validated successfully
   Normal  ToolCallsPending           114s                 task-controller  LLM response received, tool calls pending
-  Normal  ToolCallCreated            114s                 task-controller  Created ToolCall fetch-task-1-toolcall-01
+  Normal  ToolCallCreated            114s                 task-controller  Created ToolCall fetch-task-h3k7mn2-tc-01
   Normal  SendingContextWindowToLLM  109s (x2 over 114s)  task-controller  Sending context window to LLM
   Normal  AllToolCallsCompleted      109s                 task-controller  All tool calls completed, ready to send tool results to LLM
   Normal  LLMFinalAnswer             105s                 task-controller  LLM response received successfully
@@ -1048,7 +1048,7 @@ metadata:
 spec:
   agentRef:
     name: agent-with-fetch
-  userMessage: "Write me a haiku about the character found at https://swapi.dev/api/people/2?"
+  userMessage: "Write me a haiku about the character found at https://lotrapi.co/api/v1/characters/2"
 ' | kubectl apply -f -
 ```
 
@@ -1061,13 +1061,13 @@ kubectl get toolcall
 ```
 $ kubectl get toolcall
 NAME                                PHASE                   TASK                  TOOL
-approved-fetch-task-3f67fda-tc-01   AwaitingHumanApproval   approved-fetch-task   fetch__fetch
-fetch-task-bec0b19-tc-01            Succeeded               fetch-task            fetch__fetch
+approved-fetch-task-m8r3x4p-tc-01   AwaitingHumanApproval   approved-fetch-task   fetch__fetch
+fetch-task-k2n9w5t-tc-01            Succeeded               fetch-task            fetch__fetch
 ```
 
 Note as well, at this point our `task` has not completed. If we run `kubectl get task approved-fetch-task` no `OUTPUT` has yet been returned.
 
-Go ahead and approve the email you should have received via HumanLayer requesting approval to run our `fetch` tool. After a few seconds, running `kubectl get toolcall approved-fetch-task-1-tc-01` should show our tool has been called. Additionally, if we run `kubectl describe task approved-fetch-task`, we should see the following (truncated a bit for brevity):
+Go ahead and approve the email you should have received via HumanLayer requesting approval to run our `fetch` tool. After a few seconds, running `kubectl get toolcall approved-fetch-task-m8r3x4p-tc-01` should show our tool has been called. Additionally, if we run `kubectl describe task approved-fetch-task`, we should see the following (truncated a bit for brevity):
 
 ```
 $ kubectl describe task approved-fetch-task
@@ -1076,24 +1076,24 @@ $ kubectl describe task approved-fetch-task
     Content:  You are a helpful assistant. Your job is to help the user with their tasks.
 
     Role:     system
-    Content:  Write me a haiku about the character found at https://swapi.dev/api/people/2?
+    Content:  Write me a haiku about the character found at https://lotrapi.co/api/v1/characters/2
     Role:     user
     Content:
     Role:     assistant
     Tool Calls:
       Function:
-        Arguments:  {"url":"https://swapi.dev/api/people/2"}
+        Arguments:  {"url":"https://lotrapi.co/api/v1/characters/2"}
         Name:       fetch__fetch
       Id:           call_FZaXJq1FKuBVLYr9HHJwcnOb
       Type:         function
     Content:        Content type application/json cannot be simplified to markdown, but here is the raw content:
-Contents of https://swapi.dev/api/people/2:
-{"name":"C-3PO","height":"167","mass":"75","hair_color":"n/a","skin_color":"gold","eye_color":"yellow","birth_year":"112BBY","gender":"n/a","homeworld":"https://swapi.dev/api/planets/1/","films":["https://swapi.dev/api/films/1/","https://swapi.dev/api/films/2/","https://swapi.dev/api/films/3/","https://swapi.dev/api/films/4/","https://swapi.dev/api/films/5/","https://swapi.dev/api/films/6/"],"species":["https://swapi.dev/api/species/2/"],"vehicles":[],"starships":[],"created":"2014-12-10T15:10:51.357000Z","edited":"2014-12-20T21:17:50.309000Z","url":"https://swapi.dev/api/people/2/"}
+Contents of https://lotrapi.co/api/v1/characters/2:
+{"id":2,"name":"Samwise Gamgee","realm":"https://lotrapi.co/api/v1/realms/1","height":"1.22m","hair_color":"Brown","eye_color":"Brown","date_of_birth":"6 April, TA 2980","date_of_death":"Unknown","gender":"Male","species":"https://lotrapi.co/api/v1/species/1","race":"https://lotrapi.co/api/v1/races/1","group":"https://lotrapi.co/api/v1/groups/1","weapons":["Sting","Barrow-blade"],"languages":["https://lotrapi.co/api/v1/languages/1"],"films":["https://lotrapi.co/api/v1/films/1","https://lotrapi.co/api/v1/films/2","https://lotrapi.co/api/v1/films/3"],"books":["https://lotrapi.co/api/v1/books/1","https://lotrapi.co/api/v1/books/2","https://lotrapi.co/api/v1/books/3"],"url":"https://lotrapi.co/api/v1/characters/2"}
     Role:          tool
     Tool Call Id:  call_FZaXJq1FKuBVLYr9HHJwcnOb
-    Content:       Golden C-3PO,
-Speaks in many languages,
-Droid with gentle heart.
+    Content:       Faithful Samwise,
+Gardener with loyal heart,
+Friend through darkest paths.
     Role:  assistant
  # ...snip...
 Events:
@@ -1101,7 +1101,7 @@ Events:
   ----    ------                     ----              ----                -------
   Normal  ValidationSucceeded        48s               task-controller  Task validated successfully
   Normal  ToolCallsPending           47s               task-controller  LLM response received, tool calls pending
-  Normal  ToolCallCreated            47s               task-controller  Created ToolCall approved-fetch-task-1-tc-01
+  Normal  ToolCallCreated            47s               task-controller  Created ToolCall approved-fetch-task-m8r3x4p-tc-01
   Normal  SendingContextWindowToLLM  7s (x2 over 48s)  task-controller  Sending context window to LLM
   Normal  AllToolCallsCompleted      7s                task-controller  All tool calls completed, ready to send tool results to LLM
   Normal  LLMFinalAnswer             6s                task-controller  LLM response received successfully

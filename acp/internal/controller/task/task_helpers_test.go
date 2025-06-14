@@ -1,10 +1,12 @@
 package task
 
 import (
+	"regexp"
 	"testing"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
 	"github.com/humanlayer/agentcontrolplane/acp/internal/llmclient"
+	"github.com/humanlayer/agentcontrolplane/acp/internal/validation"
 )
 
 func TestBuildInitialContextWindow(t *testing.T) {
@@ -219,4 +221,97 @@ func TestReconstructSpanContext(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenerateK8sRandomString(t *testing.T) {
+	tests := []struct {
+		name        string
+		length      int
+		expectError bool
+	}{
+		{
+			name:        "valid length 6",
+			length:      6,
+			expectError: false,
+		},
+		{
+			name:        "valid length 8",
+			length:      8,
+			expectError: false,
+		},
+		{
+			name:        "invalid length 0 defaults to 6",
+			length:      0,
+			expectError: false,
+		},
+		{
+			name:        "invalid length 10 defaults to 6",
+			length:      10,
+			expectError: false,
+		},
+	}
+
+	// k8s naming convention: lowercase letters and numbers, starts with letter
+	k8sPattern := regexp.MustCompile(`^[a-z][a-z0-9]*$`)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := validation.GenerateK8sRandomString(tt.length)
+
+			if tt.expectError && err == nil {
+				t.Errorf("Expected error but got none")
+				return
+			}
+
+			if !tt.expectError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+				return
+			}
+
+			if err != nil {
+				return // Skip further checks if error expected
+			}
+
+			// Check length (should be input length or default 6)
+			expectedLen := tt.length
+			if tt.length < 1 || tt.length > 8 {
+				expectedLen = 6
+			}
+			if len(result) != expectedLen {
+				t.Errorf("Expected length %d, got %d (result: %s)", expectedLen, len(result), result)
+			}
+
+			// Check k8s naming convention
+			if !k8sPattern.MatchString(result) {
+				t.Errorf("Result %q does not match k8s naming convention (must start with letter, only lowercase letters and numbers)", result)
+			}
+
+			// First character must be a letter
+			if len(result) > 0 && (result[0] < 'a' || result[0] > 'z') {
+				t.Errorf("First character %c is not a lowercase letter", result[0])
+			}
+
+			// All characters must be lowercase letters or numbers
+			for i, char := range result {
+				if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9')) {
+					t.Errorf("Character %c at position %d is not a lowercase letter or number", char, i)
+				}
+			}
+		})
+	}
+
+	// Test uniqueness by generating multiple strings
+	t.Run("generates unique strings", func(t *testing.T) {
+		generated := make(map[string]bool)
+		for i := 0; i < 100; i++ {
+			result, err := validation.GenerateK8sRandomString(6)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if generated[result] {
+				t.Errorf("Generated duplicate string: %s", result)
+			}
+			generated[result] = true
+		}
+	})
 }

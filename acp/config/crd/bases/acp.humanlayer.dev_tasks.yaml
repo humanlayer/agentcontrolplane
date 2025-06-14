@@ -86,8 +86,6 @@ spec:
                 - name
                 type: object
               baseURL:
-                description: BaseURL specifies the base URL for the human contact
-                  channel.
                 type: string
               channelTokenFrom:
                 description: ChannelTokenFrom references a secret containing the token
@@ -101,6 +99,17 @@ spec:
                     type: string
                 required:
                 - key
+                - name
+                type: object
+              contactChannelRef:
+                description: ContactChannelRef references a ContactChannel resource
+                  for human interactions.
+                properties:
+                  name:
+                    description: Name of the referent
+                    minLength: 1
+                    type: string
+                required:
                 - name
                 type: object
               contextWindow:
@@ -171,6 +180,10 @@ spec:
                   - role
                   type: object
                 type: array
+              threadID:
+                description: ThreadID is used for conversation continuity in v1beta3
+                  events
+                type: string
               userMessage:
                 description: |-
                   UserMessage is the message to send to the agent.

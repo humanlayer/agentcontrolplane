@@ -3,6 +3,7 @@ package toolcall
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	acp "github.com/humanlayer/agentcontrolplane/acp/api/v1alpha1"
@@ -184,6 +185,14 @@ func (sm *StateMachine) execute(ctx context.Context, tc *acp.ToolCall) (ctrl.Res
 	}
 
 	if tc.Spec.ToolType == acp.ToolTypeHumanContact {
+		// Extract CallID from result and set as ExternalCallID
+		if strings.Contains(result, "call ID: ") {
+			parts := strings.Split(result, "call ID: ")
+			if len(parts) >= 2 {
+				tc.Status.ExternalCallID = parts[1]
+			}
+		}
+
 		tc.Status.Phase = acp.ToolCallPhaseAwaitingHumanInput
 		tc.Status.StatusDetail = "Awaiting human input"
 
@@ -257,9 +266,42 @@ func (sm *StateMachine) waitForSubAgent(ctx context.Context, tc *acp.ToolCall) (
 	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
-func (sm *StateMachine) waitForHumanInput(_ context.Context, _ *acp.ToolCall) (ctrl.Result, error) {
-	// This would check HumanLayer API for human input completion
-	// For now, just requeue
+func (sm *StateMachine) waitForHumanInput(ctx context.Context, tc *acp.ToolCall) (ctrl.Result, error) {
+	if tc.Status.ExternalCallID == "" {
+		return sm.fail(ctx, tc, fmt.Errorf("missing external call ID"))
+	}
+
+	// Get contact channel for API key
+	channelName := sm.extractChannelName(tc.Spec.ToolRef.Name)
+	var contactChannel acp.ContactChannel
+	if err := sm.client.Get(ctx, client.ObjectKey{
+		Namespace: tc.Namespace,
+		Name:      channelName,
+	}, &contactChannel); err != nil {
+		return sm.fail(ctx, tc, fmt.Errorf("failed to get contact channel: %w", err))
+	}
+
+	humanContact, err := sm.executor.CheckHumanContactStatus(ctx, tc.Status.ExternalCallID, &contactChannel, tc.Namespace)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to check human contact status")
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+
+	if humanContact == nil {
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	status := humanContact.GetStatus()
+	if status.HasRespondedAt() && status.RespondedAt.IsSet() {
+		tc.Status.Phase = acp.ToolCallPhaseSucceeded
+		tc.Status.Status = acp.ToolCallStatusTypeSucceeded
+		tc.Status.StatusDetail = "Human contact completed successfully"
+		tc.Status.Result = status.GetResponse()
+		tc.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+		return sm.updateAndComplete(ctx, tc)
+	}
+
+	// Still pending
 	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
@@ -349,4 +391,13 @@ func (sm *StateMachine) updateAndComplete(ctx context.Context, tc *acp.ToolCall)
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
+}
+
+// extractChannelName extracts channel name from tool ref
+func (sm *StateMachine) extractChannelName(toolRefName string) string {
+	parts := strings.Split(toolRefName, "__")
+	if len(parts) >= 2 {
+		return parts[0]
+	}
+	return toolRefName
 }

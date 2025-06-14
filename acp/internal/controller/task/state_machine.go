@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +35,13 @@ type StateMachine struct {
 	humanLayerFactory HumanLayerClientFactory
 	toolAdapter       ToolAdapter
 	tracer            trace.Tracer
+	// Task-level mutexes to prevent concurrent LLM requests (single-pod optimization)
+	taskMutexes  map[string]*sync.Mutex
+	mutexMapLock sync.RWMutex
+	// Distributed locking for multi-pod deployments
+	namespace     string
+	podName       string
+	leaseDuration time.Duration
 }
 
 // NewStateMachine creates a new state machine with all dependencies
@@ -45,6 +54,17 @@ func NewStateMachine(
 	toolAdapter ToolAdapter,
 	tracer trace.Tracer,
 ) *StateMachine {
+	// Get pod identity for distributed locking
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		namespace = "default"
+	}
+	podName := os.Getenv("POD_NAME")
+	if podName == "" {
+		suffix, _ := validation.GenerateK8sRandomString(8)
+		podName = "acp-controller-manager-" + suffix
+	}
+
 	return &StateMachine{
 		client:            client,
 		recorder:          recorder,
@@ -53,6 +73,11 @@ func NewStateMachine(
 		humanLayerFactory: humanLayerFactory,
 		toolAdapter:       toolAdapter,
 		tracer:            tracer,
+		taskMutexes:       make(map[string]*sync.Mutex),
+		mutexMapLock:      sync.RWMutex{},
+		namespace:         namespace,
+		podName:           podName,
+		leaseDuration:     30 * time.Second, // 30 second lease duration
 	}
 }
 
@@ -138,6 +163,23 @@ func (sm *StateMachine) sendLLMRequest(ctx context.Context, task *acp.Task) (ctr
 	logger := log.FromContext(ctx)
 	statusUpdate := task.DeepCopy()
 
+	// Acquire task-specific mutex to serialize LLM requests (single-pod optimization)
+	mutex := sm.getTaskMutex(task.Name)
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	// Acquire distributed lease for multi-pod coordination
+	lease, acquired, err := sm.acquireTaskLease(ctx, task.Name)
+	if err != nil {
+		logger.Error(err, "Failed to acquire distributed task lease")
+		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+	}
+	if !acquired {
+		logger.V(1).Info("Task lease held by another pod, requeuing", "task", task.Name)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+	defer sm.releaseTaskLease(ctx, lease)
+
 	// Get agent and credentials
 	agent, result, err := sm.validateTaskAndAgent(ctx, task, statusUpdate)
 	if err != nil || !result.IsZero() {
@@ -176,7 +218,16 @@ func (sm *StateMachine) sendLLMRequest(ctx context.Context, task *acp.Task) (ctr
 
 	// Collect tools and send LLM request
 	tools := sm.collectTools(ctx, agent)
-	sm.recorder.Event(task, corev1.EventTypeNormal, "SendingContextWindowToLLM", "Sending context window to LLM")
+
+	// Only send event if not already in this phase to prevent duplicates
+	if task.Status.Phase != acp.TaskPhaseReadyForLLM || statusUpdate.Status.StatusDetail != "Sending request to LLM" {
+		sm.recorder.Event(task, corev1.EventTypeNormal, "SendingContextWindowToLLM", "Sending context window to LLM")
+		// Update status to indicate we're sending to LLM
+		statusUpdate.Status.StatusDetail = "Sending request to LLM"
+		if err := sm.client.Status().Update(ctx, statusUpdate); err != nil {
+			logger.Error(err, "Failed to update Task status before LLM request")
+		}
+	}
 
 	// Create child span for LLM call
 	llmCtx, llmSpan := sm.createLLMRequestSpan(ctx, task, len(task.Status.ContextWindow), len(tools))
@@ -380,6 +431,10 @@ func (sm *StateMachine) prepareForLLM(ctx context.Context, task *acp.Task, statu
 			return sm.setValidationError(ctx, task, statusUpdate, err)
 		}
 
+		if err := validation.ValidateContactChannelRef(ctx, sm.client, task); err != nil {
+			return sm.setValidationError(ctx, task, statusUpdate, err)
+		}
+
 		initialContextWindow := buildInitialContextWindow(task.Spec.ContextWindow, agent.Spec.System, task.Spec.UserMessage)
 
 		statusUpdate.Status.UserMsgPreview = validation.GetUserMessagePreview(task.Spec.UserMessage, task.Spec.ContextWindow)
@@ -390,7 +445,10 @@ func (sm *StateMachine) prepareForLLM(ctx context.Context, task *acp.Task, statu
 		statusUpdate.Status.StatusDetail = "Ready to send to LLM"
 		statusUpdate.Status.Error = ""
 
-		sm.recorder.Event(task, corev1.EventTypeNormal, "ValidationSucceeded", "Task validation succeeded")
+		// Only send event if not already validated to prevent duplicates
+		if task.Status.Phase != acp.TaskPhaseReadyForLLM {
+			sm.recorder.Event(task, corev1.EventTypeNormal, "ValidationSucceeded", "Task validation succeeded")
+		}
 		if err := sm.client.Status().Update(ctx, statusUpdate); err != nil {
 			logger.Error(err, "Failed to update Task status")
 			return ctrl.Result{}, err
@@ -548,6 +606,11 @@ func (sm *StateMachine) processLLMResponse(ctx context.Context, output *acp.Mess
 	logger := log.FromContext(ctx)
 
 	if output.Content != "" {
+		// Check if this is a v1beta3 task - if so, create respond_to_human tool call instead of normal final answer
+		if task.Labels != nil && task.Labels["acp.humanlayer.dev/v1beta3"] == "true" {
+			return sm.handleV1Beta3FinalAnswer(ctx, output, task, statusUpdate, tools)
+		}
+
 		// final answer branch
 		statusUpdate.Status.Output = output.Content
 		statusUpdate.Status.Phase = acp.TaskPhaseFinalAnswer
@@ -559,10 +622,14 @@ func (sm *StateMachine) processLLMResponse(ctx context.Context, output *acp.Mess
 		statusUpdate.Status.Status = acp.TaskStatusTypeReady
 		statusUpdate.Status.StatusDetail = "LLM final response received"
 		statusUpdate.Status.Error = ""
-		sm.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
 
-		// If task has BaseURL and ChannelTokenFrom, send the final result via HumanLayer API
-		if task.Spec.BaseURL != "" && task.Spec.ChannelTokenFrom != nil {
+		// Only send event if not already in final answer phase to prevent duplicates
+		if task.Status.Phase != acp.TaskPhaseFinalAnswer {
+			sm.recorder.Event(task, corev1.EventTypeNormal, "LLMFinalAnswer", "LLM response received successfully")
+		}
+
+		// If task has contactChannelRef, send the final result via HumanLayer API
+		if task.Spec.ContactChannelRef != nil {
 			sm.notifyHumanLayerAPIAsync(ctx, task, output.Content)
 		}
 
@@ -573,7 +640,11 @@ func (sm *StateMachine) processLLMResponse(ctx context.Context, output *acp.Mess
 		// so we might not need to call it here. Let's follow the plan's structure.
 	} else {
 		// Generate a unique ID for this set of tool calls
-		toolCallRequestId := uuid.New().String()[:7] // Using first 7 characters for brevity
+		toolCallRequestId, err := validation.GenerateK8sRandomString(7)
+		if err != nil {
+			logger.Error(err, "Failed to generate toolCallRequestId")
+			return ctrl.Result{}, err
+		}
 		logger.Info("Generated toolCallRequestId for tool calls", "id", toolCallRequestId)
 
 		// tool call branch: create ToolCall objects for each tool call returned by the LLM.
@@ -776,9 +847,13 @@ func (sm *StateMachine) notifyHumanLayerAPIAsync(ctx context.Context, task *acp.
 
 		if err := sm.sendFinalResultViaHumanLayerAPI(notifyCtx, taskCopy, result); err != nil {
 			// Use structured logging instead of recorder in goroutine
+			contactChannelName := ""
+			if taskCopy.Spec.ContactChannelRef != nil {
+				contactChannelName = taskCopy.Spec.ContactChannelRef.Name
+			}
 			log.FromContext(notifyCtx).Error(err, "Failed to send final result via HumanLayer API",
 				"taskName", task.Name,
-				"baseURL", task.Spec.BaseURL)
+				"contactChannel", contactChannelName)
 		}
 	}()
 }
@@ -786,36 +861,44 @@ func (sm *StateMachine) notifyHumanLayerAPIAsync(ctx context.Context, task *acp.
 func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, task *acp.Task, result string) error {
 	logger := log.FromContext(ctx)
 
-	if task.Spec.BaseURL == "" || task.Spec.ChannelTokenFrom == nil {
-		logger.Info("Skipping result notification, BaseURL or ChannelTokenFrom not set")
+	if task.Spec.ContactChannelRef == nil {
+		logger.Info("Skipping result notification, ContactChannelRef not set")
 		return nil
 	}
 
-	// Get the channel token from the secret
+	// Get the ContactChannel
+	var contactChannel acp.ContactChannel
+	if err := sm.client.Get(ctx, client.ObjectKey{
+		Namespace: task.Namespace,
+		Name:      task.Spec.ContactChannelRef.Name,
+	}, &contactChannel); err != nil {
+		return fmt.Errorf("failed to get ContactChannel: %w", err)
+	}
+
+	// Get the API key from the ContactChannel's secret
 	var secret corev1.Secret
 	if err := sm.client.Get(ctx, client.ObjectKey{
 		Namespace: task.Namespace,
-		Name:      task.Spec.ChannelTokenFrom.Name,
+		Name:      contactChannel.Spec.APIKeyFrom.SecretKeyRef.Name,
 	}, &secret); err != nil {
-		return fmt.Errorf("failed to get channel token secret: %w", err)
+		return fmt.Errorf("failed to get ContactChannel API key secret: %w", err)
 	}
 
-	channelToken := string(secret.Data[task.Spec.ChannelTokenFrom.Key])
-	if channelToken == "" {
-		return fmt.Errorf("channel token is empty in secret %s/%s key %s",
-			task.Namespace, task.Spec.ChannelTokenFrom.Name, task.Spec.ChannelTokenFrom.Key)
+	apiKey := string(secret.Data[contactChannel.Spec.APIKeyFrom.SecretKeyRef.Key])
+	if apiKey == "" {
+		return fmt.Errorf("API key is empty in ContactChannel secret")
 	}
 
-	// Create HumanLayer client using the injected factory
-	client, err := sm.humanLayerFactory.NewClient(task.Spec.BaseURL)
+	// Create HumanLayer client - use a hardcoded URL for now (need to determine baseURL source)
+	client, err := sm.humanLayerFactory.NewClient("https://api.humanlayer.dev")
 	if err != nil {
 		return fmt.Errorf("failed to create HumanLayer client: %w", err)
 	}
-	client.SetAPIKey(channelToken)           // Use token from secret
+	client.SetAPIKey(apiKey)                 // Use API key from ContactChannel secret
 	client.SetRunID(task.Spec.AgentRef.Name) // Use agent name as runID
 
 	// Generate a random callID
-	callID, err := generateRandomString(7)
+	callID, err := validation.GenerateK8sRandomString(7)
 	if err != nil {
 		return fmt.Errorf("failed to generate callID: %w", err)
 	}
@@ -830,7 +913,7 @@ func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, tas
 		// Check for success
 		if err == nil && statusCode >= 200 && statusCode < 300 {
 			logger.Info("Successfully sent final result via HumanLayer API",
-				"baseURL", task.Spec.BaseURL,
+				"contactChannel", task.Spec.ContactChannelRef.Name,
 				"statusCode", statusCode,
 				"humanContactID", humanContact.GetCallId())
 			return nil
@@ -840,12 +923,12 @@ func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, tas
 		if err != nil {
 			logger.Error(err, "Failed to send human contact request",
 				"attempt", attempt+1,
-				"baseURL", task.Spec.BaseURL)
+				"contactChannel", task.Spec.ContactChannelRef.Name)
 		} else {
 			logger.Error(fmt.Errorf("HTTP error %d", statusCode),
 				"Failed to send human contact request",
 				"attempt", attempt+1,
-				"baseURL", task.Spec.BaseURL)
+				"contactChannel", task.Spec.ContactChannelRef.Name)
 		}
 
 		// Exponential backoff
@@ -855,4 +938,208 @@ func (sm *StateMachine) sendFinalResultViaHumanLayerAPI(ctx context.Context, tas
 	}
 
 	return fmt.Errorf("failed to send human contact request after %d attempts", maxRetries)
+}
+
+// getTaskMutex returns or creates a mutex for a specific task
+func (sm *StateMachine) getTaskMutex(taskName string) *sync.Mutex {
+	sm.mutexMapLock.RLock()
+	mutex, exists := sm.taskMutexes[taskName]
+	sm.mutexMapLock.RUnlock()
+
+	if exists {
+		return mutex
+	}
+
+	// Need to create a new mutex
+	sm.mutexMapLock.Lock()
+	defer sm.mutexMapLock.Unlock()
+
+	// Double-check after acquiring write lock
+	if mutex, exists := sm.taskMutexes[taskName]; exists {
+		return mutex
+	}
+
+	mutex = &sync.Mutex{}
+	sm.taskMutexes[taskName] = mutex
+	return mutex
+}
+
+// handleV1Beta3FinalAnswer handles final answers for v1beta3 tasks by creating a respond_to_human tool call
+func (sm *StateMachine) handleV1Beta3FinalAnswer(ctx context.Context, output *acp.Message, task *acp.Task, statusUpdate *acp.Task, _ []llmclient.Tool) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Handling v1beta3 final answer by creating respond_to_human tool call")
+
+	// Generate a unique ID for this tool call using k8s-style random strings
+	toolCallRequestId, err := validation.GenerateK8sRandomString(7)
+	if err != nil {
+		logger.Error(err, "Failed to generate toolCallRequestId")
+		return ctrl.Result{}, err
+	}
+	toolCallID, err := validation.GenerateK8sRandomString(8)
+	if err != nil {
+		logger.Error(err, "Failed to generate toolCallID")
+		return ctrl.Result{}, err
+	}
+
+	// Create a respond_to_human tool call instead of final answer
+	respondToHumanCall := acp.MessageToolCall{
+		ID: toolCallID,
+		Function: acp.ToolCallFunction{
+			Name:      "respond_to_human",
+			Arguments: fmt.Sprintf(`{"content": "%s"}`, output.Content),
+		},
+		Type: "function",
+	}
+
+	// Set status to tool calls pending instead of final answer
+	statusUpdate.Status.Output = ""
+	statusUpdate.Status.Phase = acp.TaskPhaseToolCallsPending
+	statusUpdate.Status.ToolCallRequestID = toolCallRequestId
+	statusUpdate.Status.ContextWindow = append(statusUpdate.Status.ContextWindow, acp.Message{
+		Role:      "assistant",
+		ToolCalls: []acp.MessageToolCall{respondToHumanCall},
+	})
+	statusUpdate.Status.Ready = true
+	statusUpdate.Status.Status = acp.TaskStatusTypeReady
+	statusUpdate.Status.StatusDetail = "Creating respond_to_human tool call for v1beta3 final answer"
+	statusUpdate.Status.Error = ""
+	sm.recorder.Event(task, corev1.EventTypeNormal, "V1Beta3RespondToHuman", "Creating respond_to_human tool call for final answer")
+
+	// Update the status before creating tool call
+	if err := sm.client.Status().Update(ctx, statusUpdate); err != nil {
+		logger.Error(err, "Unable to update Task status for v1beta3 respond_to_human")
+		return ctrl.Result{}, err
+	}
+
+	// Create the respond_to_human ToolCall resource
+	return sm.createV1Beta3ToolCall(ctx, task, statusUpdate, respondToHumanCall)
+}
+
+// createV1Beta3ToolCall creates a special respond_to_human ToolCall for v1beta3 tasks
+func (sm *StateMachine) createV1Beta3ToolCall(ctx context.Context, task *acp.Task, statusUpdate *acp.Task, toolCall acp.MessageToolCall) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	newName := fmt.Sprintf("%s-%s-respond-to-human", statusUpdate.Name, statusUpdate.Status.ToolCallRequestID)
+
+	newTC := &acp.ToolCall{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      newName,
+			Namespace: statusUpdate.Namespace,
+			Labels: map[string]string{
+				"acp.humanlayer.dev/task":            statusUpdate.Name,
+				"acp.humanlayer.dev/toolcallrequest": statusUpdate.Status.ToolCallRequestID,
+				"acp.humanlayer.dev/v1beta3":         "true",
+				"acp.humanlayer.dev/tool-type":       "respond_to_human",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "acp.humanlayer.dev/v1alpha1",
+					Kind:       "Task",
+					Name:       statusUpdate.Name,
+					UID:        statusUpdate.UID,
+					Controller: ptr.To(true),
+				},
+			},
+		},
+		Spec: acp.ToolCallSpec{
+			ToolCallID: toolCall.ID,
+			TaskRef: acp.LocalObjectReference{
+				Name: statusUpdate.Name,
+			},
+			ToolRef: acp.LocalObjectReference{
+				Name: "respond_to_human",
+			},
+			ToolType:  acp.ToolTypeHumanContact,
+			Arguments: toolCall.Function.Arguments,
+		},
+	}
+
+	if err := sm.client.Create(ctx, newTC); err != nil {
+		logger.Error(err, "Failed to create respond_to_human ToolCall", "name", newName)
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Created respond_to_human ToolCall for v1beta3 task", "name", newName, "requestId", statusUpdate.Status.ToolCallRequestID)
+	sm.recorder.Event(task, corev1.EventTypeNormal, "V1Beta3ToolCallCreated", "Created respond_to_human ToolCall "+newName)
+
+	return ctrl.Result{RequeueAfter: DefaultRequeueDelay}, nil
+}
+
+// acquireTaskLease attempts to acquire a distributed lease for a task
+func (sm *StateMachine) acquireTaskLease(ctx context.Context, taskName string) (*coordinationv1.Lease, bool, error) {
+	leaseName := "task-llm-" + taskName
+	now := metav1.NewMicroTime(time.Now())
+
+	lease := &coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      leaseName,
+			Namespace: sm.namespace,
+		},
+		Spec: coordinationv1.LeaseSpec{
+			HolderIdentity:       &sm.podName,
+			LeaseDurationSeconds: ptr.To(int32(sm.leaseDuration.Seconds())),
+			AcquireTime:          &now,
+			RenewTime:            &now,
+		},
+	}
+
+	// Try to create the lease
+	err := sm.client.Create(ctx, lease)
+	if err == nil {
+		return lease, true, nil
+	}
+
+	// If lease already exists, try to acquire it if expired
+	if apierrors.IsAlreadyExists(err) {
+		existingLease := &coordinationv1.Lease{}
+		if err := sm.client.Get(ctx, client.ObjectKey{
+			Namespace: sm.namespace,
+			Name:      leaseName,
+		}, existingLease); err != nil {
+			return nil, false, err
+		}
+
+		// Check if lease is expired or we already hold it
+		if sm.canAcquireLease(existingLease) {
+			existingLease.Spec.HolderIdentity = &sm.podName
+			existingLease.Spec.AcquireTime = &now
+			existingLease.Spec.RenewTime = &now
+
+			if err := sm.client.Update(ctx, existingLease); err != nil {
+				return nil, false, err
+			}
+			return existingLease, true, nil
+		}
+
+		return nil, false, nil // Lease held by another pod
+	}
+
+	return nil, false, err
+}
+
+// canAcquireLease checks if we can acquire the lease (expired or we already hold it)
+func (sm *StateMachine) canAcquireLease(lease *coordinationv1.Lease) bool {
+	if lease.Spec.HolderIdentity != nil && *lease.Spec.HolderIdentity == sm.podName {
+		return true // We already hold it
+	}
+
+	if lease.Spec.RenewTime == nil {
+		return true // No renew time, assume expired
+	}
+
+	expireTime := lease.Spec.RenewTime.Add(sm.leaseDuration)
+	return time.Now().After(expireTime)
+}
+
+// releaseTaskLease releases a distributed lease
+func (sm *StateMachine) releaseTaskLease(ctx context.Context, lease *coordinationv1.Lease) {
+	if lease == nil {
+		return
+	}
+
+	// Delete the lease to release it
+	if err := sm.client.Delete(ctx, lease); err != nil {
+		// Log but don't fail - lease will expire naturally
+		log.FromContext(ctx).V(1).Info("Failed to delete task lease", "lease", lease.Name, "error", err)
+	}
 }
