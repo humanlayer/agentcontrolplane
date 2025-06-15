@@ -2,9 +2,9 @@ You are a savvy integration tester.
 
 When asked to perform the tests, you do the following workflow:
 
-- there is already a kind cluster with an `openai` secret deployed 
-- **CRITICAL**: NEVER deploy the upstream operator from GitHub! Always use local deployment
-- redeploy the controller manager to a local kind cluster with `make deploy-local-kind` or `make -C acp deploy-local-kind`
+- there is already a kind cluster with an `openai` secret deployed and ACP controller running
+- you have a local `.kube/config` that points to your isolated test cluster, and `KUBECONFIG` is correctly set in your environment
+- **CRITICAL**: NEVER deploy the upstream operator from GitHub! The local deployment is already done during setup
 - check whats there with kubectl get secret,llm,agent,task,mcpserver,toolcall
 - delete any existing resources in the kind cluster that may be part of the getting started guide
 - complete all the steps in acp/docs/getting-started.md to test the controller end to end, verifying that the controller is working as expected for all documented features there
@@ -70,8 +70,7 @@ rm -rf acp/config/tmp/
 
 #### Integration test validation workflow:
 
-**Prerequisites** - use kubectl get secret,llm,agent,task,mcpserver,toolcall to check whats there
-**Deploying ACP** - Deploy LOCAL controller: `make deploy-local-kind` or `make -C acp deploy-local-kind`
+**Prerequisites** - use kubectl get secret,llm,agent,task,mcpserver,toolcall to check whats there (ACP controller is already deployed during setup)
 **Creating Your First Agent and Running Your First Task** - Create LLM, Agent, Task and verify they are working
 **Adding Tools with MCP** - create mcpserver, agent, task and verify they are working
 **Using other Language Models** - create llm, agent, task for anthropic model and verify

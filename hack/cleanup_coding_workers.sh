@@ -1,6 +1,6 @@
 #!/bin/bash
-# cleanup_coding_workers.sh - Cleans up worktree environments and tmux sessions
-# Usage: ./cleanup_coding_workers.sh [suffix] [--tmux-only|--worktrees-only]
+# cleanup_coding_workers.sh - Cleans up a specific worker's worktree, tmux window, and kind cluster
+# Usage: ./cleanup_coding_workers.sh <window_name>
 
 set -euo pipefail
 
@@ -29,62 +29,58 @@ info() {
 }
 
 # Parse arguments
-SUFFIX="${1:-}"
-CLEANUP_MODE="${2:-all}"
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <window_name>"
+    echo "Example: $0 integration-testing"
+    exit 1
+fi
+
+WINDOW_NAME="$1"
 
 # Configuration
 REPO_NAME="agentcontrolplane"
 WORKTREES_BASE="$HOME/.humanlayer/worktrees"
+TMUX_SESSION="acp-agents"
 
-# Define branch names based on suffix
-if [ -n "$SUFFIX" ]; then
-    TMUX_SESSION="acp-coding-$SUFFIX"
-    declare -a BRANCH_NAMES=(
-        "acp-srs-$SUFFIX"
-        "acp-projectid-$SUFFIX"
-        "acp-taskspec-$SUFFIX"
-        "acp-channelapikey-$SUFFIX"
-        "acp-v1beta3-$SUFFIX"
-        "acp-parallel-$SUFFIX"
-        "acp-merge-$SUFFIX"
-    )
-else
-    TMUX_SESSION=""
-    declare -a BRANCH_NAMES=()
-fi
+# Determine branch name from window name
+BRANCH_NAME="${WINDOW_NAME}"
 
-# Function to kill tmux session
-cleanup_tmux() {
-    if [ -z "$SUFFIX" ]; then
-        warn "No suffix provided, cleaning up all acp-coding-* sessions"
-        local sessions=$(tmux list-sessions 2>/dev/null | grep "^acp-coding-" | cut -d: -f1 || true)
-        if [ -z "$sessions" ]; then
-            info "No acp-coding-* tmux sessions found"
+# Main execution
+main() {
+    local worktree_dir="${WORKTREES_BASE}/${REPO_NAME}_${BRANCH_NAME}"
+    
+    log "Cleaning up worker: $WINDOW_NAME (branch: $BRANCH_NAME)"
+    
+    # Kill tmux window
+    if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+        if tmux list-windows -t "$TMUX_SESSION" -F "#{window_name}" | grep -q "^${WINDOW_NAME}$"; then
+            log "Killing tmux window: $TMUX_SESSION:$WINDOW_NAME"
+            tmux kill-window -t "$TMUX_SESSION:$WINDOW_NAME"
         else
-            for session in $sessions; do
-                log "Killing tmux session: $session"
-                tmux kill-session -t "$session" 2>/dev/null || warn "Session $session not found"
-            done
+            info "Tmux window not found: $TMUX_SESSION:$WINDOW_NAME"
         fi
     else
-        if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-            log "Killing tmux session: $TMUX_SESSION"
-            tmux kill-session -t "$TMUX_SESSION"
-        else
-            info "Tmux session not found: $TMUX_SESSION"
-        fi
+        info "Tmux session not found: $TMUX_SESSION"
     fi
-}
-
-# Function to remove worktree
-remove_worktree() {
-    local branch_name=$1
-    local worktree_dir="${WORKTREES_BASE}/${REPO_NAME}_${branch_name}"
     
+    # Remove worktree and cluster
     if [ -d "$worktree_dir" ]; then
         log "Removing worktree: $worktree_dir"
-        # Fix permissions before removal to handle any permission issues
-        chmod -R 755 "$worktree_dir" 2>/dev/null || warn "Failed to fix permissions on $worktree_dir"
+        
+        # Run make teardown to clean up isolated cluster
+        log "Running teardown in worktree: $worktree_dir"
+        cd "$worktree_dir" 2>/dev/null && {
+            if [ -f "Makefile" ]; then
+                make teardown 2>/dev/null || warn "Failed to run make teardown in $worktree_dir"
+            fi
+            cd - > /dev/null
+        }
+        
+        # Fix permissions before removing worktree
+        log "Fixing permissions for worktree removal"
+        chmod -R 755 "$worktree_dir" 2>/dev/null || warn "Failed to fix permissions for $worktree_dir"
+        
+        # Remove worktree
         git worktree remove --force "$worktree_dir" 2>/dev/null || {
             warn "Failed to remove worktree with git, removing directory manually"
             rm -rf "$worktree_dir"
@@ -92,115 +88,51 @@ remove_worktree() {
     else
         info "Worktree not found: $worktree_dir"
     fi
-}
-
-# Function to delete branch
-delete_branch() {
-    local branch_name=$1
     
-    if git show-ref --verify --quiet "refs/heads/${branch_name}"; then
-        log "Deleting branch: $branch_name"
-        git branch -D "$branch_name" 2>/dev/null || warn "Failed to delete branch: $branch_name"
+    # Delete branch
+    if git show-ref --verify --quiet "refs/heads/${BRANCH_NAME}"; then
+        log "Deleting branch: $BRANCH_NAME"
+        git branch -D "$BRANCH_NAME" 2>/dev/null || warn "Failed to delete branch: $BRANCH_NAME"
     else
-        info "Branch not found: $branch_name"
-    fi
-}
-
-# Function to cleanup all worktrees
-cleanup_worktrees() {
-    if [ -z "$SUFFIX" ]; then
-        warn "No suffix provided, cleaning up all acp-* worktrees"
-        if [ -d "$WORKTREES_BASE" ]; then
-            local worktrees=$(ls "$WORKTREES_BASE" | grep "^${REPO_NAME}_acp-" || true)
-            if [ -z "$worktrees" ]; then
-                info "No acp-* worktrees found"
-            else
-                for worktree in $worktrees; do
-                    local branch_name="${worktree#${REPO_NAME}_}"
-                    remove_worktree "$branch_name"
-                    delete_branch "$branch_name"
-                done
-            fi
-        fi
-    else
-        for branch_name in "${BRANCH_NAMES[@]}"; do
-            remove_worktree "$branch_name"
-            delete_branch "$branch_name"
-        done
+        info "Branch not found: $BRANCH_NAME"
     fi
     
     # Prune worktree list
     log "Pruning git worktree list..."
     git worktree prune
-}
-
-# Function to show usage
-usage() {
-    echo "Usage: $0 [suffix] [--tmux-only|--worktrees-only]"
-    echo
-    echo "Options:"
-    echo "  suffix          - The suffix used when launching workers (optional)"
-    echo "  --tmux-only     - Only clean up tmux sessions"
-    echo "  --worktrees-only - Only clean up worktrees and branches"
-    echo
-    echo "If no suffix is provided, will clean up all acp-* sessions and worktrees"
-    echo
-    echo "Examples:"
-    echo "  $0                    # Clean up all acp-* sessions and worktrees"
-    echo "  $0 1234              # Clean up specific suffix"
-    echo "  $0 1234 --tmux-only  # Only clean up tmux for suffix 1234"
-}
-
-# Main execution
-main() {
-    log "Starting cleanup_coding_workers.sh"
-    
-    if [ "$CLEANUP_MODE" == "--help" ] || [ "$CLEANUP_MODE" == "-h" ]; then
-        usage
-        exit 0
-    fi
-    
-    # Status report before cleanup
-    info "=== Current Status ==="
-    echo "Tmux sessions:"
-    tmux list-sessions 2>/dev/null | grep "acp-coding-" || echo "  None found"
-    echo
-    echo "Git worktrees:"
-    git worktree list | grep -E "acp-|merge-" || echo "  None found"
-    echo
-    
-    # Perform cleanup based on mode
-    case "$CLEANUP_MODE" in
-        --tmux-only)
-            log "Cleaning up tmux sessions only..."
-            cleanup_tmux
-            ;;
-        --worktrees-only)
-            log "Cleaning up worktrees only..."
-            cleanup_worktrees
-            ;;
-        all|"")
-            log "Cleaning up everything..."
-            cleanup_tmux
-            cleanup_worktrees
-            ;;
-        *)
-            error "Unknown cleanup mode: $CLEANUP_MODE"
-            usage
-            exit 1
-            ;;
-    esac
-    
-    # Status report after cleanup
-    info "=== Status After Cleanup ==="
-    echo "Tmux sessions:"
-    tmux list-sessions 2>/dev/null | grep "acp-coding-" || echo "  None found"
-    echo
-    echo "Git worktrees:"
-    git worktree list | grep -E "acp-|merge-" || echo "  None found"
-    echo
     
     log "✅ Cleanup completed successfully!"
+    
+    # Show remaining resources for manager visibility
+    echo
+    info "=== REMAINING RESOURCES ==="
+    
+    echo
+    info "📺 Tmux sessions and windows:"
+    if command -v tmux &> /dev/null && tmux list-sessions 2>/dev/null; then
+        tmux list-sessions -F "Session: #{session_name}" 2>/dev/null || echo "No tmux sessions found"
+        echo
+        if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+            info "Windows in $TMUX_SESSION session:"
+            tmux list-windows -t "$TMUX_SESSION" -F "  #{window_index}: #{window_name}" 2>/dev/null || echo "  No windows found"
+        fi
+    else
+        echo "No tmux sessions found"
+    fi
+    
+    echo
+    info "🌲 Git worktrees:"
+    git worktree list | grep -E "(agentcontrolplane_|integration-)" || echo "No relevant worktrees found"
+    
+    echo
+    info "🐳 Kind clusters:"
+    if command -v kind &> /dev/null; then
+        kind get clusters 2>/dev/null || echo "No kind clusters found"
+    else
+        echo "kind command not found"
+    fi
+    
+    echo
 }
 
 # Run main

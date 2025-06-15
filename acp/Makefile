@@ -22,6 +22,12 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+# Detect local kubeconfig and cluster name
+branchname := $(shell git branch --show-current)
+clustername := acp-$(branchname)
+KUBECONFIG ?= $(shell if [ -f ../.kube/config ]; then echo "../.kube/config"; elif [ -f .kube/config ]; then echo ".kube/config"; else echo "$$HOME/.kube/config"; fi)
+KUBECTL ?= kubectl --kubeconfig=$(KUBECONFIG)
+
 .PHONY: all
 all: build
 
@@ -75,26 +81,20 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-.PHONY: test
-test: mocks manifests generate fmt vet setup-envtest ## Run tests.
+.PHONY: test-unit
+test-unit: mocks manifests generate fmt vet setup-envtest ## Run unit tests only.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out -failfast
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
-# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# Prometheus and CertManager are installed by default; skip with:
-# - PROMETHEUS_INSTALL_SKIP=true
-# - CERT_MANAGER_INSTALL_SKIP=true
 .PHONY: test-e2e
-test-e2e: manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	@command -v kind >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@kind get clusters | grep -q 'kind' || { \
-		echo "No Kind cluster is running. Please start a Kind cluster before running the e2e tests."; \
-		exit 1; \
-	}
-	go test ./test/e2e/ -v -ginkgo.v
+test-e2e: mocks manifests generate fmt vet setup-envtest ## Run e2e tests using envtest.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./test/e2e/getting_started -timeout=60s
+
+.PHONY: test-e2e-verbose
+test-e2e-verbose: mocks manifests generate fmt vet setup-envtest ## Run e2e tests with verbose output for debugging.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./test/e2e/getting_started -v -ginkgo.v -timeout=60s
+
+.PHONY: test
+test: test-unit test-e2e ## Run all tests (unit tests first, then e2e tests).
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -112,7 +112,7 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 mocks: mockgen ## Generate all mocks using mockgen
 	@echo "Generating mocks..."
 	$(MOCKGEN) -source=internal/humanlayer/hlclient.go -destination=internal/humanlayer/mocks/mock_hlclient.go -package=mocks
-	$(MOCKGEN) -source=internal/llmclient/llm_client.go -destination=internal/llmclient/mocks/mock_llm_client.go -package=mocks  
+	$(MOCKGEN) -source=internal/llmclient/llm_client.go -destination=internal/llmclient/mocks/mock_llm_client.go -package=mocks
 	$(MOCKGEN) -source=internal/mcpmanager/mcpmanager.go -destination=internal/mcpmanager/mocks/mock_mcpmanager.go -package=mocks
 	@echo "Mock generation complete"
 
@@ -152,7 +152,11 @@ docker-push: ## Push docker image with the manager.
 
 .PHONY: docker-load-kind
 docker-load-kind: docker-build ## Load the docker image into kind.
-	kind load docker-image ${IMG} 
+	@if ! kind get clusters | grep -q "^${clustername}$$"; then \
+		echo "Error: Kind cluster '${clustername}' not found. Please run 'make setup' first."; \
+		exit 1; \
+	fi
+	kind load docker-image ${IMG} --name ${clustername}
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -188,7 +192,7 @@ release-local: manifests generate kustomize ## Build cross-platform image (amd64
 	$(eval REPO=ghcr.io/humanlayer/agentcontrolplane)
 	$(eval RELEASE_IMG=$(REPO):$(tag))
 	@echo "Setting image to: $(RELEASE_IMG)"
-	
+
 	# Build and push image for amd64 and arm64 platforms
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name acp-builder
@@ -196,7 +200,7 @@ release-local: manifests generate kustomize ## Build cross-platform image (amd64
 	$(CONTAINER_TOOL) buildx build --push --platform=linux/amd64,linux/arm64 --tag $(RELEASE_IMG) --tag $(REPO):latest -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm acp-builder
 	rm Dockerfile.cross
-	
+
 	# Generate release YAMLs
 	mkdir -p config/release
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(RELEASE_IMG)
@@ -226,12 +230,23 @@ deploy: manifests docker-build kustomize ## Deploy controller to the K8s cluster
 
 namespace ?= default
 .PHONY: deploy-local-kind
-deploy-local-kind: manifests docker-build docker-load-kind kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	if [ ! -f config/localdev/kustomization.yaml ]; then \
-		cp config/localdev/kustomization.tpl.yaml config/localdev/kustomization.yaml; \
+deploy-local-kind: manifests docker-build docker-load-kind kustomize ## Deploy controller to the local Kind cluster with validation.
+	@echo "Using kubeconfig: $(KUBECONFIG)"
+	@echo "Target cluster: ${clustername}"
+	@if ! kind get clusters | grep -q "^${clustername}$$"; then \
+		echo "Error: Kind cluster '${clustername}' not found. Please run 'make setup' first."; \
+		exit 1; \
 	fi
-	cd config/localdev && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/localdev | $(KUBECTL) apply -f - --namespace=$(namespace)
+	@if [ -f ../.ports.env ]; then \
+		source ../.ports.env && \
+		mkdir -p tmp && \
+		npx envsubst < config/localdev/kustomization.tpl.yaml > tmp/kustomization.yaml; \
+	else \
+		echo "Warning: .ports.env not found, using template directly"; \
+		cp config/localdev/kustomization.tpl.yaml tmp/kustomization.yaml; \
+	fi
+	cd tmp && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build tmp | $(KUBECTL) apply -f - --namespace=$(namespace)
 
 .PHONY: deploy-samples
 deploy-samples: kustomize ## Deploy samples to the K8s cluster specified in ~/.kube/config.
@@ -239,7 +254,7 @@ deploy-samples: kustomize ## Deploy samples to the K8s cluster specified in ~/.k
 
 .PHONY: show-samples
 show-samples:
-	$(KUBECTL) get llm,agent,tool,task,toolcall  -o wide; 
+	$(KUBECTL) get llm,agent,tool,task,toolcall  -o wide;
 	$(KUBECTL) get task -o yaml
 
 .PHONY: watch-samples
