@@ -36,6 +36,17 @@ Agent Control Plane is a Kubernetes operator for managing Large Language Model (
 
 Always approach tasks by first exploring the existing patterns in the codebase rather than inventing new approaches.
 
+## 🏗️ YOUR ISOLATED DEVELOPMENT ENVIRONMENT
+
+You have a completely isolated development environment set up for you:
+
+- **Isolated KIND cluster**: Your own dedicated Kubernetes cluster for testing
+- **Local KUBECONFIG**: There's a local `.kube/config` file that points to your isolated cluster
+- **Environment setup**: `KUBECONFIG` is correctly set in your environment to use your isolated cluster
+- **ACP Controller**: The ACP controller is already deployed and running in your cluster
+- **API Keys**: All necessary API keys (OpenAI, Anthropic, HumanLayer) are already configured as secrets
+
+This means you can immediately start working with `kubectl` commands without any setup - everything is ready to go!
 
 ## 🔄 THE WORKFLOW THAT ACTUALLY WORKS - DONT DEVIATE
 

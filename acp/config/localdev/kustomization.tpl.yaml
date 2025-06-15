@@ -1,6 +1,6 @@
 namespace: default
 resources:
-- ../../config/default
+- ../config/default
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -19,7 +19,7 @@ patches:
       value: NodePort
     - op: add
       path: /spec/ports/0/nodePort
-      value: 8082
+      value: ${ACP_SERVER_PORT}
   target:
     kind: Service
     name: controller-manager-api-service

@@ -3,20 +3,15 @@ kind: Cluster
 nodes:
   - role: control-plane
     extraPortMappings:
-      # Grafana
-      - containerPort: 13000
-        hostPort: ${HOST_PORT_13000}
-        listenAddress: "0.0.0.0"
-        protocol: tcp
-      # Prometheus
-      - containerPort: 9090
-        hostPort: ${HOST_PORT_9092}
-        listenAddress: "0.0.0.0"
+      # Kubernetes API Server
+      - containerPort: 6443
+        hostPort: ${KIND_APISERVER_PORT}
+        listenAddress: "127.0.0.1"
         protocol: tcp
       # ACP Controller Manager HTTP gateway
       - containerPort: 8082
-        hostPort: ${HOST_PORT_8082}
-        listenAddress: "0.0.0.0"
+        hostPort: ${ACP_SERVER_PORT}
+        listenAddress: "127.0.0.1"
         protocol: tcp
 
 kubeadmConfigPatches:

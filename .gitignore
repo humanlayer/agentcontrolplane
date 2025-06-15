@@ -12,4 +12,10 @@ acp_commands.sh
 # Generated kustomization files
 acp/config/localdev/kustomization.yaml
 
+# Generated configuration files
 acp/config/tmp/
+acp/tmp/
+.ports.env
+
+# Kubernetes config
+.kube/
