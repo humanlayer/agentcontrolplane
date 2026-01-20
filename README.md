@@ -23,6 +23,7 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
 
 ## Table of Contents
 
+- [Documentation](#documentation)
 - [Key Features](#key-features)
 - [Architecture](#architecture)
   - [Core Objects](#core-objects)
@@ -41,6 +42,31 @@ ACP (Agent Control Plane) is a cloud-native orchestrator for AI Agents built on 
 - [Contributing](#contributing)
 - [License](#license)
 
+## Documentation
+
+### 📚 New to ACP? Start Here
+
+**[CODEBASE_OVERVIEW.md](CODEBASE_OVERVIEW.md)** - Comprehensive 1,200+ line onboarding guide
+- Complete repository structure breakdown
+- All 6 custom resources explained (LLM, Agent, Task, ToolCall, MCPServer, ContactChannel)
+- Controller implementations and state machines
+- Internal packages (llmclient, mcpmanager, humanlayer, etc.)
+- Testing strategy and build workflows
+- Architectural patterns and best practices
+- Essential reading list with file:line references
+
+### Additional Documentation
+
+- **[acp/docs/](./acp/docs/)** - Detailed technical documentation
+  - `getting-started.md` - Quick start guide for users
+  - `crd-reference.md` - Complete CRD field reference
+  - `kubebuilder-guide.md` - Kubebuilder patterns used
+  - `debugging-guide.md` - Debugging tips
+  - `distributed-locking.md` - Multi-pod deployment patterns
+
+- **[Examples](./acp-example)** - Sample configurations and observability stack
+
+- **[CLAUDE.md](CLAUDE.md)** - Instructions for AI assistants working on this codebase
 
 ## Architecture
 

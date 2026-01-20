@@ -52,6 +52,34 @@ Agent Control Plane is a Kubernetes operator for managing Large Language Model (
 - **State Machines**: Each controller follows a state machine pattern
 - **Testing**: Comprehensive test suites with mocks and integration tests
 
+## 📚 REQUIRED READING - Start Here
+
+**Before beginning any work, read these documents to understand the codebase:**
+
+1. **[CODEBASE_OVERVIEW.md](CODEBASE_OVERVIEW.md)** - **START HERE**
+   - Comprehensive 1,200+ line onboarding guide
+   - Repository structure, all 6 CRDs, controllers, internal packages
+   - Testing strategy, build workflows, architectural patterns
+   - Essential reading list with file:line references
+   - **This is your primary context source for understanding the codebase**
+
+2. **[HANDOFF_CODEBASE_ANALYSIS.md](HANDOFF_CODEBASE_ANALYSIS.md)**
+   - Session handoff document showing how the overview was created
+   - Demonstrates effective use of Explore agent for codebase analysis
+   - Useful for understanding documentation patterns and agent workflows
+
+3. **Project-specific docs:** `acp/docs/` directory
+   - `getting-started.md` - Quick start guide
+   - `crd-reference.md` - Complete CRD field reference
+   - `kubebuilder-guide.md` - Kubebuilder patterns used
+   - `debugging-guide.md` - Debugging tips
+   - `distributed-locking.md` - Multi-pod deployment patterns
+
+**Convention for future handoffs:**
+- Handoff documents follow pattern: `HANDOFF_<topic>_<date>.md`
+- Always update this section when creating new foundational documents
+- Glob pattern for finding all handoffs: `HANDOFF_*.md`
+
 ## Core Principles (All Personas)
 
 1. **READ FIRST**: Always read at least 1500 lines to understand context fully
